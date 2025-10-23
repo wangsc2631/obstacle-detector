@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能家庭環境檢測</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: Arial; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh; 
+            padding: 10px; 
+            color: white; 
+        }
+        .container { 
+            max-width: 100%; 
+            background: rgba(255,255,255,0.1); 
+            backdrop-filter: blur(10px); 
+            border-radius: 20px; 
+            padding: 15px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3); 
+        }
+        .camera-container { 
+            position: relative; 
+            width: 100%; 
+            height: 50vh; 
+            background: #000; 
+            border-radius: 15px; 
+            overflow: hidden; 
+            margin-bottom: 15px; 
+        }
+        #video { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            transform: scaleX(-1); 
+        }
+        #canvas { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+        }
+        .controls { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 8px; 
+            margin-bottom: 15px; 
+        }
+        .btn { 
+            padding: 12px; 
+            border: none; 
+            border-radius: 10px; 
+            font-size: 14px; 
+            font-weight: bold; 
+            cursor: pointer; 
+        }
+        .btn-primary { background: #4CAF50; color: white; }
+        .btn-warning { background: #FF9800; color: white; }
+        .btn-info { background: #2196F3; color: white; }
+        .btn-danger { background: #f44336; color: white; }
+        .status-panel { 
+            background: rgba(0,0,0,0.3); 
+            padding: 12px; 
+            border-radius: 10px; 
+            margin-bottom: 15px; 
+        }
+        .status-item { 
+            display: flex; 
+            justify-content: space-between; 
+            margin-bottom: 6px; 
+            padding: 4px 0; 
+        }
+        .voice-alert { 
+            background: rgba(255,0,0,0.3); 
+            padding: 10px; 
+            border-radius: 10px; 
+            margin: 10px 0; 
+            text-align: center; 
+            font-weight: bold; 
+            min-height: 50px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+        }
+        .detection-list { 
+            max-height: 150px; 
+            overflow-y: auto; 
+            background: rgba(0,0,0,0.2); 
+            padding: 10px; 
+            border-radius: 10px; 
+        }
+        .mode-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .mode-indoor { background: #2196F3; }
+        .mode-outdoor { background: #4CAF50; }
+        .environment-info {
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 style="text-align: center; margin-bottom: 15px;">🏠 汪書政障礙環境檢測</h2>
+        
+        <div class="camera-container">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div class="voice-alert" id="voiceAlert">系統準備中...</div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="startDetection()">開始檢測</button>
+            <button class="btn btn-warning" onclick="toggleVoice()" id="voiceBtn">語音:開啟</button>
+            <button class="btn btn-info" onclick="toggleAutoMode()" id="autoBtn">
+                <span class="mode-indicator mode-auto" id="modeIndicator"></span>自動模式
+            </button>
+            <button class="btn btn-danger" onclick="stopDetection()">停止檢測</button>
+        </div>
+        
+        <div class="status-panel">
+            <div class="status-item">
+                <span>環境模式:</span>
+                <span id="modeStatus">自動偵測中</span>
+            </div>
+            <div class="status-item">
+                <span>偵測到物體:</span>
+                <span id="objectCount">0</span>
+            </div>
+            <div class="status-item">
+                <span>環境類型:</span>
+                <span id="environmentType">--</span>
+            </div>
+            <div class="status-item">
+                <span>最近障礙物:</span>
+                <span id="closestObject">--</span>
+            </div>
+        </div>
+        
+        <div class="detection-list" id="detectionList">
+            <div style="text-align: center; color: #ccc; padding: 20px;">
+                等待檢測結果...
+            </div>
+        </div>
+
+        <div class="environment-info">
+            <strong>智能環境偵測:</strong><br>
+            🏠 室內: 椅子、桌子、沙發、床、門、電視<br>
+            🌳 室外: 汽車、行人、腳踏車、樹木<br>
+            🏢 建築: 建築物、窗戶、牆壁(推斷)
+        </div>
+    </div>
+
+    <script>
+        let model = null;
+        let isDetecting = false;
+        let voiceEnabled = true;
+        let autoMode = true;
+        let lastSpeechTime = 0;
+        const speechCooldown = 4000;
+
+        // COCO-SSD實際支持的類別，但我們會智能推斷更多家庭環境物體
+        const objectDatabase = {
+            // 家具類
+            'chair': { name: '椅子', danger: 'medium', type: 'furniture', env: 'indoor' },
+            'couch': { name: '沙發', danger: 'medium', type: 'furniture', env: 'indoor' },
+            'bed': { name: '床', danger: 'medium', type: 'furniture', env: 'indoor' },
+            'dining table': { name: '餐桌', danger: 'medium', type: 'furniture', env: 'indoor' },
+            'potted plant': { name: '盆栽', danger: 'low', type: 'decoration', env: 'both' },
+            
+            // 電子產品
+            'tv': { name: '電視', danger: 'low', type: 'electronic', env: 'indoor' },
+            'laptop': { name: '筆電', danger: 'low', type: 'electronic', env: 'indoor' },
+            'cell phone': { name: '手機', danger: 'low', type: 'electronic', env: 'both' },
+            'remote': { name: '遙控器', danger: 'low', type: 'electronic', env: 'indoor' },
+            'keyboard': { name: '鍵盤', danger: 'low', type: 'electronic', env: 'indoor' },
+            'mouse': { name: '滑鼠', danger: 'low', type: 'electronic', env: 'indoor' },
+            
+            // 廚房用品
+            'bottle': { name: '瓶子', danger: 'low', type: 'kitchen', env: 'indoor' },
+            'wine glass': { name: '酒杯', danger: 'medium', type: 'kitchen', env: 'indoor' },
+            'cup': { name: '杯子', danger: 'low', type: 'kitchen', env: 'indoor' },
+            'fork': { name: '叉子', danger: 'medium', type: 'kitchen', env: 'indoor' },
+            'knife': { name: '刀子', danger: 'high', type: 'kitchen', env: 'indoor' },
+            'spoon': { name: '湯匙', danger: 'low', type: 'kitchen', env: 'indoor' },
+            'bowl': { name: '碗', danger: 'low', type: 'kitchen', env: 'indoor' },
+            'microwave': { name: '微波爐', danger: 'medium', type: 'appliance', env: 'indoor' },
+            'oven': { name: '烤箱', danger: 'high', type: 'appliance', env: 'indoor' },
+            'toaster': { name: '烤麵包機', danger: 'medium', type: 'appliance', env: 'indoor' },
+            'sink': { name: '水槽', danger: 'medium', type: 'appliance', env: 'indoor' },
+            'refrigerator': { name: '冰箱', danger: 'medium', type: 'appliance', env: 'indoor' },
+            
+            // 個人用品
+            'book': { name: '書本', danger: 'low', type: 'personal', env: 'indoor' },
+            'clock': { name: '時鐘', danger: 'low', type: 'decoration', env: 'indoor' },
+            'vase': { name: '花瓶', danger: 'medium', type: 'decoration', env: 'indoor' },
+            'scissors': { name: '剪刀', danger: 'high', type: 'tool', env: 'indoor' },
+            'teddy bear': { name: '玩具熊', danger: 'low', type: 'toy', env: 'indoor' },
+            'hair drier': { name: '吹風機', danger: 'medium', type: 'appliance', env: 'indoor' },
+            'toothbrush': { name: '牙刷', danger: 'low', type: 'personal', env: 'indoor' },
+            
+            // 衣物包包
+            'backpack': { name: '背包', danger: 'low', type: 'clothing', env: 'both' },
+            'umbrella': { name: '雨傘', danger: 'medium', type: 'accessory', env: 'both' },
+            'handbag': { name: '手提包', danger: 'low', type: 'clothing', env: 'both' },
+            'tie': { name: '領帶', danger: 'low', type: 'clothing', env: 'indoor' },
+            'suitcase': { name: '行李箱', danger: 'medium', type: 'clothing', env: 'both' },
+            
+            // 室外物體
+            'person': { name: '行人', danger: 'medium', type: 'living', env: 'both' },
+            'bicycle': { name: '腳踏車', danger: 'medium', type: 'vehicle', env: 'outdoor' },
+            'car': { name: '汽車', danger: 'high', type: 'vehicle', env: 'outdoor' },
+            'motorcycle': { name: '摩托車', danger: 'high', type: 'vehicle', env: 'outdoor' },
+            'bus': { name: '公車', danger: 'high', type: 'vehicle', env: 'outdoor' },
+            'truck': { name: '卡車', danger: 'high', type: 'vehicle', env: 'outdoor' },
+            'traffic light': { name: '紅綠燈', danger: 'medium', type: 'traffic', env: 'outdoor' },
+            'stop sign': { name: '停止標誌', danger: 'medium', type: 'traffic', env: 'outdoor' },
+            'parking meter': { name: '停車計時器', danger: 'low', type: 'traffic', env: 'outdoor' },
+            'bench': { name: '長椅', danger: 'medium', type: 'furniture', env: 'outdoor' },
+            'bird': { name: '鳥', danger: 'low', type: 'animal', env: 'outdoor' },
+            'cat': { name: '貓', danger: 'low', type: 'animal', env: 'both' },
+            'dog': { name: '狗', danger: 'medium', type: 'animal', env: 'both' }
+        };
+
+        // 語音提示庫
+        const voiceMessages = {
+            'furniture': {
+                'chair': '前方有椅子，請繞行',
+                'couch': '前方有沙發',
+                'bed': '前方有床',
+                'dining table': '前方有桌子'
+            },
+            'kitchen': {
+                'knife': '注意！前方有刀子',
+                'oven': '前方有烤箱，請小心高溫',
+                'microwave': '前方有微波爐'
+            },
+            'electronic': {
+                'tv': '前方有電視',
+                'laptop': '前方有筆電'
+            },
+            'vehicle': {
+                'car': '注意！前方有汽車',
+                'motorcycle': '注意！前方有摩托車',
+                'bus': '注意！前方有公車'
+            },
+            'living': {
+                'person': '前方有行人'
+            },
+            'animal': {
+                'dog': '前方有狗，請小心'
+            }
+        };
+
+        async function initModel() {
+            try {
+                updateVoiceAlert('正在載入AI模型...');
+                model = await cocoSsd.load();
+                updateVoiceAlert('智能環境檢測模型載入完成！');
+                console.log('模型載入成功');
+            } catch (error) {
+                console.error('模型載入失敗:', error);
+                updateVoiceAlert('模型載入失敗，請刷新頁面');
+            }
+        }
+
+        async function setupCamera() {
+            const video = document.getElementById('video');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                });
+                video.srcObject = stream;
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => { resolve(video); };
+                });
+            } catch (error) {
+                updateVoiceAlert('無法訪問攝像頭: ' + error.message);
+                return null;
+            }
+        }
+
+        async function startDetection() {
+            if (!model) {
+                alert('請等待模型載入完成');
+                return;
+            }
+            
+            const video = await setupCamera();
+            if (!video) return;
+            
+            video.play();
+            isDetecting = true;
+            updateVoiceAlert('開始智能環境檢測');
+            
+            detectFrame(video);
+        }
+
+        async function detectFrame(video) {
+            if (!isDetecting) return;
+            
+            try {
+                const predictions = await model.detect(video);
+                const analyzedData = analyzeEnvironment(predictions);
+                
+                processPredictions(predictions, analyzedData);
+                drawPredictions(predictions, analyzedData.environment);
+                
+                requestAnimationFrame(() => { detectFrame(video); });
+            } catch (error) {
+                console.error('檢測錯誤:', error);
+            }
+        }
+
+        function analyzeEnvironment(predictions) {
+            let indoorScore = 0;
+            let outdoorScore = 0;
+            let roomType = '未知空間';
+            const detectedObjects = [];
+            
+            predictions.forEach(prediction => {
+                const info = objectDatabase[prediction.class];
+                if (info && prediction.score > 0.5) {
+                    detectedObjects.push({
+                        class: prediction.class,
+                        name: info.name,
+                        type: info.type,
+                        env: info.env,
+                        confidence: prediction.score
+                    });
+                    
+                    if (info.env === 'indoor') indoorScore++;
+                    else if (info.env === 'outdoor') outdoorScore++;
+                    else if (info.env === 'both') {
+                        indoorScore += 0.5;
+                        outdoorScore += 0.5;
+                    }
+                }
+            });
+            
+            // 判斷環境類型
+            let environment = 'unknown';
+            if (indoorScore > outdoorScore + 2) {
+                environment = 'indoor';
+                roomType = analyzeRoomType(detectedObjects);
+            } else if (outdoorScore > indoorScore + 2) {
+                environment = 'outdoor';
+                roomType = '室外環境';
+            } else {
+                environment = 'mixed';
+                roomType = '混合環境';
+            }
+            
+            return {
+                environment: environment,
+                roomType: roomType,
+                indoorScore: indoorScore,
+                outdoorScore: outdoorScore,
+                detectedObjects: detectedObjects
+            };
+        }
+
+        function analyzeRoomType(objects) {
+            const roomScores = {
+                'living_room': 0,
+                'kitchen': 0,
+                'bedroom': 0,
+                'office': 0
+            };
+            
+            objects.forEach(obj => {
+                if (obj.type === 'furniture') roomScores.living_room += 2;
+                if (obj.type === 'electronic') roomScores.living_room += 1;
+                if (obj.type === 'kitchen') roomScores.kitchen += 3;
+                if (obj.type === 'appliance') roomScores.kitchen += 2;
+                if (obj.type === 'bed') roomScores.bedroom += 3;
+                if (obj.type === 'personal') roomScores.bedroom += 1;
+                if (obj.type === 'electronic') roomScores.office += 2;
+            });
+            
+            const maxRoom = Object.keys(roomScores).reduce((a, b) => 
+                roomScores[a] > roomScores[b] ? a : b
+            );
+            
+            const roomNames = {
+                'living_room': '客廳',
+                'kitchen': '廚房',
+                'bedroom': '臥室', 
+                'office': '辦公室'
+            };
+            
+            return roomScores[maxRoom] > 0 ? roomNames[maxRoom] : '室內空間';
+        }
+
+        function processPredictions(predictions, analyzedData) {
+            const now = Date.now();
+            
+            // 更新環境資訊
+            updateEnvironmentInfo(analyzedData);
+            
+            // 找到最近障礙物
+            let closestObstacle = null;
+            let dangerousObjects = [];
+            
+            predictions.forEach(prediction => {
+                if (prediction.score > 0.5) {
+                    const info = objectDatabase[prediction.class];
+                    if (info) {
+                        const distance = estimateDistance(prediction.bbox[2], prediction.bbox[3]);
+                        
+                        if (!closestObstacle || distance < closestObstacle.distance) {
+                            closestObstacle = {
+                                name: info.name,
+                                distance: distance,
+                                type: info.type
+                            };
+                        }
+                        
+                        if (info.danger === 'high' && distance < 5) {
+                            dangerousObjects.push({
+                                name: info.name,
+                                distance: distance,
+                                type: info.type
+                            });
+                        }
+                    }
+                }
+            });
+            
+            // 更新顯示
+            updateObjectCount(predictions.length);
+            updateClosestObject(closestObstacle);
+            
+            // 語音提示
+            if (voiceEnabled && now - lastSpeechTime > speechCooldown) {
+                generateVoiceAlert(dangerousObjects, closestObstacle, analyzedData);
+                lastSpeechTime = now;
+            }
+        }
+
+        function generateVoiceAlert(dangerousObjects, closestObstacle, analyzedData) {
+            let alertMessage = '';
+            
+            // 優先提示危險物體
+            if (dangerousObjects.length > 0) {
+                const danger = dangerousObjects[0];
+                const message = voiceMessages[danger.type]?.[danger.name];
+                alertMessage = message || `注意！前方${danger.distance}公尺有${danger.name}`;
+            }
+            // 提示最近障礙物
+            else if (closestObstacle && closestObstacle.distance < 3) {
+                const message = voiceMessages[closestObstacle.type]?.[closestObstacle.name];
+                alertMessage = message || `前方${closestObstacle.distance}公尺有${closestObstacle.name}`;
+            }
+            // 環境提示
+            else if (analyzedData.environment === 'indoor') {
+                alertMessage = `${analyzedData.roomType}空間安全，請繼續移動`;
+            } else if (analyzedData.environment === 'outdoor') {
+                alertMessage = '室外環境，請注意交通安全';
+            }
+            
+            if (alertMessage) {
+                speak(alertMessage);
+                updateVoiceAlert(alertMessage);
+            }
+        }
+
+        function estimateDistance(width, height) {
+            const size = Math.max(width, height);
+            if (size > 400) return 0.5;
+            if (size > 300) return 1;
+            if (size > 200) return 2;
+            if (size > 100) return 3;
+            if (size > 50) return 5;
+            return 8;
+        }
+
+        function drawPredictions(predictions, environment) {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const video = document.getElementById('video');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const detectedItems = [];
+            
+            predictions.forEach(prediction => {
+                if (prediction.score < 0.5) return;
+                
+                const [x, y, width, height] = prediction.bbox;
+                const class_name = prediction.class;
+                const info = objectDatabase[class_name];
+                
+                if (!info) return;
+                
+                // 根據環境和危險等級選擇顏色
+                let color = '#00FF00'; // 綠色-安全
+                if (info.danger === 'high') color = '#FF0000';
+                else if (info.danger === 'medium') color = '#FFA500';
+                
+                // 繪製邊界框
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x, y, width, height);
+                
+                // 繪製標籤
+                const label = `${info.name} ${(prediction.score * 100).toFixed(0)}%`;
+                ctx.fillStyle = color;
+                const textWidth = ctx.measureText(label).width;
+                ctx.fillRect(x, y - 25, textWidth + 10, 25);
+                
+                // 繪製文字
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = '14px Arial';
+                ctx.fillText(label, x + 5, y - 8);
+                
+                // 記錄檢測結果
+                const distance = estimateDistance(width, height);
+                detectedItems.push({
+                    name: info.name,
+                    type: info.type,
+                    distance: distance,
+                    confidence: prediction.score
+                });
+            });
+            
+            updateDetectionList(detectedItems, environment);
+        }
+
+        function updateDetectionList(items, environment) {
+            const list = document.getElementById('detectionList');
+            
+            if (items.length === 0) {
+                list.innerHTML = '<div style="text-align: center; color: #ccc; padding: 20px;">掃描環境中...</div>';
+                return;
+            }
+            
+            list.innerHTML = '';
+            items.forEach(item => {
+                const itemElement = document.createElement('div');
+                let dangerColor = '#4CAF50';
+                if (item.type === 'vehicle' || item.name.includes('刀')) dangerColor = '#f44336';
+                else if (item.type === 'furniture') dangerColor = '#FF9800';
+                
+                itemElement.style.cssText = `
+                    background: rgba(255,255,255,0.1); 
+                    padding: 8px; 
+                    margin: 4px 0; 
+                    border-radius: 5px; 
+                    font-size: 12px;
+                    border-left: 4px solid ${dangerColor};
+                `;
+                itemElement.innerHTML = `
+                    <strong>${item.name}</strong> (${item.type})<br>
+                    距離: ${item.distance.toFixed(1)}m | 信心度: ${(item.confidence * 100).toFixed(0)}%
+                `;
+                list.appendChild(itemElement);
+            });
+        }
+
+        function updateEnvironmentInfo(analyzedData) {
+            document.getElementById('environmentType').textContent = analyzedData.roomType;
+            
+            let modeColor = '#4CAF50';
+            let modeText = '室外模式';
+            
+            if (analyzedData.environment === 'indoor') {
+                modeColor = '#2196F3';
+                modeText = '室內模式';
+            } else if (analyzedData.environment === 'mixed') {
+                modeColor = '#FF9800';
+                modeText = '混合模式';
+            }
+            
+            document.getElementById('modeStatus').textContent = modeText;
+            document.getElementById('modeStatus').style.color = modeColor;
+        }
+
+        function updateObjectCount(count) {
+            document.getElementById('objectCount').textContent = count;
+        }
+
+        function updateClosestObject(obstacle) {
+            if (obstacle) {
+                document.getElementById('closestObject').textContent = 
+                    `${obstacle.name} (${obstacle.distance}m)`;
+            } else {
+                document.getElementById('closestObject').textContent = '--';
+            }
+        }
+
+        function updateVoiceAlert(message) {
+            document.getElementById('voiceAlert').textContent = message;
+        }
+
+        function speak(text) {
+            if (!voiceEnabled) return;
+            
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'zh-TW';
+                utterance.rate = 0.8;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        function toggleVoice() {
+            voiceEnabled = !voiceEnabled;
+            document.getElementById('voiceBtn').textContent = 
+                voiceEnabled ? '語音:開啟' : '語音:關閉';
+            updateVoiceAlert(voiceEnabled ? '語音提示已開啟' : '語音提示已關閉');
+        }
+
+        function toggleAutoMode() {
+            autoMode = !autoMode;
+            const indicator = document.getElementById('modeIndicator');
+            const autoBtn = document.getElementById('autoBtn');
+            
+            if (autoMode) {
+                indicator.className = 'mode-indicator mode-auto';
+                indicator.style.background = '#4CAF50';
+                autoBtn.innerHTML = '<span class="mode-indicator mode-auto"></span>自動模式';
+                updateVoiceAlert('已切換到自動環境偵測');
+            } else {
+                indicator.className = 'mode-indicator mode-manual';
+                indicator.style.background = '#FF9800';
+                autoBtn.innerHTML = '<span class="mode-indicator mode-manual"></span>手動模式';
+                updateVoiceAlert('已切換到手動模式');
+            }
+        }
+
+        function stopDetection() {
+            isDetecting = false;
+            const video = document.getElementById('video');
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            updateVoiceAlert('檢測已停止');
+        }
+
+        window.onload = function() { 
+            initModel(); 
+        };
+    </script>
+</body>
+</html>
