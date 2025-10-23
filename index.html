@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>手機障礙物檢測與語音導航</title>
+    <title>老汪障礙物檢測系統</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
@@ -58,7 +58,6 @@
             font-size: 14px; 
             font-weight: bold; 
             cursor: pointer; 
-            transition: all 0.3s; 
         }
         .btn-primary { background: #4CAF50; color: white; }
         .btn-warning { background: #FF9800; color: white; }
@@ -94,11 +93,18 @@
             padding: 10px; 
             border-radius: 10px; 
         }
+        .debug-info {
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2 style="text-align: center; margin-bottom: 15px;">🧭 視障輔助導航系統</h2>
+        <h2 style="text-align: center; margin-bottom: 15px;">🧭 汪書政障礙物檢測</h2>
         
         <div class="camera-container">
             <video id="video" autoplay playsinline></video>
@@ -110,84 +116,177 @@
         <div class="controls">
             <button class="btn btn-primary" onclick="startDetection()">開始檢測</button>
             <button class="btn btn-warning" onclick="toggleVoice()" id="voiceBtn">語音:開啟</button>
-            <button class="btn btn-primary" onclick="changeMode('walking')" id="modeBtn">模式:步行</button>
+            <button class="btn btn-primary" onclick="addVirtualObjects()" id="virtualBtn">虛擬障礙物</button>
             <button class="btn btn-danger" onclick="stopDetection()">停止檢測</button>
         </div>
         
         <div class="status-panel">
-            <div class="status-item"><span>檢測狀態:</span><span id="status">等待開始</span></div>
-            <div class="status-item"><span>障礙物數量:</span><span id="obstacleCount">0</span></div>
-            <div class="status-item"><span>最近距離:</span><span id="closestDistance">-- 公尺</span></div>
-            <div class="status-item"><span>語音提示:</span><span id="voiceStatus">準備就緒</span></div>
+            <div class="status-item">
+                <span>檢測狀態:</span>
+                <span id="status">等待開始</span>
+            </div>
+            <div class="status-item">
+                <span>偵測到物體:</span>
+                <span id="objectCount">0</span>
+            </div>
+            <div class="status-item">
+                <span>最近距離:</span>
+                <span id="closestDistance">-- 公尺</span>
+            </div>
+            <div class="status-item">
+                <span>除錯資訊:</span>
+                <span id="debugInfo">準備就緒</span>
+            </div>
         </div>
         
-        <div class="detection-list" id="detectionList"></div>
+        <div class="detection-list" id="detectionList">
+            <div style="text-align: center; color: #ccc; padding: 20px;">
+                等待檢測結果...
+            </div>
+        </div>
+
+        <div class="debug-info">
+            <strong>可檢測的物體:</strong><br>
+            👤 人, 🚗 汽車, 🚲 腳踏車, 🛵 摩托車, 🚌 公車, 🚚 卡車,<br>
+            🪑 椅子, 🛋️ 沙發, 🪴 盆栽, 🐕 狗, 🐈 貓, 💻 筆電,<br>
+            🎒 背包, ☂️ 雨傘, 🎒 手提包
+        </div>
     </div>
 
     <script>
+        // 實際可用的COCO-SSD類別映射
         let model = null;
         let isDetecting = false;
         let voiceEnabled = true;
         let lastSpeechTime = 0;
         const speechCooldown = 3000;
-        
-        const importantObjects = {
-            'traffic light': '紅綠燈', 'stop sign': '停止標誌', 'car': '汽車', 'truck': '卡車',
-            'bus': '公車', 'motorcycle': '摩托車', 'bicycle': '自行車', 'person': '行人',
-            'dog': '狗', 'cat': '貓', 'bench': '長椅', 'chair': '椅子'
-        };
-        
-        const dangerLevels = {
-            'high': ['car', 'truck', 'bus', 'motorcycle'],
-            'medium': ['person', 'bicycle', 'traffic light'],
-            'low': ['chair', 'bench', 'dog', 'cat']
+
+        // COCO-SSD實際支持的類別（80個類別）
+        const cocoClasses = [
+            'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck',
+            'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench',
+            'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra',
+            'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
+            'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
+            'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup',
+            'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange',
+            'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
+            'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse',
+            'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
+            'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier',
+            'toothbrush'
+        ];
+
+        // 中文映射和危險等級
+        const objectInfo = {
+            'person': { name: '行人', danger: 'medium', voice: '前方有行人' },
+            'bicycle': { name: '腳踏車', danger: 'medium', voice: '前方有腳踏車' },
+            'car': { name: '汽車', danger: 'high', voice: '注意！前方有汽車' },
+            'motorcycle': { name: '摩托車', danger: 'high', voice: '注意！前方有摩托車' },
+            'bus': { name: '公車', danger: 'high', voice: '注意！前方有公車' },
+            'truck': { name: '卡車', danger: 'high', voice: '注意！前方有卡車' },
+            'traffic light': { name: '紅綠燈', danger: 'medium', voice: '前方有紅綠燈' },
+            'stop sign': { name: '停止標誌', danger: 'medium', voice: '前方有停止標誌' },
+            'parking meter': { name: '停車計時器', danger: 'low', voice: '前方有停車計時器' },
+            'bench': { name: '長椅', danger: 'medium', voice: '前方有長椅，請繞行' },
+            'bird': { name: '鳥', danger: 'low', voice: '前方有鳥' },
+            'cat': { name: '貓', danger: 'low', voice: '前方有貓' },
+            'dog': { name: '狗', danger: 'medium', voice: '前方有狗，請小心' },
+            'chair': { name: '椅子', danger: 'medium', voice: '前方有椅子，請繞行' },
+            'couch': { name: '沙發', danger: 'medium', voice: '前方有沙發' },
+            'potted plant': { name: '盆栽', danger: 'low', voice: '前方有盆栽' },
+            'bed': { name: '床', danger: 'medium', voice: '前方有床' },
+            'dining table': { name: '餐桌', danger: 'medium', voice: '前方有桌子' },
+            'tv': { name: '電視', danger: 'low', voice: '前方有電視' },
+            'laptop': { name: '筆電', danger: 'low', voice: '前方有筆電' },
+            'backpack': { name: '背包', danger: 'low', voice: '前方有背包' },
+            'umbrella': { name: '雨傘', danger: 'low', voice: '前方有雨傘' },
+            'handbag': { name: '手提包', danger: 'low', voice: '前方有手提包' },
+            'suitcase': { name: '行李箱', danger: 'medium', voice: '前方有行李箱' },
+            'book': { name: '書本', danger: 'low', voice: '前方有書本' }
         };
 
         async function initModel() {
             try {
                 updateVoiceAlert('正在載入AI模型...');
+                updateDebugInfo('下載模型中...');
                 model = await cocoSsd.load();
                 updateVoiceAlert('模型載入完成！請點擊開始檢測');
+                updateDebugInfo('模型就緒，可檢測 ' + cocoClasses.length + ' 種物體');
+                console.log('COCO-SSD模型載入成功，支持類別:', cocoClasses);
             } catch (error) {
-                updateVoiceAlert('模型載入失敗，請刷新頁面重試');
+                console.error('模型載入失敗:', error);
+                updateVoiceAlert('模型載入失敗: ' + error.message);
+                updateDebugInfo('載入失敗: ' + error.message);
             }
         }
 
         async function setupCamera() {
             const video = document.getElementById('video');
             try {
+                updateDebugInfo('請求相機權限...');
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
                 });
                 video.srcObject = stream;
+                updateDebugInfo('相機啟動成功');
                 return new Promise((resolve) => {
-                    video.onloadedmetadata = () => { resolve(video); };
+                    video.onloadedmetadata = () => { 
+                        updateDebugInfo('影片尺寸: ' + video.videoWidth + 'x' + video.videoHeight);
+                        resolve(video); 
+                    };
                 });
             } catch (error) {
-                updateVoiceAlert('無法訪問攝像頭，請檢查權限設定');
+                console.error('攝像頭啟動失敗:', error);
+                updateVoiceAlert('無法訪問攝像頭: ' + error.message);
+                updateDebugInfo('相機錯誤: ' + error.message);
                 return null;
             }
         }
 
         async function startDetection() {
-            if (!model) { alert('請等待模型載入完成'); return; }
+            if (!model) {
+                alert('請等待模型載入完成');
+                return;
+            }
+            
+            updateDebugInfo('啟動檢測中...');
             const video = await setupCamera();
             if (!video) return;
+            
             video.play();
             isDetecting = true;
-            updateVoiceAlert('開始障礙物檢測，系統運作中');
+            updateVoiceAlert('開始障礙物檢測');
+            updateStatus('檢測中');
+            
             detectFrame(video);
         }
 
         async function detectFrame(video) {
             if (!isDetecting) return;
+            
             try {
                 const predictions = await model.detect(video);
-                processPredictions(predictions);
-                drawPredictions(predictions);
+                updateDebugInfo('檢測到 ' + predictions.length + ' 個物體');
+                
+                if (predictions.length > 0) {
+                    processPredictions(predictions);
+                    drawPredictions(predictions);
+                } else {
+                    clearCanvas();
+                    updateDetectionList([]);
+                    updateObjectCount(0);
+                    updateClosestDistance('--');
+                }
+                
                 requestAnimationFrame(() => { detectFrame(video); });
             } catch (error) {
                 console.error('檢測錯誤:', error);
+                updateDebugInfo('檢測錯誤: ' + error.message);
             }
         }
 
@@ -195,55 +294,70 @@
             const now = Date.now();
             let closestDistance = Infinity;
             let dangerousObjects = [];
-            let trafficObjects = [];
             
             predictions.forEach(prediction => {
                 const class_name = prediction.class;
-                const distance = estimateDistance(prediction.bbox[2], prediction.bbox[3]);
-                closestDistance = Math.min(closestDistance, distance);
+                const confidence = prediction.score;
                 
-                if (dangerLevels.high.includes(class_name) && distance < 8) {
-                    dangerousObjects.push({class: class_name, distance: distance});
+                if (confidence > 0.5) { // 只處理信心度大於50%的檢測
+                    const distance = estimateDistance(prediction.bbox[2], prediction.bbox[3]);
+                    closestDistance = Math.min(closestDistance, distance);
+                    
+                    const info = objectInfo[class_name];
+                    if (info && info.danger === 'high' && distance < 8) {
+                        dangerousObjects.push({ class: class_name, distance: distance, info: info });
+                    }
                 }
-                if (['traffic light', 'stop sign'].includes(class_name)) {
-                    trafficObjects.push({class: class_name, distance: distance});
-                }
-                updateDetectionList(class_name, distance, prediction.score);
             });
             
-            updateStatusDisplay(predictions.length, closestDistance);
+            updateObjectCount(predictions.length);
+            updateClosestDistance(closestDistance === Infinity ? '--' : closestDistance.toFixed(1) + 'm');
             
-            if (voiceEnabled && now - lastSpeechTime > speechCooldown) {
-                generateVoiceAlert(dangerousObjects, trafficObjects, closestDistance, predictions);
+            // 語音提示
+            if (voiceEnabled && now - lastSpeechTime > speechCooldown && predictions.length > 0) {
+                generateVoiceAlert(dangerousObjects, predictions, closestDistance);
                 lastSpeechTime = now;
             }
         }
 
         function estimateDistance(width, height) {
             const size = Math.max(width, height);
-            if (size > 300) return 1;
-            if (size > 200) return 2;
-            if (size > 100) return 3;
-            if (size > 50) return 5;
-            return 10;
+            if (size > 400) return 1;
+            if (size > 300) return 2;
+            if (size > 200) return 3;
+            if (size > 100) return 5;
+            if (size > 50) return 8;
+            return 12;
         }
 
-        function generateVoiceAlert(dangerousObjects, trafficObjects, closestDistance, predictions) {
+        function generateVoiceAlert(dangerousObjects, predictions, closestDistance) {
             let alertMessage = '';
+            
             if (dangerousObjects.length > 0) {
-                const closestDanger = dangerousObjects[0];
-                alertMessage = `注意！前方${closestDanger.distance}公尺有${importantObjects[closestDanger.class]}，請小心避讓。`;
-            } else if (trafficObjects.length > 0) {
-                const traffic = trafficObjects[0];
-                alertMessage = traffic.class === 'traffic light' ? '前方有紅綠燈，請注意交通號誌。' : '前方有停止標誌，請停車觀察。';
+                const danger = dangerousObjects[0];
+                alertMessage = danger.info.voice;
             } else if (predictions.length > 0 && closestDistance < 5) {
-                alertMessage = `前方${closestDistance.toFixed(1)}公尺有障礙物，請注意。`;
+                const closestPrediction = predictions.reduce((prev, curr) => {
+                    const prevDist = estimateDistance(prev.bbox[2], prev.bbox[3]);
+                    const currDist = estimateDistance(curr.bbox[2], curr.bbox[3]);
+                    return currDist < prevDist ? curr : prev;
+                });
+                
+                const info = objectInfo[closestPrediction.class];
+                if (info) {
+                    alertMessage = `前方${closestDistance.toFixed(1)}公尺有${info.name}`;
+                }
             }
-            if (alertMessage) { speak(alertMessage); updateVoiceAlert(alertMessage); }
+            
+            if (alertMessage) {
+                speak(alertMessage);
+                updateVoiceAlert(alertMessage);
+            }
         }
 
         function speak(text) {
             if (!voiceEnabled) return;
+            
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(text);
@@ -257,72 +371,159 @@
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
             const video = document.getElementById('video');
+            
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
+            const detectedItems = [];
+            
             predictions.forEach(prediction => {
+                if (prediction.score < 0.5) return; // 只繪製信心度大於50%的
+                
                 const [x, y, width, height] = prediction.bbox;
                 const class_name = prediction.class;
-                let color = '#00FF00';
-                if (dangerLevels.high.includes(class_name)) color = '#FF0000';
-                else if (dangerLevels.medium.includes(class_name)) color = '#FFA500';
+                const confidence = prediction.score;
+                const info = objectInfo[class_name];
                 
+                if (!info) return;
+                
+                let color = '#00FF00'; // 綠色-安全
+                if (info.danger === 'high') color = '#FF0000'; // 紅色-危險
+                else if (info.danger === 'medium') color = '#FFA500'; // 橙色-警告
+                
+                // 繪製邊界框
                 ctx.strokeStyle = color;
                 ctx.lineWidth = 3;
                 ctx.strokeRect(x, y, width, height);
                 
-                const label = `${importantObjects[class_name] || class_name} ${(prediction.score * 100).toFixed(0)}%`;
+                // 繪製標籤
+                const label = `${info.name} ${(confidence * 100).toFixed(0)}%`;
                 ctx.fillStyle = color;
                 const textWidth = ctx.measureText(label).width;
                 ctx.fillRect(x, y - 25, textWidth + 10, 25);
                 
+                // 繪製文字
                 ctx.fillStyle = '#FFFFFF';
                 ctx.font = '14px Arial';
                 ctx.fillText(label, x + 5, y - 8);
+                
+                // 記錄檢測到的物體
+                const distance = estimateDistance(width, height);
+                detectedItems.push({
+                    class: class_name,
+                    name: info.name,
+                    distance: distance,
+                    confidence: confidence
+                });
+            });
+            
+            updateDetectionList(detectedItems);
+        }
+
+        function clearCanvas() {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function updateDetectionList(items) {
+            const list = document.getElementById('detectionList');
+            
+            if (items.length === 0) {
+                list.innerHTML = '<div style="text-align: center; color: #ccc; padding: 20px;">未檢測到物體，請嘗試檢測：人、椅子、汽車等</div>';
+                return;
+            }
+            
+            list.innerHTML = '';
+            items.forEach(item => {
+                const itemElement = document.createElement('div');
+                itemElement.style.cssText = `
+                    background: rgba(255,255,255,0.1); 
+                    padding: 8px; 
+                    margin: 4px 0; 
+                    border-radius: 5px; 
+                    font-size: 12px;
+                    border-left: 4px solid ${getDangerColor(item.class)};
+                `;
+                itemElement.innerHTML = `
+                    <strong>${item.name}</strong><br>
+                    距離: ${item.distance.toFixed(1)}m | 信心度: ${(item.confidence * 100).toFixed(0)}%
+                `;
+                list.appendChild(itemElement);
             });
         }
 
-        function updateStatusDisplay(count, distance) {
-            document.getElementById('obstacleCount').textContent = count;
-            document.getElementById('closestDistance').textContent = distance === Infinity ? '--' : distance.toFixed(1) + ' 公尺';
-            document.getElementById('status').textContent = '檢測中';
+        function getDangerColor(className) {
+            const info = objectInfo[className];
+            if (!info) return '#4CAF50';
+            if (info.danger === 'high') return '#f44336';
+            if (info.danger === 'medium') return '#FF9800';
+            return '#4CAF50';
         }
 
-        function updateDetectionList(className, distance, confidence) {
-            const list = document.getElementById('detectionList');
-            const item = document.createElement('div');
-            item.style.cssText = 'background: rgba(255,255,255,0.1); padding: 8px; margin: 4px 0; border-radius: 5px; font-size: 12px;';
-            item.innerHTML = `<strong>${importantObjects[className] || className}</strong><br>距離: ${distance.toFixed(1)}m | 信心度: ${(confidence * 100).toFixed(0)}%`;
-            list.insertBefore(item, list.firstChild);
-            if (list.children.length > 8) { list.removeChild(list.lastChild); }
+        function updateStatus(text) {
+            document.getElementById('status').textContent = text;
+        }
+
+        function updateObjectCount(count) {
+            document.getElementById('objectCount').textContent = count;
+        }
+
+        function updateClosestDistance(distance) {
+            document.getElementById('closestDistance').textContent = distance;
+        }
+
+        function updateDebugInfo(info) {
+            document.getElementById('debugInfo').textContent = info;
         }
 
         function updateVoiceAlert(message) {
             document.getElementById('voiceAlert').textContent = message;
-            document.getElementById('voiceStatus').textContent = message.length > 20 ? message.substring(0, 20) + '...' : message;
         }
 
         function toggleVoice() {
             voiceEnabled = !voiceEnabled;
-            document.getElementById('voiceBtn').textContent = voiceEnabled ? '語音:開啟' : '語音:關閉';
+            document.getElementById('voiceBtn').textContent = 
+                voiceEnabled ? '語音:開啟' : '語音:關閉';
             updateVoiceAlert(voiceEnabled ? '語音提示已開啟' : '語音提示已關閉');
         }
 
-        function changeMode(mode) {
-            document.getElementById('modeBtn').textContent = `模式:${mode === 'walking' ? '步行' : '導航'}`;
-            updateVoiceAlert(`已切換到${mode === 'walking' ? '步行' : '導航'}模式`);
+        // 虛擬障礙物測試功能
+        function addVirtualObjects() {
+            if (!isDetecting) {
+                alert('請先開始檢測');
+                return;
+            }
+            
+            const virtualPredictions = [
+                { class: 'chair', score: 0.85, bbox: [100, 100, 80, 120] },
+                { class: 'person', score: 0.78, bbox: [300, 150, 100, 200] },
+                { class: 'car', score: 0.92, bbox: [50, 300, 200, 150] }
+            ];
+            
+            drawPredictions(virtualPredictions);
+            processPredictions(virtualPredictions);
+            updateDebugInfo('虛擬障礙物已添加');
+            updateVoiceAlert('虛擬障礙物測試中');
         }
 
         function stopDetection() {
             isDetecting = false;
             const video = document.getElementById('video');
-            if (video.srcObject) { video.srcObject.getTracks().forEach(track => track.stop()); }
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            clearCanvas();
             updateVoiceAlert('檢測已停止');
-            document.getElementById('status').textContent = '已停止';
+            updateStatus('已停止');
+            updateDebugInfo('檢測停止');
         }
 
-        window.onload = function() { initModel(); };
+        // 初始化
+        window.onload = function() { 
+            initModel(); 
+        };
     </script>
 </body>
 </html>
