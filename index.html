@@ -433,6 +433,8 @@
     const MODEL_URL = 'https://cdn.jsdelivr.net/gh/ultralytics/assets@main/yolov8n.onnx';
     // 備用模型 URL
     const BACKUP_MODEL_URL = 'https://models.roboflow.com/object-detection/yolov8n/1/model.onnx';
+    // 本地模型 URL（如果已下载模型文件）
+    const LOCAL_MODEL_URL = '/yolov8n.onnx';
     
     const INPUT_SIZE = 640;
     const SCORE_THR_BASE = 0.35;
@@ -807,7 +809,14 @@
           try {
             session = await ort.InferenceSession.create(BACKUP_MODEL_URL, opts);
           } catch (backupError) {
-            throw new Error('主模型和備用模型都無法載入，請檢查網路連線後刷新頁面重試');
+            console.log('備用模型也失敗:', backupError);
+            updateVoice('備用模型也失敗，嘗試載入本地模型…');
+            try {
+              session = await ort.InferenceSession.create(LOCAL_MODEL_URL, opts);
+            } catch (localError) {
+              console.log('本地模型也失敗:', localError);
+              throw new Error('所有模型源都無法載入，請檢查網路連接或確保本地模型檔案存在');
+            }
           }
         }
         
