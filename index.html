@@ -290,6 +290,26 @@
       border: 2px solid var(--bad);
     }
     
+    /* 障碍物避让可视化 */
+    .obstacle-map {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+    
+    .obstacle-point {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--bad);
+      transform: translate(-50%, -50%);
+    }
+    
     @keyframes pulse {
       0% {
         opacity: 1;
@@ -357,6 +377,7 @@
     <section class="card camera">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="canvas"></canvas>
+      <div id="obstacleMap" class="obstacle-map"></div>
     </section>
 
     <section class="card panel">
@@ -375,6 +396,8 @@
         <button id="btnMirror" class="btn secondary">鏡像畫面</button>
         <button id="btnDebug" class="btn secondary">調試模式</button>
         <button id="btnTest" class="btn primary">測試檢測</button>
+        <button id="btnObstacleAvoidance" class="btn secondary">避障功能</button>
+        <button id="btnModelTest" class="btn secondary">模型測試</button>
       </div>
       
       <!-- 導航控制按鈕 -->
@@ -450,7 +473,7 @@
     // 備用模型 URL
     const BACKUP_MODEL_URL = 'https://models.roboflow.com/object-detection/yolov8n/1/model.onnx';
     // 本地模型 URL（如果已下载模型文件）
-    const LOCAL_MODEL_URL = '/yolov8n.onnx';
+    const LOCAL_MODEL_URL = './yolov8n.onnx';
     
     const INPUT_SIZE = 640;
     const SCORE_THR_BASE = 0.35;
@@ -801,6 +824,8 @@
     let lastSaid = {cls: null, at: 0};
     let currentEnvironment = 'outdoor';
     let gpsNavigator = new GPSNavigator();
+    let obstacleAvoidanceEnabled = false; // 避障功能开关
+    let obstacleMap = []; // 障碍物地图
 
     /**********************
      * 5) 初始化 / 相機
@@ -889,10 +914,215 @@
       document.getElementById('btnMirror').addEventListener('click', toggleMirror);
       document.getElementById('btnDebug').addEventListener('click', toggleDebug);
       
+      // 添加避障功能按钮事件处理
+      const obstacleBtn = document.getElementById('btnObstacleAvoidance');
+      if (obstacleBtn) {
+        obstacleBtn.addEventListener('click', toggleObstacleAvoidance);
+      }
+      
       // 添加测试按钮（如果存在）
       const testBtn = document.getElementById('btnTest');
       if (testBtn) {
-        testBtn.addEventListener('click', testCameraAndDetection);
+        testBtn.addEventListener('click', testMode);
+      }
+      
+      // 添加模型测试按钮（如果存在）
+      const modelTestBtn = document.getElementById('btnModelTest');
+      if (modelTestBtn) {
+        modelTestBtn.addEventListener('click', testModelInference);
+      }
+    }
+    
+    // 添加摄像头预览测试函数
+    async function testCameraPreview() {
+      updateVoice('測試攝像頭預覽');
+      console.log('測試攝像頭預覽');
+      
+      try {
+        // 获取摄像头权限
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'environment', 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 } 
+          }, 
+          audio: false 
+        });
+        
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+        
+        // 等待视频加载完成
+        await new Promise((resolve) => {
+          video.onloadedmetadata = () => { 
+            console.log('視頻加載完成');
+            updateVoice('視頻預覽正常');
+            resolve();
+          };
+        });
+        
+        // 显示一些基本信息
+        console.log(`視頻尺寸: ${video.videoWidth}x${video.videoHeight}`);
+        console.log(`鏡像狀態: ${video.style.transform}`);
+        
+      } catch (error) {
+        console.error('攝像頭測試錯誤:', error);
+        updateVoice('無法訪問攝像頭，請檢查權限設置');
+      }
+    }
+
+    // 添加测试模式函数
+    async function testMode() {
+      updateVoice('進入測試模式');
+      console.log('進入測試模式');
+      
+      // 启用调试模式
+      debugMode = true;
+      const debugBtn = document.getElementById('btnDebug');
+      if (debugBtn) {
+        debugBtn.textContent = '調試關閉';
+        debugBtn.classList.remove('secondary');
+        debugBtn.classList.add('warning');
+      }
+      
+      // 启动摄像头
+      const video = await setupCamera();
+      if (!video) {
+        updateVoice('無法啟動攝像頭');
+        return;
+      }
+      
+      updateVoice('攝像頭已啟動，正在測試檢測功能');
+      console.log('攝像頭已啟動');
+      
+      // 执行几次检测以测试功能
+      for (let i = 0; i < 3; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒
+        updateVoice(`執行第 ${i + 1} 次檢測`);
+        console.log(`執行第 ${i + 1} 次檢測`);
+        
+        try {
+          const { predictions, frameW } = await runOnce(video);
+          console.log(`第 ${i + 1} 次檢測結果:`, predictions);
+          
+          // 显示结果
+          draw(predictions);
+          
+          if (predictions.length > 0) {
+            const objNames = predictions.map(p => p.class).join(', ');
+            updateVoice(`第 ${i + 1} 次檢測到: ${objNames}`);
+          } else {
+            updateVoice(`第 ${i + 1} 次未檢測到物體`);
+    // 添加模型测试函数
+    async function testModelInference() {
+      if (!session) {
+        updateVoice('模型尚未載入完成');
+        console.log('模型尚未載入完成');
+        return;
+      }
+      
+      updateVoice('開始模型測試');
+      console.log('模型輸入名稱:', session.inputNames);
+      console.log('模型輸出名稱:', session.outputNames);
+      
+      // 创建一个测试张量（全零张量）
+      const testTensor = new ort.Tensor('float32', new Float32Array(3 * 640 * 640).fill(0), [1, 3, 640, 640]);
+      const feeds = { [session.inputNames[0]]: testTensor };
+      
+      try {
+        updateVoice('執行模型推理測試');
+        console.log('執行模型推理測試...');
+        const results = await session.run(feeds);
+        console.log('推理結果:', results);
+        console.log('輸出張量形狀:', results[session.outputNames[0]].dims);
+        updateVoice('模型推理測試完成，檢查控制台日誌');
+      } catch (error) {
+        console.error('模型推理測試失敗:', error);
+        updateVoice('模型推理測試失敗，檢查控制台日誌');
+      }
+    }
+
+    // 添加测试函数，用于测试
+    async function testDetection() {
+      if (!session) {
+        updateVoice('模型尚未載入完成');
+        console.log('模型尚未載入完成');
+        return;
+      }
+      
+      const video = document.getElementById('video');
+      if (!video.srcObject) {
+        updateVoice('請先啟動攝像頭');
+        console.log('請先啟動攝像頭');
+        return;
+      }
+      
+      updateVoice('開始測試模式');
+      console.log('開始測試模式');
+      
+      // 设置调试模式
+      debugMode = true;
+      document.getElementById('btnDebug').textContent = '調試關閉';
+      
+      // 设置测试次数
+      const testCount = 10;
+      for (let i = 0; i < testCount; i++) {
+        try {
+          const { predictions, frameW } = await runOnce(video);
+          console.log(`第 ${i + 1} 次檢測結果:`, predictions);
+          
+          // 处理预测结果
+          processPredictions(predictions, frameW);
+          draw(predictions);
+          
+          if (predictions.length > 0) {
+            updateVoice(`第 ${i + 1} 次檢測到 ${predictions.length} 個物體`);
+          } else {
+            updateVoice(`第 ${i + 1} 次未檢測到物體`);
+          }
+        } catch (error) {
+          console.error(`第 ${i + 1} 次檢測錯誤:`, error);
+          updateVoice(`第 ${i + 1} 次檢測出現錯誤`);
+        }
+      }
+      
+      updateVoice('測試模式完成，請檢查控制台日誌');
+    }
+
+    // 添加手动检测函数，用于测试
+    async function manualDetection() {
+      if (!session) {
+        updateVoice('模型尚未載入完成');
+        console.log('模型尚未載入完成');
+        return;
+      }
+      
+      const video = document.getElementById('video');
+      if (!video.srcObject) {
+        updateVoice('請先啟動攝像頭');
+        console.log('請先啟動攝像頭');
+        return;
+      }
+      
+      updateVoice('執行單次檢測');
+      console.log('執行單次檢測');
+      
+      try {
+        const { predictions, frameW } = await runOnce(video);
+        console.log('檢測結果:', predictions);
+        
+        // 处理预测结果
+        processPredictions(predictions, frameW);
+        draw(predictions);
+        
+        if (predictions.length > 0) {
+          updateVoice(`檢測到 ${predictions.length} 個物體`);
+        } else {
+          updateVoice('未檢測到物體');
+        }
+      } catch (error) {
+        console.error('檢測錯誤:', error);
+        updateVoice('檢測過程出現錯誤');
       }
     }
 
@@ -941,14 +1171,19 @@
       const cameraElement = document.querySelector('.camera');
       const button = document.getElementById('btnMirror');
       
-      if (cameraElement.classList.contains('video-mirrored')) {
-        cameraElement.classList.remove('video-mirrored');
-        cameraElement.classList.add('video-normal');
+      // 移除可能存在的类
+      cameraElement.classList.remove('video-mirrored', 'video-normal');
+      
+      // 切换镜像状态
+      if (document.getElementById('video').style.transform === 'scaleX(-1)' || 
+          !document.getElementById('video').style.transform) {
+        // 当前是镜像状态，切换到正常状态
+        document.getElementById('video').style.transform = 'scaleX(1)';
         button.textContent = '鏡像畫面';
         updateVoice('已關閉鏡像');
       } else {
-        cameraElement.classList.remove('video-normal');
-        cameraElement.classList.add('video-mirrored');
+        // 当前是正常状态，切换到镜像状态
+        document.getElementById('video').style.transform = 'scaleX(-1)';
         button.textContent = '正常畫面';
         updateVoice('已開啟鏡像');
       }
@@ -988,6 +1223,10 @@
         await new Promise((resolve) => {
           video.onloadedmetadata = () => { resolve(video); };
         }); 
+        
+        // 默认设置为镜像（前置摄像头常用）
+        video.style.transform = 'scaleX(-1)';
+        
         return video;
       } catch (e) { 
         console.error('相機錯誤:', e); 
@@ -1304,6 +1543,13 @@
         }
       }
       
+      // 避障分析和可视化
+      if (obstacleAvoidanceEnabled) {
+        const video = document.getElementById('video');
+        visualizeObstacles(relevantPredictions, video.videoWidth, video.videoHeight);
+        provideObstacleAvoidanceGuidance(relevantPredictions);
+      }
+      
       // 更新偵測列表
       updateDetectionList(relevantPredictions);
     }
@@ -1355,8 +1601,12 @@
         ctx.strokeStyle = '#00ffff';
         ctx.lineWidth = 2;
         ctx.strokeRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // 显示画面信息
+        ctx.font = '16px Arial';
+        ctx.fillStyle = 'rgba(0, 255, 255, 0.7)';
+        ctx.fillText(`畫面尺寸: ${canvas.width}x${canvas.height}`, 10, 30);
+        ctx.fillText(`檢測到物體: ${predictions.length}`, 10, 60);
       }
       
       // 繪製預測框
@@ -1514,48 +1764,123 @@
       }, 5000);
     }
 
-    /**********************
-     * 9) 初始化應用
-     **********************/
-    window.addEventListener('DOMContentLoaded', () => {
-      // 設置初始狀態
-      updateStatus('初始化中');
-      updateVoice('盲人輔助導航系統啟動中...');
+    // 添加避障功能切换函数
+    function toggleObstacleAvoidance() {
+      obstacleAvoidanceEnabled = !obstacleAvoidanceEnabled;
+      const button = document.getElementById('btnObstacleAvoidance');
       
-      // 初始化模型
-      initModel();
-      
-      // 設置相機預覽（不開始檢測）
-      setupCamera().then(video => {
-        if (video) {
-          updateStatus('準備就緒');
-          updateVoice('系統準備完成，請點擊開始檢測');
-        }
-      });
-    });
-
-    // 防止頁面休眠
-    let wakeLock = null;
-    async function requestWakeLock() {
-      try {
-        if ('wakeLock' in navigator) {
-          wakeLock = await navigator.wakeLock.request('screen');
-          console.log('Wake Lock 已啟用');
-        }
-      } catch (err) {
-        console.log('Wake Lock 失敗:', err.message);
+      if (obstacleAvoidanceEnabled) {
+        button.textContent = '關閉避障';
+        button.classList.remove('secondary');
+        button.classList.add('primary');
+        updateVoice('避障功能已開啟');
+      } else {
+        button.textContent = '避障功能';
+        button.classList.remove('primary');
+        button.classList.add('secondary');
+        updateVoice('避障功能已關閉');
       }
     }
 
-    // 當頁面可見時重新請求 Wake Lock
-    document.addEventListener('visibilitychange', async () => {
-      if (document.visibilityState === 'visible' && isDetecting) {
-        await requestWakeLock();
+    // 障碍物避让建议函数
+    function provideObstacleAvoidanceGuidance(predictions) {
+      if (predictions.length === 0) return;
+      
+      // 按距离排序，优先处理最近的障碍物
+      predictions.sort((a, b) => a.distance - b.distance);
+      const closestObstacle = predictions[0];
+      
+      // 获取障碍物的中文名称
+      const module = environmentModules[currentEnvironment];
+      const objConfig = module.objects[closestObstacle.class];
+      const obstacleName = objConfig ? objConfig.name : closestObstacle.class;
+      
+      // 根据距离提供避让建议
+      if (closestObstacle.distance < 1.5) {
+        updateVoice(`緊急避讓！${obstacleName}距離僅${closestObstacle.distance.toFixed(1)}米，請立即停止並尋找安全路線`);
+      } else if (closestObstacle.distance < 3) {
+        updateVoice(`注意避讓！${obstacleName}距離${closestObstacle.distance.toFixed(1)}米，建議減速並準備避讓`);
       }
-    });
+    }
 
-    // 啟動時請求 Wake Lock
-    requestWakeLock();
-  </script>
-</body>
-</html>
+    // 分析障碍物并提供避障建议
+    function analyzeObstaclesForAvoidance(predictions, frameW, frameH) {
+      if (!obstacleAvoidanceEnabled || predictions.length === 0) return;
+      
+      // 清空之前的障碍物地图
+      obstacleMap = [];
+      
+      // 分析每个检测到的障碍物
+      predictions.forEach(pred => {
+        const [x, y, w, h] = pred.bbox;
+        const centerX = x + w/2;
+        const centerY = y + h/2;
+        
+        // 根据障碍物在画面中的位置判断方向
+        const horizontalPosition = centerX / frameW; // 0 = 最左, 1 = 最右
+        const verticalPosition = centerY / frameH;   // 0 = 最上, 1 = 最下
+        
+        // 根据距离判断紧急程度
+        const isClose = pred.distance < 3;  // 3米内为近距离
+        const isVeryClose = pred.distance < 1.5; // 1.5米内为非常近
+        
+        obstacleMap.push({
+          class: pred.class,
+          distance: pred.distance,
+          horizontalPosition: horizontalPosition,
+          verticalPosition: verticalPosition,
+          isClose: isClose,
+          isVeryClose: isVeryClose,
+          centerX: centerX,
+          centerY: centerY,
+          width: w,
+          height: h
+        });
+      });
+      
+      // 提供避障建议
+      provideAvoidanceGuidance();
+    }
+    
+    // 提供避障指导
+    function provideAvoidanceGuidance() {
+      if (obstacleMap.length === 0) return;
+      
+      // 按距离排序，优先处理最近的障碍物
+      obstacleMap.sort((a, b) => a.distance - b.distance);
+      const closestObstacle = obstacleMap[0];
+      
+      // 获取障碍物的中文名称
+      const module = environmentModules[currentEnvironment];
+      const objConfig = module.objects[closestObstacle.class];
+      const obstacleName = objConfig ? objConfig.name : closestObstacle.class;
+      
+      // 根据障碍物位置提供指导
+      let guidance = "";
+      
+      if (closestObstacle.isVeryClose) {
+        // 非常近的障碍物，需要立即避让
+        if (closestObstacle.horizontalPosition < 0.3) {
+          guidance = `緊急！左側有${obstacleName}，距離僅${closestObstacle.distance.toFixed(1)}米，請向右轉`;
+        } else if (closestObstacle.horizontalPosition > 0.7) {
+          guidance = `緊急！右側有${obstacleName}，距離僅${closestObstacle.distance.toFixed(1)}米，請向左轉`;
+        } else {
+          guidance = `緊急！前方有${obstacleName}，距離僅${closestObstacle.distance.toFixed(1)}米，請停止前進並尋找其他路線`;
+        }
+      } else if (closestObstacle.isClose) {
+        // 较近的障碍物，建议避让
+        if (closestObstacle.horizontalPosition < 0.4) {
+          guidance = `注意！左側有${obstacleName}，距離${closestObstacle.distance.toFixed(1)}米，建議稍向右轉`;
+        } else if (closestObstacle.horizontalPosition > 0.6) {
+          guidance = `注意！右側有${obstacleName}，距離${closestObstacle.distance.toFixed(1)}米，建議稍向左轉`;
+        } else {
+          guidance = `前方有${obstacleName}，距離${closestObstacle.distance.toFixed(1)}米，建議減速並準備避讓`;
+        }
+      } else {
+        // 较远的障碍物，提前提醒
+        if (closestObstacle.horizontalPosition < 0.4) {
+          guidance = `左側遠處有${obstacleName}，距離${closestObstacle.distance.toFixed(1)}米，請注意行進路線`;
+        } else if (closestObstacle.horizontalPosition > 0.6) {
+          guidance = `右側遠處有${obstacleName}，距離${closestObstacle.distance.toFixed(1)}米，請注意行進路線`;
+        } else {
+          guidance = `前方遠
