@@ -803,8 +803,12 @@
           session = await ort.InferenceSession.create(MODEL_URL, opts);
         } catch (e) {
           console.log('主要模型載入失敗，嘗試備用模型:', e);
-          updateVoice('嘗試載入備用模型…');
-          session = await ort.InferenceSession.create(BACKUP_MODEL_URL, opts);
+          updateVoice('主要模型載入失敗，嘗試載入備用模型…');
+          try {
+            session = await ort.InferenceSession.create(BACKUP_MODEL_URL, opts);
+          } catch (backupError) {
+            throw new Error('主模型和備用模型都無法載入，請檢查網路連線後刷新頁面重試');
+          }
         }
         
         // 移除載入動畫
