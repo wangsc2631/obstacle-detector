@@ -7,10 +7,15 @@
   <meta name="description" content="盲人輔助導航系統 - 即時障礙物檢測與GPS返航" />
   <title>🧭 盲人輔助導航系統</title>
   
+  <!-- PWA 支持 -->
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>">
+  
   <!-- ONNX Runtime Web -->
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
   
   <style>
+    /* 保持原有的 CSS 樣式不變 */
     :root {
       --bg1: #0ea5e9;
       --bg2: #6366f1;
@@ -26,8 +31,6 @@
     
     * {
       box-sizing: border-box;
-      margin: 0;
-      padding: 0;
       -webkit-tap-highlight-color: transparent;
     }
     
@@ -50,9 +53,15 @@
     .app {
       max-width: 100%;
       margin: 0 auto;
-      display: flex;
-      flex-direction: column;
+      display: grid;
       gap: 12px;
+      grid-template-columns: 1fr;
+    }
+    
+    @media (min-width: 920px) {
+      .app {
+        grid-template-columns: 6fr 4fr;
+      }
     }
     
     .card {
@@ -61,11 +70,10 @@
       border-radius: 16px;
       box-shadow: var(--shadow);
       overflow: hidden;
-      border: 1px solid rgba(255,255,255,0.1);
     }
     
     header.card {
-      padding: 16px;
+      padding: 14px 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -73,33 +81,52 @@
     }
     
     header h1 {
-      font-size: 20px;
+      font-size: clamp(18px, 5vw, 24px);
       margin: 0;
       font-weight: 700;
     }
     
-    .tips {
+    header .tips {
       font-size: 12px;
       color: var(--muted);
+      display: none;
     }
     
-    .camera-container {
+    @media (min-width: 768px) {
+      header .tips {
+        display: block;
+      }
+    }
+    
+    .camera {
       position: relative;
       width: 100%;
       aspect-ratio: 16/9;
       background: #000;
       border-radius: 12px;
-      overflow: hidden;
     }
     
-    .camera-container video, 
-    .camera-container canvas {
+    .camera video, .camera canvas {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
       object-fit: cover;
+      border-radius: 12px;
+    }
+    
+    .camera video {
+      transform: scaleX(-1);
+    }
+    
+    /* 添加一个类来控制是否镜像 */
+    .camera.video-mirrored video {
+      transform: scaleX(-1);
+    }
+    
+    .camera.video-normal video {
+      transform: scaleX(1);
     }
     
     .panel {
@@ -113,6 +140,12 @@
       margin-bottom: 15px;
     }
     
+    @media (min-width: 480px) {
+      .controls {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+    
     button.btn {
       padding: 16px 12px;
       border: none;
@@ -123,38 +156,43 @@
       transition: all 0.2s ease;
       min-height: 54px;
       user-select: none;
-      font-family: inherit;
     }
     
     button.btn:active {
       transform: translateY(2px) scale(0.98);
     }
     
-    .btn.primary {
+    .primary {
       background: var(--good);
       color: #fff;
     }
     
-    .btn.warning {
+    .warning {
       background: var(--warn);
       color: #fff;
     }
     
-    .btn.danger {
+    .danger {
       background: var(--bad);
       color: #fff;
     }
     
-    .btn.secondary {
+    .secondary {
       background: var(--glass-strong);
       color: var(--text);
     }
     
-    .status-grid {
+    .status {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
       gap: 8px;
+      grid-template-columns: repeat(2, 1fr);
       margin-bottom: 12px;
+    }
+    
+    @media (min-width: 480px) {
+      .status {
+        grid-template-columns: repeat(4, 1fr);
+      }
     }
     
     .status-item {
@@ -164,15 +202,15 @@
       text-align: center;
     }
     
-    .status-item .label {
+    .status-item .k {
       font-size: 11px;
       color: var(--muted);
       margin-bottom: 4px;
     }
     
-    .status-item .value {
+    .status-item .v {
       font-weight: 800;
-      font-size: 16px;
+      font-size: clamp(14px, 4vw, 16px);
     }
     
     .voice-alert {
@@ -191,71 +229,21 @@
       line-height: 1.4;
     }
     
-    .detection-list {
+    .list {
       max-height: 200px;
       overflow-y: auto;
-      display: flex;
-      flex-direction: column;
+      display: grid;
       gap: 6px;
       padding-right: 4px;
+      -webkit-overflow-scrolling: touch;
     }
     
-    .detection-chip {
+    .chip {
       background: var(--glass-strong);
-      padding: 12px;
+      padding: 10px;
       border-radius: 10px;
       font-size: 13px;
       line-height: 1.4;
-      border-left: 4px solid var(--good);
-    }
-    
-    .detection-chip.warning {
-      border-left-color: var(--warn);
-    }
-    
-    .detection-chip.danger {
-      border-left-color: var(--bad);
-    }
-    
-    .loading {
-      background: linear-gradient(90deg, var(--bg1), var(--bg2), var(--bg1));
-      background-size: 200% 100%;
-      animation: loading 2s infinite;
-    }
-    
-    @keyframes loading {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
-
-    .debug-panel {
-      background: rgba(0,0,0,0.8);
-      color: white;
-      padding: 10px;
-      border-radius: 8px;
-      font-size: 12px;
-      margin-top: 10px;
-      max-height: 150px;
-      overflow-y: auto;
-      display: none;
-    }
-    
-    .progress-bar {
-      width: 100%;
-      height: 6px;
-      background: var(--glass-strong);
-      border-radius: 3px;
-      margin: 10px 0;
-      overflow: hidden;
-      display: none;
-    }
-    
-    .progress-fill {
-      height: 100%;
-      background: var(--good);
-      border-radius: 3px;
-      transition: width 0.3s ease;
-      width: 0%;
     }
     
     footer {
@@ -265,22 +253,7 @@
       padding: 8px;
       margin-top: 10px;
     }
-
-    .gps-active {
-      background: var(--good) !important;
-    }
-
-    .emergency-alert {
-      animation: pulse 1s infinite;
-      border: 2px solid var(--bad);
-    }
-
-    @keyframes pulse {
-      0% { opacity: 1; }
-      50% { opacity: 0.7; }
-      100% { opacity: 1; }
-    }
-
+    
     .module-tag {
       display: inline-block;
       background: var(--warn);
@@ -291,38 +264,141 @@
       margin-left: 8px;
       font-weight: 600;
     }
+    
+    .gps-active {
+      background: var(--good) !important;
+    }
+    
+    .emergency-alert {
+      animation: pulse 1s infinite;
+      border: 2px solid var(--bad);
+    }
+    
+    .loading {
+      background: linear-gradient(90deg, var(--bg1), var(--bg2), var(--bg1));
+      background-size: 200% 100%;
+      animation: loading 2s infinite;
+    }
+    
+    .obstacle-warning {
+      background: rgba(245,158,11,0.3);
+      border: 2px solid var(--warn);
+    }
+    
+    .danger-warning {
+      background: rgba(239,68,68,0.3);
+      border: 2px solid var(--bad);
+    }
+    
+    /* 障碍物避让可视化 */
+    .obstacle-map {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+    
+    .obstacle-point {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--bad);
+      transform: translate(-50%, -50%);
+    }
+    
+    @keyframes pulse {
+      0% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.7;
+      }
+      100% {
+        opacity: 1;
+      }
+    }
+    
+    @keyframes loading {
+      0% {
+        background-position: 200% 0;
+      }
+      100% {
+        background-position: -200% 0;
+      }
+    }
+    
+    /* 手機優化 */
+    @media (max-width: 480px) {
+      body {
+        padding: 8px;
+      }
+      
+      .panel {
+        padding: 12px;
+      }
+      
+      button.btn {
+        padding: 14px 10px;
+        font-size: 13px;
+        min-height: 50px;
+      }
+      
+      .status-item {
+        padding: 10px;
+      }
+      
+      .voice-alert {
+        padding: 14px;
+        min-height: 55px;
+        font-size: 14px;
+      }
+    }
+    
+    /* 防止文字選擇 */
+    .no-select {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
   </style>
 </head>
-<body>
+<body class="no-select">
   <div class="app">
-    <!-- 標題區 -->
     <header class="card">
-      <h1>🧭 盲人輔助導航系統</h1>
-      <div class="tips">安全出行 · 障礙檢測 · 語音導航</div>
+      <h1>🧭 盲人輔助導航</h1>
+      <div class="tips">安全出行 · 障礙檢測 · GPS導航</div>
     </header>
 
-    <!-- 相機區 -->
-    <section class="card camera-container">
+    <section class="card camera">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="canvas"></canvas>
+      <div id="obstacleMap" class="obstacle-map"></div>
     </section>
 
-    <!-- 控制區 -->
     <section class="card panel">
       <div id="voiceAlert" class="voice-alert loading">系統初始化中…</div>
-      
-      <div class="progress-bar" id="progressBar">
-        <div class="progress-fill" id="progressFill"></div>
-      </div>
       
       <!-- 主要控制按鈕 -->
       <div class="controls">
         <button id="btnStart" class="btn primary">開始檢測</button>
-        <button id="btnVoice" class="btn secondary">語音開啟</button>
+        <button id="btnVoice" class="btn warning">語音開啟</button>
         <button id="btnMode" class="btn primary">步行模式</button>
-        <button id="btnStop" class="btn danger">停止檢測</button>
+        <button id="btnStop" class="btn danger">停止</button>
       </div>
-
+      
+      <!-- 新增镜像控制按钮 -->
+      <div class="controls">
+        <button id="btnMirror" class="btn secondary">鏡像畫面</button>
+        <button id="btnDebug" class="btn secondary">調試模式</button>
+        <button id="btnTest" class="btn primary">測試檢測</button>
+        <button id="btnObstacleAvoidance" class="btn secondary">避障功能</button>
+      </div>
+      
       <!-- 導航控制按鈕 -->
       <div class="controls">
         <button id="btnSetHome" class="btn primary">設定家的位置</button>
@@ -331,123 +407,149 @@
         <button id="btnEmergency" class="btn danger">緊急求助</button>
       </div>
 
-      <div class="status-grid">
+      <!-- 狀態資訊 -->
+      <div class="status">
         <div class="status-item">
-          <div class="label">系統狀態</div>
-          <div class="value" id="status">準備中</div>
+          <div class="k">系統狀態</div>
+          <div class="v" id="status">準備中</div>
         </div>
         <div class="status-item">
-          <div class="label">偵測速度</div>
-          <div class="value" id="fps">—</div>
+          <div class="k">偵測速度</div>
+          <div class="v" id="fps">—</div>
         </div>
         <div class="status-item">
-          <div class="label">障礙物數</div>
-          <div class="value" id="obstacleCount">0</div>
+          <div class="k">障礙物數</div>
+          <div class="v" id="obstacleCount">0</div>
         </div>
         <div class="status-item">
-          <div class="label">最近距離</div>
-          <div class="value" id="closestDistance">— 公尺</div>
-        </div>
-      </div>
-
-      <div class="status-grid">
-        <div class="status-item">
-          <div class="label">GPS狀態</div>
-          <div class="value" id="gpsStatus">未連接</div>
-        </div>
-        <div class="status-item">
-          <div class="label">距家距離</div>
-          <div class="value" id="homeDistance">--</div>
-        </div>
-        <div class="status-item">
-          <div class="label">當前環境</div>
-          <div class="value" id="currentModule">戶外</div>
-        </div>
-        <div class="status-item">
-          <div class="label">語音狀態</div>
-          <div class="value" id="voiceStatus">開啟</div>
+          <div class="k">最近距離</div>
+          <div class="v" id="closestDistance">— 公尺</div>
         </div>
       </div>
-
-      <div id="debugPanel" class="debug-panel">
-        <div><strong>除錯資訊:</strong></div>
-        <div id="debugInfo">等待開始偵測...</div>
+      
+      <div class="status">
+        <div class="status-item">
+          <div class="k">GPS狀態</div>
+          <div class="v" id="gpsStatus">未連接</div>
+        </div>
+        <div class="status-item">
+          <div class="k">距家距離</div>
+          <div class="v" id="homeDistance">--</div>
+        </div>
+        <div class="status-item">
+          <div class="k">當前環境</div>
+          <div class="v" id="currentModule">戶外</div>
+        </div>
+        <div class="status-item">
+          <div class="k">語音狀態</div>
+          <div class="v" id="voiceStatus">開啟</div>
+        </div>
       </div>
     </section>
 
-    <!-- 側邊欄 -->
     <aside class="card panel">
       <h3 style="margin:0 0 12px 0; font-size:16px;">
         即時偵測 <span id="activeModuleTag" class="module-tag">戶外模式</span>
       </h3>
-      <div id="detectionList" class="detection-list">
-        <div class="detection-chip" style="text-align:center; color:var(--muted);">
+      <div id="detectionList" class="list">
+        <div class="chip" style="text-align:center; color:var(--muted);">
           等待開始偵測…
         </div>
       </div>
       <footer>
         專為視障朋友設計 · 安全出行伴侶<br>
-        請在光線充足環境使用
+        請在光線充足環境使用以獲得最佳效果
       </footer>
     </aside>
   </div>
 
   <script>
-    // 配置參數 - 使用可靠的模型來源
-    const MODEL_SOURCES = [
-      // 主要使用本地模型
-      'yolov8n.onnx',
-      // 備用來源
-      'https://raw.githubusercontent.com/ultralytics/assets/main/yolov8n.onnx',
-      'https://models.roboflow.com/object-detection/yolov8n/1/model.onnx'
-    ];
-
+    /**********************
+     * 1) 參數區 - 針對 GitHub 環境優化
+     **********************/
+    // 使用可靠的 CDN 模型
+    const MODEL_URL = 'https://cdn.jsdelivr.net/gh/ultralytics/assets@main/yolov8n.onnx';
+    // 備用模型
+    const BACKUP_MODEL_URL = 'https://models.roboflow.com/object-detection/yolov8n/1/model.onnx';
+    
     const INPUT_SIZE = 640;
-    const SCORE_THRESHOLD = 0.25;
-    const IOU_THRESHOLD = 0.45;
-    const TARGET_FPS = 10;
+    const SCORE_THR_BASE = 0.35;
+    const IOU_THR = 0.5;
+    const TARGET_FPS = 15;
+    const INTERVAL = 1000 / TARGET_FPS;
 
-    // COCO 類別名稱
-    const CLASS_NAMES = [
-      'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
-      'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
-      'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
-      'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle',
-      'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange',
-      'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed',
-      'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven',
-      'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+    // COCO80 類別（英→中）
+    const coco80 = [
+      'person','bicycle','car','motorcycle','airplane','bus','train','truck','boat','traffic light',
+      'fire hydrant','stop sign','parking meter','bench','bird','cat','dog','horse','sheep','cow',
+      'elephant','bear','zebra','giraffe','backpack','umbrella','handbag','tie','suitcase','frisbee',
+      'skis','snowboard','sports ball','kite','baseball bat','baseball glove','skateboard','surfboard','tennis racket','bottle',
+      'wine glass','cup','fork','knife','spoon','bowl','banana','apple','sandwich','orange',
+      'broccoli','carrot','hot dog','pizza','donut','cake','chair','couch','potted plant','bed',
+      'dining table','toilet','tv','laptop','mouse','remote','keyboard','cell phone','microwave','oven',
+      'toaster','sink','refrigerator','book','clock','vase','scissors','teddy bear','hair drier','toothbrush'
     ];
 
-    // 重要障礙物類別
-    const IMPORTANT_CLASSES = [
-      'person', 'car', 'motorcycle', 'bus', 'truck', 'bicycle', 
-      'chair', 'bench', 'bed', 'couch', 'table'
-    ];
+    const MODE_PROFILE = { 
+      walking: { nearM: 4, highObjM: 8, scoreThr: 0.45 }, 
+      navigate: { nearM: 6, highObjM: 10, scoreThr: 0.4 } 
+    };
 
-    // 環境模組
-    const ENVIRONMENT_MODULES = {
+    /**********************
+     * 2) 環境模組系統
+     **********************/
+    const environmentModules = {
       outdoor: {
-        name: '戶外模式',
-        objects: ['person', 'car', 'motorcycle', 'bus', 'truck', 'bicycle', 'bench']
+        name: '戶外導航',
+        objects: {
+          'car': { name: '汽車', danger: 'high', voice: '前方有汽車，請保持安全距離' },
+          'motorcycle': { name: '摩托車', danger: 'high', voice: '注意！前方有摩托車' },
+          'bus': { name: '公車', danger: 'high', voice: '警告！前方有公車' },
+          'truck': { name: '卡車', danger: 'high', voice: '警告！前方有卡車' },
+          'bicycle': { name: '腳踏車', danger: 'medium', voice: '前方有腳踏車' },
+          'traffic light': { name: '紅綠燈', danger: 'medium', voice: '前方有紅綠燈，請注意交通號誌' },
+          'stop sign': { name: '停止標誌', danger: 'medium', voice: '停止標誌，請停車觀察' },
+          'person': { name: '行人', danger: 'medium', voice: '前方有行人' },
+          'bench': { name: '公車站', danger: 'low', voice: '公車站' },
+          'fire hydrant': { name: '消防栓', danger: 'medium', voice: '前方有消防栓' },
+          'bird': { name: '鳥', danger: 'low', voice: '前方有小鳥' },
+          'dog': { name: '狗', danger: 'medium', voice: '前方有狗，請小心' },
+          'cat': { name: '貓', danger: 'low', voice: '前方有貓' }
+        },
+        triggers: ['car', 'motorcycle', 'bus', 'traffic light', 'stop sign', 'person']
       },
-      indoor: {
-        name: '室內模式', 
-        objects: ['person', 'chair', 'bed', 'couch', 'table', 'tv']
+      kitchen: {
+        name: '廚房環境',
+        objects: {
+          'knife': { name: '刀子', danger: 'high', voice: '警告！前方有刀子，鋒利物品請小心' },
+          'cup': { name: '杯子', danger: 'medium', voice: '前方有杯子，請小心拿取' },
+          'fork': { name: '叉子', danger: 'medium', voice: '前方有叉子，請注意尖齒' },
+          'spoon': { name: '湯匙', danger: 'low', voice: '前方有湯匙' },
+          'bowl': { name: '碗', danger: 'medium', voice: '前方有碗' },
+          'oven': { name: '烤箱', danger: 'high', voice: '警告！前方有烤箱，高溫設備請小心' },
+          'microwave': { name: '微波爐', danger: 'high', voice: '注意！前方有微波爐' },
+          'refrigerator': { name: '冰箱', danger: 'medium', voice: '前方有冰箱' },
+          'sink': { name: '水槽', danger: 'medium', voice: '前方有水槽' },
+          'bottle': { name: '瓶子', danger: 'medium', voice: '前方有瓶子' }
+        },
+        triggers: ['knife', 'oven', 'microwave', 'cup', 'bottle']
+      },
+      bathroom: {
+        name: '浴室環境',
+        objects: {
+          'toilet': { name: '馬桶', danger: 'medium', voice: '前方有馬桶' },
+          'sink': { name: '洗手台', danger: 'medium', voice: '前方有洗手台' },
+          'bottle': { name: '洗髮精', danger: 'low', voice: '前方有洗髮精' },
+          'toothbrush': { name: '牙刷', danger: 'low', voice: '前方有牙刷' },
+          'hair drier': { name: '吹風機', danger: 'medium', voice: '前方有吹風機' }
+        },
+        triggers: ['toilet', 'sink', 'bottle']
       }
     };
 
-    // 全局變數
-    let session = null;
-    let isDetecting = false;
-    let voiceEnabled = true;
-    let debugMode = false;
-    let frameCount = 0;
-    let lastFpsTime = 0;
-    let currentEnvironment = 'outdoor';
-    let gpsNavigator = null;
-
-    // GPS 導航類
+    /**********************
+     * 3) GPS導航系統
+     **********************/
     class GPSNavigator {
       constructor() {
         this.homePosition = null;
@@ -463,7 +565,6 @@
         if (saved) {
           this.homePosition = JSON.parse(saved);
           updateGPSStatus('就緒');
-          document.getElementById('btnSetHome').classList.add('gps-active');
         }
       }
 
@@ -484,7 +585,6 @@
             localStorage.setItem('homePosition', JSON.stringify(this.homePosition));
             updateVoice(`家的位置已記錄！`);
             updateGPSStatus('已設定家');
-            document.getElementById('btnSetHome').classList.add('gps-active');
           },
           (error) => {
             let errorMsg = '無法獲取位置：';
@@ -520,7 +620,6 @@
         this.isTracking = true;
         updateVoice('開始返航導航，請跟隨語音指引');
         updateGPSStatus('返航中');
-        document.getElementById('btnReturnHome').classList.add('gps-active');
 
         this.watchId = navigator.geolocation.watchPosition(
           (position) => {
@@ -607,380 +706,459 @@
         }
         this.isTracking = false;
         updateGPSStatus('就緒');
-        document.getElementById('btnReturnHome').classList.remove('gps-active');
         updateVoice('返航導航結束');
       }
     }
 
-    // 初始化模型 - 修復版本
+    /**********************
+     * 4) 狀態變數
+     **********************/
+    let session = null;
+    let isDetecting = false;
+    let voiceEnabled = true;
+    let currentMode = 'walking';
+    let lastTick = 0;
+    let frames = 0;
+    let lastFpsTs = 0;
+    let lastSpeechAt = 0;
+    let currentEnvironment = 'outdoor';
+    let gpsNavigator = new GPSNavigator();
+    let debugMode = false;
+    let obstacleAvoidanceEnabled = false;
+
+    /**********************
+     * 5) 模型載入 - 修復版本
+     **********************/
     async function initModel() {
       try {
-        showProgress('正在初始化 ONNX Runtime...', 10);
+        updateVoice('正在初始化 ONNX Runtime Web…');
         
+        // 設置 ONNX Runtime 環境
         ort.env.wasm.numThreads = 1;
+        ort.env.wasm.proxy = false;
         
+        const opts = { 
+          executionProviders: ['wasm'],
+          graphOptimizationLevel: 'all'
+        };
+        
+        updateVoice('正在載入 AI 模型…');
+        
+        // 嘗試多個模型來源
         let modelLoaded = false;
-        let lastError = null;
         
-        // 嘗試所有模型來源
-        for (let i = 0; i < MODEL_SOURCES.length; i++) {
-          const modelUrl = MODEL_SOURCES[i];
+        try {
+          console.log('嘗試載入主要模型...');
+          session = await ort.InferenceSession.create(MODEL_URL, opts);
+          modelLoaded = true;
+          console.log('✅ 主要模型載入成功');
+        } catch (e) {
+          console.log('主要模型載入失敗:', e);
+          
           try {
-            showProgress(`嘗試載入模型來源 ${i + 1}/${MODEL_SOURCES.length}...`, 30 + (i * 20));
-            updateDebugInfo(`嘗試載入: ${modelUrl}`);
-            
-            session = await ort.InferenceSession.create(modelUrl, {
-              executionProviders: ['wasm']
-            });
-            
+            console.log('嘗試載入備用模型...');
+            session = await ort.InferenceSession.create(BACKUP_MODEL_URL, opts);
             modelLoaded = true;
-            updateDebugInfo(`✅ 模型載入成功！來源: ${modelUrl}`);
-            updateDebugInfo(`輸入名稱: ${session.inputNames[0]}`);
-            updateDebugInfo(`輸出名稱: ${session.outputNames[0]}`);
-            break;
-            
-          } catch (error) {
-            lastError = error;
-            updateDebugInfo(`❌ 模型來源 ${i + 1} 失敗: ${error.message}`);
-            continue;
+            console.log('✅ 備用模型載入成功');
+          } catch (backupError) {
+            console.log('備用模型載入失敗:', backupError);
+            throw new Error('所有模型來源都無法載入');
           }
         }
         
-        if (!modelLoaded) {
-          throw new Error(`所有模型來源都失敗。最後錯誤: ${lastError?.message}`);
+        if (modelLoaded) {
+          updateVoice('AI 模型載入成功！點擊開始檢測');
+          console.log('模型輸入名稱:', session.inputNames);
+          console.log('模型輸出名稱:', session.outputNames);
+          
+          // 初始化事件監聽
+          initEventListeners();
+          updateStatus('準備就緒');
         }
         
-        showProgress('模型初始化完成', 100);
-        updateVoice('AI 模型載入完成！請點擊開始檢測');
-        updateStatus('準備就緒');
+      } catch (e) {
+        console.error('模型載入錯誤:', e);
+        updateVoice('模型載入失敗：' + e.message);
         
-        // 初始化 GPS
-        gpsNavigator = new GPSNavigator();
-        
-        setTimeout(() => {
-          hideProgress();
-        }, 1000);
-        
-      } catch (error) {
-        console.error('模型載入失敗:', error);
-        updateDebugInfo(`❌ 模型載入最終錯誤: ${error.message}`);
-        updateVoice('模型載入失敗，請檢查網路連接或確保模型檔案存在');
-        hideProgress();
-        
-        // 提供具體解決方案
-        if (error.message.includes('yolov8n.onnx')) {
-          updateDebugInfo('💡 解決方案: 請確保 yolov8n.onnx 檔案與 HTML 在同目錄');
-        } else if (error.message.includes('Failed to fetch')) {
-          updateDebugInfo('💡 解決方案: 請檢查網路連接或使用本地模型檔案');
+        // 提供具體的錯誤解決建議
+        if (e.message.includes('Failed to fetch')) {
+          updateVoice('網路連接問題，請檢查網路後刷新頁面');
+        } else if (e.message.includes('CORS')) {
+          updateVoice('跨域訪問問題，請確保使用 HTTPS');
         }
       }
     }
 
-    // 設定相機
+    function initEventListeners() {
+      document.getElementById('btnStart').addEventListener('click', startDetection);
+      document.getElementById('btnStop').addEventListener('click', stopDetection);
+      document.getElementById('btnVoice').addEventListener('click', toggleVoice);
+      document.getElementById('btnMode').addEventListener('click', toggleMode);
+      document.getElementById('btnSetHome').addEventListener('click', () => gpsNavigator.setHomePosition());
+      document.getElementById('btnReturnHome').addEventListener('click', () => gpsNavigator.startReturnHome());
+      document.getElementById('btnLoadModule').addEventListener('click', loadEnvironmentModule);
+      document.getElementById('btnEmergency').addEventListener('click', emergencyAlert);
+      document.getElementById('btnMirror').addEventListener('click', toggleMirror);
+      document.getElementById('btnDebug').addEventListener('click', toggleDebug);
+      document.getElementById('btnTest').addEventListener('click', testDetection);
+      document.getElementById('btnObstacleAvoidance').addEventListener('click', toggleObstacleAvoidance);
+    }
+
+    /**********************
+     * 6) 攝像頭功能 - 修復版本
+     **********************/
     async function setupCamera() {
       const video = document.getElementById('video');
+      
+      // 停止之前的 stream
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+      }
+      
       try {
-        updateDebugInfo('請求相機權限...');
-        
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: 'environment',
+        // 手機優化的攝像頭配置
+        const constraints = {
+          video: {
+            facingMode: 'environment', // 使用後置攝像頭
             width: { ideal: 640 },
-            height: { ideal: 480 }
-          }
-        });
+            height: { ideal: 480 },
+            frameRate: { ideal: 15 }
+          },
+          audio: false
+        };
         
+        console.log('📱 請求攝像頭權限...');
+        updateVoice('正在請求攝像頭權限...');
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         
-        return new Promise((resolve, reject) => {
+        // 等待視頻準備好
+        await new Promise((resolve, reject) => {
           video.onloadedmetadata = () => {
-            video.play().then(() => {
-              updateDebugInfo(`✅ 相機就緒: ${video.videoWidth}x${video.videoHeight}`);
-              resolve(video);
-            }).catch(reject);
+            console.log('✅ 攝像頭準備完成');
+            resolve(video);
           };
           video.onerror = reject;
+          
+          // 超時處理
+          setTimeout(() => reject(new Error('攝像頭加載超時')), 10000);
         });
+        
+        await video.play();
+        console.log('🎥 視頻播放開始');
+        return video;
+        
       } catch (error) {
-        console.error('相機錯誤:', error);
-        updateDebugInfo(`❌ 相機錯誤: ${error.message}`);
-        updateVoice('無法存取相機，請確認權限設定');
+        console.error('❌ 攝像頭錯誤:', error);
+        
+        let errorMsg = '無法訪問攝像頭：';
+        switch(error.name) {
+          case 'NotAllowedError':
+            errorMsg += '請允許攝像頭權限，然後刷新頁面';
+            break;
+          case 'NotFoundError':
+            errorMsg += '未找到攝像頭設備';
+            break;
+          case 'NotSupportedError':
+            errorMsg += '瀏覽器不支持攝像頭功能';
+            break;
+          default:
+            errorMsg += error.message;
+        }
+        
+        updateVoice(errorMsg);
         return null;
       }
     }
 
-    // 開始檢測
+    /**********************
+     * 7) 主檢測循環
+     **********************/
     async function startDetection() {
       if (!session) {
-        updateVoice('模型尚未載入完成');
+        updateVoice('模型尚未載入完成，請稍候');
         return;
       }
-
-      updateDebugInfo('開始設定相機...');
-      const video = await setupCamera();
+      
+      const video = await setupCamera(); 
       if (!video) return;
-
-      isDetecting = true;
-      updateStatus('檢測中');
-      updateVoice('開始障礙物檢測，請緩慢移動裝置');
-
-      // 開始檢測循環
-      detectionLoop(video);
+      
+      isDetecting = true; 
+      updateStatus('檢測中'); 
+      updateVoice('開始障礙物檢測…');
+      
+      requestAnimationFrame((ts) => loop(video, ts));
     }
 
-    // 停止檢測
     function stopDetection() {
-      isDetecting = false;
+      isDetecting = false; 
       updateStatus('已停止');
-      
       const video = document.getElementById('video');
       if (video.srcObject) {
         video.srcObject.getTracks().forEach(track => track.stop());
-        video.srcObject = null;
       }
-      
-      if (gpsNavigator) {
-        gpsNavigator.stopReturnHome();
-      }
-      
       updateVoice('檢測已停止');
-      updateDebugInfo('檢測已停止');
+      gpsNavigator.stopReturnHome();
     }
 
-    // 主檢測循環
-    async function detectionLoop(video) {
+    async function loop(video, ts = 0) {
       if (!isDetecting) return;
+      
+      if (ts - lastTick >= INTERVAL) {
+        try {
+          const { predictions, frameW } = await runOnce(video);
+          processPredictions(predictions, frameW);
+          draw(predictions);
 
-      const startTime = performance.now();
-
-      try {
-        // 1. 捕捉畫面
-        const imageData = captureFrame(video);
-        if (!imageData) {
-          setTimeout(() => detectionLoop(video), 1000 / TARGET_FPS);
-          return;
+          frames++; 
+          if (!lastFpsTs) {
+            lastFpsTs = ts;
+          } else if (ts - lastFpsTs >= 1000) {
+            document.getElementById('fps').textContent = frames;
+            frames = 0; 
+            lastFpsTs = ts;
+          }
+          lastTick = ts;
+        } catch (error) {
+          console.error('檢測循環錯誤:', error);
         }
-
-        // 2. 預處理
-        const inputTensor = preprocess(imageData);
-        
-        // 3. 推理
-        const feeds = { [session.inputNames[0]]: inputTensor };
-        const results = await session.run(feeds);
-        
-        // 4. 後處理
-        const predictions = postprocess(results, video.videoWidth, video.videoHeight);
-        
-        // 5. 處理結果
-        processPredictions(predictions);
-        
-        // 6. 繪製結果
-        drawPredictions(predictions, video);
-        
-        // 更新 FPS
-        updateFPS(performance.now() - startTime);
-
-      } catch (error) {
-        console.error('檢測錯誤:', error);
-        updateDebugInfo(`檢測錯誤: ${error.message}`);
       }
+      requestAnimationFrame((n) => loop(video, n));
+    }
 
-      // 繼續下一幀
-      if (isDetecting) {
-        setTimeout(() => detectionLoop(video), 1000 / TARGET_FPS);
+    async function runOnce(video) {
+      try {
+        const frame = captureFrame(video);
+        const { predictions, frameW } = await inference(frame);
+        return { predictions, frameW };
+      } catch (error) {
+        console.error('推理錯誤:', error);
+        return { predictions: [], frameW: 640 };
       }
     }
 
-    // 捕捉畫面
     function captureFrame(video) {
-      if (!video.videoWidth || !video.videoHeight) {
-        return null;
-      }
-
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
+      const { videoWidth: w, videoHeight: h } = video;
       
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      // 使用較小的尺寸提高性能
+      const scale = 0.5;
+      canvas.width = w * scale;
+      canvas.height = h * scale;
       
-      // 正常繪製，不翻轉
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
       return ctx.getImageData(0, 0, canvas.width, canvas.height);
     }
 
-    // 預處理
-    function preprocess(imageData) {
+    async function inference(imageData) {
+      const [inferenceTensor, frameW] = preprocess(imageData);
+      const feeds = { [session.inputNames[0]]: inferenceTensor };
+      const results = await session.run(feeds);
+      const predictions = postprocess(results, frameW);
+      return { predictions, frameW };
+    }
+
+    function preprocess(imageData, modelWidth = INPUT_SIZE, modelHeight = INPUT_SIZE) {
       const { data, width, height } = imageData;
-      const input = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
+      const frameW = width;
       
-      // 簡單的預處理：調整大小 + 歸一化
+      const input = new Float32Array(3 * modelWidth * modelHeight);
+      
       for (let c = 0; c < 3; c++) {
-        for (let h = 0; h < INPUT_SIZE; h++) {
-          for (let w = 0; w < INPUT_SIZE; w++) {
-            // 計算對應的原圖座標
-            const srcX = Math.floor(w * width / INPUT_SIZE);
-            const srcY = Math.floor(h * height / INPUT_SIZE);
-            const srcIndex = (srcY * width + srcX) * 4;
-            
-            const pixelValue = data[srcIndex + c] / 255.0; // 歸一化到 [0,1]
-            input[c * INPUT_SIZE * INPUT_SIZE + h * INPUT_SIZE + w] = pixelValue;
+        for (let h = 0; h < modelHeight; h++) {
+          for (let w = 0; w < modelWidth; w++) {
+            const srcH = Math.floor(h * height / modelHeight);
+            const srcW = Math.floor(w * width / modelWidth);
+            const srcIndex = (srcH * width + srcW) * 4;
+            const pixel = data[srcIndex + c];
+            input[c * modelWidth * modelHeight + h * modelWidth + w] = pixel / 255.0;
           }
         }
       }
       
-      return new ort.Tensor('float32', input, [1, 3, INPUT_SIZE, INPUT_SIZE]);
+      const tensor = new ort.Tensor('float32', input, [1, 3, modelWidth, modelHeight]);
+      return [tensor, frameW];
     }
 
-    // 後處理
-    function postprocess(outputs, originalWidth, originalHeight) {
+    function postprocess(results, frameW) {
+      const output = results[session.outputNames[0]];
       const predictions = [];
-      const output = outputs[session.outputNames[0]];
+      const scoreThr = MODE_PROFILE[currentMode].scoreThr;
       
-      if (!output || !output.data) {
-        updateDebugInfo('沒有輸出數據');
-        return predictions;
-      }
-
-      const outputData = output.data;
-      const numDetections = output.dims[1];
-      const numClasses = output.dims[2] - 4;
-
-      for (let i = 0; i < numDetections; i++) {
-        const offset = i * (numClasses + 4);
-        const [x, y, width, height, ...scores] = Array.from(outputData.slice(offset, offset + numClasses + 4));
-        
-        // 找到最高分數的類別
+      for (let idx = 0; idx < output.dims[1]; idx++) {
+        const data = output.data.slice(idx * output.dims[2], (idx + 1) * output.dims[2]);
+        const scores = data.slice(4);
         const maxScore = Math.max(...scores);
+        
+        if (maxScore < scoreThr) continue;
+        
         const classId = scores.indexOf(maxScore);
-
-        if (maxScore > SCORE_THRESHOLD && classId < CLASS_NAMES.length) {
-          // 轉換座標到原圖尺寸
-          const scaleX = originalWidth / INPUT_SIZE;
-          const scaleY = originalHeight / INPUT_SIZE;
-          
-          const bbox = [
-            (x - width / 2) * scaleX,  // x
-            (y - height / 2) * scaleY, // y
-            width * scaleX,            // width
-            height * scaleY            // height
-          ];
-
-          // 確保座標在合理範圍內
-          if (bbox[0] >= 0 && bbox[1] >= 0 && bbox[2] > 10 && bbox[3] > 10) {
-            predictions.push({
-              class: CLASS_NAMES[classId],
-              score: maxScore,
-              bbox: bbox,
-              distance: estimateDistance(bbox[2], bbox[3], CLASS_NAMES[classId])
-            });
-          }
-        }
+        if (classId >= coco80.length) continue;
+        
+        let [x, y, w, h] = data.slice(0, 4);
+        x = (x - w / 2) * frameW;
+        y = (y - h / 2) * frameW;
+        w = w * frameW;
+        h = h * frameW;
+        
+        const distance = estimateDistance(w, h, classId);
+        
+        predictions.push({
+          class: coco80[classId],
+          score: maxScore,
+          bbox: [x, y, w, h],
+          distance: distance
+        });
       }
-
-      updateDebugInfo(`檢測到 ${predictions.length} 個物體`);
-      return nonMaxSuppression(predictions, IOU_THRESHOLD);
+      
+      return nonMaxSuppression(predictions, IOU_THR);
     }
 
-    // 非極大值抑制
-    function nonMaxSuppression(predictions, iouThreshold) {
-      if (predictions.length === 0) return predictions;
+    function estimateDistance(width, height, classId) {
+      const className = coco80[classId];
+      const pixelArea = width * height;
       
+      const referenceSizes = {
+        'person': 10000,
+        'car': 50000,
+        'bicycle': 15000,
+        'chair': 8000,
+        'bottle': 2000
+      };
+      
+      const refSize = referenceSizes[className] || 10000;
+      const distance = Math.sqrt(refSize / pixelArea) * 10;
+      
+      return Math.min(distance, 50);
+    }
+
+    function nonMaxSuppression(predictions, iouThr) {
       predictions.sort((a, b) => b.score - a.score);
       const selected = [];
-
+      
       while (predictions.length > 0) {
         const current = predictions[0];
         selected.push(current);
-
-        predictions = predictions.slice(1).filter(pred => {
-          return calculateIOU(current.bbox, pred.bbox) < iouThreshold;
+        
+        predictions = predictions.filter(pred => {
+          const iou = calculateIOU(current.bbox, pred.bbox);
+          return iou < iouThr;
         });
       }
-
+      
       return selected;
     }
 
-    // 計算 IoU
     function calculateIOU(box1, box2) {
       const [x1, y1, w1, h1] = box1;
       const [x2, y2, w2, h2] = box2;
-
-      const xLeft = Math.max(x1, x2);
-      const yTop = Math.max(y1, y2);
-      const xRight = Math.min(x1 + w1, x2 + w2);
-      const yBottom = Math.min(y1 + h1, y2 + h2);
-
-      if (xRight < xLeft || yBottom < yTop) return 0.0;
-
-      const intersectionArea = (xRight - xLeft) * (yBottom - yTop);
+      
+      const xi1 = Math.max(x1, x2);
+      const yi1 = Math.max(y1, y2);
+      const xi2 = Math.min(x1 + w1, x2 + w2);
+      const yi2 = Math.min(y1 + h1, y2 + h2);
+      
+      const interArea = Math.max(0, xi2 - xi1) * Math.max(0, yi2 - yi1);
       const box1Area = w1 * h1;
       const box2Area = w2 * h2;
-
-      return intersectionArea / (box1Area + box2Area - intersectionArea);
-    }
-
-    // 估算距離
-    function estimateDistance(width, height, className) {
-      const area = width * height;
-      let referenceArea = 10000;
-
-      if (className === 'person') referenceArea = 8000;
-      else if (className === 'car') referenceArea = 30000;
-      else if (className === 'chair') referenceArea = 5000;
-
-      const distance = Math.sqrt(referenceArea / area) * 2;
-      return Math.min(Math.max(distance, 0.5), 20);
-    }
-
-    // 處理預測結果
-    function processPredictions(predictions) {
-      const currentModule = ENVIRONMENT_MODULES[currentEnvironment];
-      const obstacles = predictions.filter(p => currentModule.objects.includes(p.class));
-      const obstacleCount = obstacles.length;
       
-      document.getElementById('obstacleCount').textContent = obstacleCount;
+      return interArea / (box1Area + box2Area - interArea);
+    }
 
-      // 找到最近障礙物
+    /**********************
+     * 8) 預測處理與繪圖
+     **********************/
+    function processPredictions(predictions, frameW) {
+      const module = environmentModules[currentEnvironment];
+      const relevantPredictions = predictions.filter(p => module.objects[p.class]);
+      
+      document.getElementById('obstacleCount').textContent = relevantPredictions.length;
+      
       let closestDistance = Infinity;
-      let closestObstacle = null;
-
-      obstacles.forEach(obstacle => {
-        if (obstacle.distance < closestDistance) {
-          closestDistance = obstacle.distance;
-          closestObstacle = obstacle;
+      let closestObject = null;
+      
+      relevantPredictions.forEach(pred => {
+        if (pred.distance < closestDistance) {
+          closestDistance = pred.distance;
+          closestObject = pred;
         }
       });
-
-      // 更新顯示
+      
       const distanceElement = document.getElementById('closestDistance');
-      if (closestObstacle) {
+      if (closestObject) {
         distanceElement.textContent = closestDistance.toFixed(1) + ' 公尺';
         
-        // 語音警告
-        if (voiceEnabled && closestDistance < 5) {
+        if (closestDistance < 2) {
+          distanceElement.parentElement.classList.add('danger-warning');
+        } else if (closestDistance < 5) {
+          distanceElement.parentElement.classList.add('obstacle-warning');
+        } else {
+          distanceElement.parentElement.classList.remove('obstacle-warning', 'danger-warning');
+        }
+        
+        if (voiceEnabled) {
           const now = Date.now();
-          if (now - lastSpeechTime > 3000) {
-            let message = `前方${closestDistance.toFixed(1)}公尺有${closestObstacle.class}`;
-            if (closestDistance < 2) message = `警告！${message}，請小心`;
-            else if (closestDistance < 3) message = `注意！${message}`;
-            updateVoice(message);
-            lastSpeechTime = now;
+          const cooldown = closestObject.distance < 3 ? 3000 : 5000;
+          
+          if (now - lastSpeechAt > cooldown) {
+            const objConfig = module.objects[closestObject.class];
+            let voiceMsg = objConfig.voice;
+            
+            if (closestObject.distance < 2) {
+              voiceMsg = `緊急！${objConfig.name}非常接近，僅${closestObject.distance.toFixed(1)}公尺`;
+            } else if (closestObject.distance < 5) {
+              voiceMsg = `注意！${objConfig.name}接近，距離${closestObject.distance.toFixed(1)}公尺`;
+            }
+            
+            updateVoice(voiceMsg);
+            lastSpeechAt = now;
           }
         }
       } else {
         distanceElement.textContent = '— 公尺';
+        distanceElement.parentElement.classList.remove('obstacle-warning', 'danger-warning');
       }
-
-      updateDetectionList(obstacles);
+      
+      updateDetectionList(relevantPredictions);
     }
 
-    let lastSpeechTime = 0;
+    function updateDetectionList(predictions) {
+      const list = document.getElementById('detectionList');
+      const module = environmentModules[currentEnvironment];
+      
+      if (predictions.length === 0) {
+        list.innerHTML = '<div class="chip" style="text-align:center; color:var(--muted);">未偵測到障礙物</div>';
+        return;
+      }
+      
+      predictions.sort((a, b) => a.distance - b.distance);
+      
+      list.innerHTML = predictions.map(pred => {
+        const objConfig = module.objects[pred.class];
+        const dangerLevel = objConfig ? objConfig.danger : 'low';
+        const dangerColors = {
+          'high': 'var(--bad)',
+          'medium': 'var(--warn)', 
+          'low': 'var(--good)'
+        };
+        
+        return `
+          <div class="chip" style="border-left: 4px solid ${dangerColors[dangerLevel]}">
+            <strong>${objConfig ? objConfig.name : pred.class}</strong><br>
+            距離: ${pred.distance.toFixed(1)}公尺 | 置信度: ${(pred.score * 100).toFixed(0)}%
+          </div>
+        `;
+      }).join('');
+    }
 
-    // 繪製檢測結果
-    function drawPredictions(predictions, video) {
+    function draw(predictions) {
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
+      const video = document.getElementById('video');
+      
+      if (!video.videoWidth) return;
       
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -988,89 +1166,51 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       predictions.forEach(pred => {
-        const currentModule = ENVIRONMENT_MODULES[currentEnvironment];
-        if (!currentModule.objects.includes(pred.class)) return;
+        const module = environmentModules[currentEnvironment];
+        if (!module.objects[pred.class]) return;
         
         const [x, y, w, h] = pred.bbox;
+        const objConfig = module.objects[pred.class];
         
-        // 選擇顏色
         let color;
-        if (pred.distance < 2) color = '#ff0000';
-        else if (pred.distance < 4) color = '#ff9900';
-        else color = '#00ff00';
+        switch(objConfig.danger) {
+          case 'high': color = '#ef4444'; break;
+          case 'medium': color = '#f59e0b'; break;
+          default: color = '#22c55e';
+        }
         
-        // 繪製邊框
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
         ctx.strokeRect(x, y, w, h);
         
-        // 繪製標籤
-        const label = `${pred.class} ${pred.distance.toFixed(1)}m`;
-        ctx.font = 'bold 14px Arial';
+        const label = `${objConfig.name} ${pred.distance.toFixed(1)}m`;
+        ctx.font = '16px Arial';
         const textWidth = ctx.measureText(label).width;
         
         ctx.fillStyle = color;
-        ctx.fillRect(x, y - 20, textWidth + 10, 20);
+        ctx.fillRect(x, y - 25, textWidth + 10, 25);
         
         ctx.fillStyle = 'white';
-        ctx.fillText(label, x + 5, y - 5);
+        ctx.fillText(label, x + 5, y - 7);
       });
     }
 
-    // 更新偵測列表
-    function updateDetectionList(predictions) {
-      const list = document.getElementById('detectionList');
-      
-      if (predictions.length === 0) {
-        list.innerHTML = '<div class="detection-chip" style="text-align:center; color:var(--muted);">未偵測到障礙物</div>';
-        return;
-      }
-      
-      predictions.sort((a, b) => a.distance - b.distance);
-      
-      list.innerHTML = predictions.map(pred => {
-        let chipClass = '';
-        if (pred.distance < 2) chipClass = 'danger';
-        else if (pred.distance < 4) chipClass = 'warning';
-        
-        return `
-          <div class="detection-chip ${chipClass}">
-            <strong>${pred.class}</strong><br>
-            距離: ${pred.distance.toFixed(1)}公尺 | 置信度: ${(pred.score * 100).toFixed(0)}%
-          </div>
-        `;
-      }).join('');
-    }
-
-    // FPS 計算
-    function updateFPS(processingTime) {
-      frameCount++;
-      const now = performance.now();
-      
-      if (now - lastFpsTime >= 1000) {
-        const fps = Math.round(frameCount * 1000 / (now - lastFpsTime));
-        document.getElementById('fps').textContent = fps;
-        frameCount = 0;
-        lastFpsTime = now;
-        
-        if (debugMode) {
-          updateDebugInfo(`FPS: ${fps}, 處理時間: ${processingTime.toFixed(1)}ms`);
-        }
-      }
-    }
-
-    // 工具函數
+    /**********************
+     * 9) 工具函數
+     **********************/
     function updateVoice(message) {
       const voiceAlert = document.getElementById('voiceAlert');
       voiceAlert.textContent = message;
-      voiceAlert.classList.remove('loading');
       
       if (voiceEnabled && window.speechSynthesis) {
         window.speechSynthesis.cancel();
+        
         const utterance = new SpeechSynthesisUtterance(message);
         utterance.lang = 'zh-TW';
         utterance.rate = 0.9;
         utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+        
         window.speechSynthesis.speak(utterance);
       }
     }
@@ -1081,65 +1221,6 @@
 
     function updateGPSStatus(status) {
       document.getElementById('gpsStatus').textContent = status;
-    }
-
-    function updateDebugInfo(info) {
-      if (debugMode) {
-        document.getElementById('debugInfo').textContent = info;
-      }
-    }
-
-    function showProgress(message, percent) {
-      updateVoice(message);
-      document.getElementById('progressBar').style.display = 'block';
-      document.getElementById('progressFill').style.width = percent + '%';
-    }
-
-    function hideProgress() {
-      document.getElementById('progressBar').style.display = 'none';
-    }
-
-    // 環境切換
-    function loadEnvironmentModule() {
-      const environments = Object.keys(ENVIRONMENT_MODULES);
-      const currentIndex = environments.indexOf(currentEnvironment);
-      const nextIndex = (currentIndex + 1) % environments.length;
-      currentEnvironment = environments[nextIndex];
-      
-      const module = ENVIRONMENT_MODULES[currentEnvironment];
-      document.getElementById('currentModule').textContent = module.name;
-      document.getElementById('activeModuleTag').textContent = module.name;
-      
-      updateVoice(`切換到${module.name}環境`);
-    }
-
-    // 緊急求助
-    function emergencyAlert() {
-      const button = document.getElementById('btnEmergency');
-      button.classList.add('emergency-alert');
-      
-      updateVoice('緊急求助！正在發送位置資訊給緊急聯絡人');
-      
-      if (gpsNavigator && gpsNavigator.currentPosition) {
-        const { lat, lng } = gpsNavigator.currentPosition;
-        console.log(`緊急位置發送: 緯度 ${lat.toFixed(6)}, 經度 ${lng.toFixed(6)}`);
-      }
-      
-      setTimeout(() => {
-        button.classList.remove('emergency-alert');
-      }, 5000);
-    }
-
-    // 事件監聽器
-    function initEventListeners() {
-      document.getElementById('btnStart').addEventListener('click', startDetection);
-      document.getElementById('btnStop').addEventListener('click', stopDetection);
-      document.getElementById('btnVoice').addEventListener('click', toggleVoice);
-      document.getElementById('btnDebug').addEventListener('click', toggleDebug);
-      document.getElementById('btnSetHome').addEventListener('click', () => gpsNavigator.setHomePosition());
-      document.getElementById('btnReturnHome').addEventListener('click', () => gpsNavigator.startReturnHome());
-      document.getElementById('btnLoadModule').addEventListener('click', loadEnvironmentModule);
-      document.getElementById('btnEmergency').addEventListener('click', emergencyAlert);
     }
 
     function toggleVoice() {
@@ -1162,26 +1243,159 @@
       }
     }
 
-    function toggleDebug() {
-      debugMode = !debugMode;
-      const panel = document.getElementById('debugPanel');
-      const button = document.getElementById('btnDebug');
+    function toggleMode() {
+      const button = document.getElementById('btnMode');
+      currentMode = currentMode === 'walking' ? 'navigate' : 'walking';
       
-      if (debugMode) {
-        panel.style.display = 'block';
-        button.textContent = '隱藏除錯';
-        updateDebugInfo('除錯模式已開啟');
+      if (currentMode === 'walking') {
+        button.textContent = '導航模式';
+        updateVoice('切換到步行模式');
       } else {
-        panel.style.display = 'none';
-        button.textContent = '顯示除錯';
+        button.textContent = '步行模式';
+        updateVoice('切換到導航模式');
       }
     }
 
-    // 初始化應用
+    function loadEnvironmentModule() {
+      const environments = Object.keys(environmentModules);
+      const currentIndex = environments.indexOf(currentEnvironment);
+      const nextIndex = (currentIndex + 1) % environments.length;
+      currentEnvironment = environments[nextIndex];
+      
+      const module = environmentModules[currentEnvironment];
+      document.getElementById('currentModule').textContent = module.name;
+      document.getElementById('activeModuleTag').textContent = module.name;
+      
+      updateVoice(`切換到${module.name}環境`);
+    }
+
+    function emergencyAlert() {
+      const button = document.getElementById('btnEmergency');
+      button.classList.add('emergency-alert');
+      
+      updateVoice('緊急求助！正在發送位置資訊給緊急聯絡人');
+      
+      if (gpsNavigator.currentPosition) {
+        const { lat, lng } = gpsNavigator.currentPosition;
+        console.log(`緊急位置發送: 緯度 ${lat.toFixed(6)}, 經度 ${lng.toFixed(6)}`);
+      }
+      
+      setTimeout(() => {
+        button.classList.remove('emergency-alert');
+      }, 5000);
+    }
+
+    function toggleMirror() {
+      const video = document.getElementById('video');
+      const button = document.getElementById('btnMirror');
+      
+      if (video.style.transform === 'scaleX(-1)') {
+        video.style.transform = 'scaleX(1)';
+        button.textContent = '鏡像畫面';
+        updateVoice('已關閉鏡像');
+      } else {
+        video.style.transform = 'scaleX(-1)';
+        button.textContent = '正常畫面';
+        updateVoice('已開啟鏡像');
+      }
+    }
+
+    function toggleDebug() {
+      debugMode = !debugMode;
+      const button = document.getElementById('btnDebug');
+      
+      if (debugMode) {
+        button.textContent = '調試關閉';
+        button.classList.remove('secondary');
+        button.classList.add('warning');
+        updateVoice('已開啟調試模式');
+      } else {
+        button.textContent = '調試模式';
+        button.classList.remove('warning');
+        button.classList.add('secondary');
+        updateVoice('已關閉調試模式');
+      }
+    }
+
+    function toggleObstacleAvoidance() {
+      obstacleAvoidanceEnabled = !obstacleAvoidanceEnabled;
+      const button = document.getElementById('btnObstacleAvoidance');
+      
+      if (obstacleAvoidanceEnabled) {
+        button.textContent = '關閉避障';
+        button.classList.remove('secondary');
+        button.classList.add('primary');
+        updateVoice('避障功能已開啟');
+      } else {
+        button.textContent = '避障功能';
+        button.classList.remove('primary');
+        button.classList.add('secondary');
+        updateVoice('避障功能已關閉');
+      }
+    }
+
+    async function testDetection() {
+      updateVoice('開始測試檢測功能');
+      console.log('開始測試檢測功能');
+      
+      // 啟動攝像頭
+      const video = await setupCamera();
+      if (!video) {
+        updateVoice('無法啟動攝像頭');
+        return;
+      }
+      
+      // 執行一次檢測
+      try {
+        const { predictions, frameW } = await runOnce(video);
+        console.log('測試檢測結果:', predictions);
+        
+        if (predictions.length > 0) {
+          updateVoice(`測試成功！檢測到 ${predictions.length} 個物體`);
+        } else {
+          updateVoice('測試完成，未檢測到物體');
+        }
+        
+        // 顯示結果
+        processPredictions(predictions, frameW);
+        draw(predictions);
+        
+      } catch (error) {
+        console.error('測試錯誤:', error);
+        updateVoice('測試過程中出現錯誤');
+      }
+    }
+
+    /**********************
+     * 10) 初始化應用
+     **********************/
     window.addEventListener('DOMContentLoaded', () => {
-      initEventListeners();
+      updateStatus('初始化中');
+      updateVoice('盲人輔助導航系統啟動中...');
+      
+      // 直接初始化模型
       initModel();
     });
+
+    // 防止頁面休眠
+    let wakeLock = null;
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.log('Wake Lock 失敗:', err.message);
+      }
+    }
+
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState === 'visible' && isDetecting) {
+        await requestWakeLock();
+      }
+    });
+
+    requestWakeLock();
   </script>
 </body>
 </html>
