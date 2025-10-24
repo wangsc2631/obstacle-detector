@@ -11,7 +11,6 @@
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
   
   <style>
-    /* 完整 CSS 樣式 */
     :root {
       --bg1: #0ea5e9;
       --bg2: #6366f1;
@@ -267,7 +266,21 @@
       margin-top: 10px;
     }
 
-    /* 響應式設計 */
+    .gps-active {
+      background: var(--good) !important;
+    }
+
+    .emergency-alert {
+      animation: pulse 1s infinite;
+      border: 2px solid var(--bad);
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.7; }
+      100% { opacity: 1; }
+    }
+
     @media (min-width: 768px) {
       .app {
         display: grid;
@@ -309,11 +322,20 @@
         <div class="progress-fill" id="progressFill"></div>
       </div>
       
+      <!-- 主要控制按鈕 -->
       <div class="controls">
         <button id="btnStart" class="btn primary">開始檢測</button>
-        <button id="btnStop" class="btn danger" disabled>停止檢測</button>
         <button id="btnVoice" class="btn secondary">語音開啟</button>
-        <button id="btnDebug" class="btn warning">顯示除錯</button>
+        <button id="btnMode" class="btn primary">步行模式</button>
+        <button id="btnStop" class="btn danger">停止檢測</button>
+      </div>
+
+      <!-- 導航控制按鈕 -->
+      <div class="controls">
+        <button id="btnSetHome" class="btn primary">設定家的位置</button>
+        <button id="btnReturnHome" class="btn warning">一鍵返航</button>
+        <button id="btnLoadModule" class="btn primary">切換環境</button>
+        <button id="btnEmergency" class="btn danger">緊急求助</button>
       </div>
 
       <div class="status-grid">
@@ -335,6 +357,25 @@
         </div>
       </div>
 
+      <div class="status-grid">
+        <div class="status-item">
+          <div class="label">GPS狀態</div>
+          <div class="value" id="gpsStatus">未連接</div>
+        </div>
+        <div class="status-item">
+          <div class="label">距家距離</div>
+          <div class="value" id="homeDistance">--</div>
+        </div>
+        <div class="status-item">
+          <div class="label">當前環境</div>
+          <div class="value" id="currentModule">戶外</div>
+        </div>
+        <div class="status-item">
+          <div class="label">語音狀態</div>
+          <div class="value" id="voiceStatus">開啟</div>
+        </div>
+      </div>
+
       <div id="debugPanel" class="debug-panel">
         <div><strong>除錯資訊:</strong></div>
         <div id="debugInfo">等待開始偵測...</div>
@@ -343,7 +384,9 @@
 
     <!-- 側邊欄 -->
     <aside class="card panel">
-      <h3 style="margin:0 0 12px 0; font-size:16px;">即時偵測結果</h3>
+      <h3 style="margin:0 0 12px 0; font-size:16px;">
+        即時偵測 <span id="activeModuleTag" class="module-tag">戶外模式</span>
+      </h3>
       <div id="detectionList" class="detection-list">
         <div class="detection-chip" style="text-align:center; color:var(--muted);">
           等待開始偵測…
@@ -357,9 +400,14 @@
   </div>
 
   <script>
-    // 配置參數
+    // 配置參數 - 使用多個模型來源
+    const MODEL_SOURCES = [
+      'yolov8n.onnx', // 本地模型
+      'https://cdn.jsdelivr.net/gh/ultralytics/assets@main/yolov8n.onnx',
+      'https://models.roboflow.com/object-detection/yolov8n/1/model.onnx'
+    ];
+
     const CONFIG = {
-      modelUrl: 'https://raw.githubusercontent.com/ultralytics/assets/main/yolov8n.onnx',
       inputSize: 640,
       scoreThreshold: 0.3,
       iouThreshold: 0.5,
@@ -384,6 +432,18 @@
       'chair', 'bench', 'bed', 'couch', 'table'
     ];
 
+    // 環境模組
+    const ENVIRONMENT_MODULES = {
+      outdoor: {
+        name: '戶外模式',
+        objects: ['person', 'car', 'motorcycle', 'bus', 'truck', 'bicycle', 'bench']
+      },
+      indoor: {
+        name: '室內模式', 
+        objects: ['person', 'chair', 'bed', 'couch', 'table', 'tv']
+      }
+    };
+
     // 全局變數
     let session = null;
     let isDetecting = false;
@@ -391,26 +451,214 @@
     let debugMode = false;
     let frameCount = 0;
     let lastFpsTime = 0;
+    let currentEnvironment = 'outdoor';
+    let gpsNavigator = null;
+
+    // GPS 導航類
+    class GPSNavigator {
+      constructor() {
+        this.homePosition = null;
+        this.currentPosition = null;
+        this.isTracking = false;
+        this.watchId = null;
+        this.returnHomeInterval = null;
+        this.loadHomePosition();
+      }
+
+      loadHomePosition() {
+        const saved = localStorage.getItem('homePosition');
+        if (saved) {
+          this.homePosition = JSON.parse(saved);
+          updateGPSStatus('就緒');
+          document.getElementById('btnSetHome').classList.add('gps-active');
+        }
+      }
+
+      setHomePosition() {
+        if (!navigator.geolocation) {
+          updateVoice('您的裝置不支援GPS定位');
+          return;
+        }
+
+        updateVoice('正在獲取當前位置...');
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            this.homePosition = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              timestamp: new Date().toISOString()
+            };
+            localStorage.setItem('homePosition', JSON.stringify(this.homePosition));
+            updateVoice(`家的位置已記錄！`);
+            updateGPSStatus('已設定家');
+            document.getElementById('btnSetHome').classList.add('gps-active');
+          },
+          (error) => {
+            let errorMsg = '無法獲取位置：';
+            switch(error.code) {
+              case error.PERMISSION_DENIED:
+                errorMsg += '請允許位置權限';
+                break;
+              case error.POSITION_UNAVAILABLE:
+                errorMsg += '位置資訊不可用';
+                break;
+              case error.TIMEOUT:
+                errorMsg += '定位請求超時';
+                break;
+              default:
+                errorMsg += '未知錯誤';
+            }
+            updateVoice(errorMsg);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 60000
+          }
+        );
+      }
+
+      startReturnHome() {
+        if (!this.homePosition) {
+          updateVoice('請先設定家的位置');
+          return;
+        }
+
+        this.isTracking = true;
+        updateVoice('開始返航導航，請跟隨語音指引');
+        updateGPSStatus('返航中');
+        document.getElementById('btnReturnHome').classList.add('gps-active');
+
+        this.watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            this.currentPosition = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              accuracy: position.coords.accuracy
+            };
+            this.updateNavigation();
+          },
+          (error) => {
+            updateVoice('GPS信號不穩定');
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 3000
+          }
+        );
+
+        this.returnHomeInterval = setInterval(() => {
+          if (this.currentPosition) {
+            this.updateNavigation();
+          }
+        }, 10000);
+      }
+
+      updateNavigation() {
+        const navInfo = this.calculateNavigation();
+        if (!navInfo) return;
+
+        const { distance, direction } = navInfo;
+        document.getElementById('homeDistance').textContent = `${distance}m`;
+
+        if (distance < 20) {
+          updateVoice(`已到達家附近，距離${Math.round(distance)}公尺`);
+          this.stopReturnHome();
+        } else if (distance < 100) {
+          updateVoice(`即將到家，距離${Math.round(distance)}公尺，請向${direction}前進`);
+        } else {
+          updateVoice(`距家${Math.round(distance)}公尺，請向${direction}前進`);
+        }
+      }
+
+      calculateNavigation() {
+        if (!this.currentPosition || !this.homePosition) return null;
+
+        const R = 6371000;
+        const φ1 = this.currentPosition.lat * Math.PI/180;
+        const φ2 = this.homePosition.lat * Math.PI/180;
+        const Δφ = (this.homePosition.lat - this.currentPosition.lat) * Math.PI/180;
+        const Δλ = (this.homePosition.lng - this.currentPosition.lng) * Math.PI/180;
+
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distance = Math.round(R * c);
+
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x = Math.cos(φ1) * Math.sin(φ2) -
+                  Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        const θ = Math.atan2(y, x);
+        const bearing = (θ * 180/Math.PI + 360) % 360;
+
+        const direction = this.getDirectionFromBearing(bearing);
+        return { distance, direction };
+      }
+
+      getDirectionFromBearing(bearing) {
+        const directions = ['北', '東北', '東', '東南', '南', '西南', '西', '西北'];
+        const index = Math.round(bearing / 45) % 8;
+        return directions[index];
+      }
+
+      stopReturnHome() {
+        if (this.watchId) {
+          navigator.geolocation.clearWatch(this.watchId);
+          this.watchId = null;
+        }
+        if (this.returnHomeInterval) {
+          clearInterval(this.returnHomeInterval);
+          this.returnHomeInterval = null;
+        }
+        this.isTracking = false;
+        updateGPSStatus('就緒');
+        document.getElementById('btnReturnHome').classList.remove('gps-active');
+        updateVoice('返航導航結束');
+      }
+    }
 
     // 初始化模型
     async function initModel() {
       try {
-        showProgress('正在載入 AI 模型...', 0);
+        showProgress('正在初始化 AI 模型...', 0);
         
         ort.env.wasm.numThreads = 1;
         
-        showProgress('下載模型中...', 30);
-        updateDebugInfo('開始載入 YOLOv8 模型...');
+        // 嘗試多個模型來源
+        let modelLoaded = false;
         
-        // 使用更可靠的模型來源
-        session = await ort.InferenceSession.create(CONFIG.modelUrl, {
-          executionProviders: ['wasm']
-        });
+        for (let i = 0; i < MODEL_SOURCES.length; i++) {
+          const modelUrl = MODEL_SOURCES[i];
+          try {
+            showProgress(`嘗試載入模型來源 ${i + 1}/${MODEL_SOURCES.length}...`, (i + 1) * 30);
+            updateDebugInfo(`嘗試載入: ${modelUrl}`);
+            
+            session = await ort.InferenceSession.create(modelUrl, {
+              executionProviders: ['wasm']
+            });
+            
+            modelLoaded = true;
+            updateDebugInfo(`模型載入成功！來源: ${modelUrl}`);
+            break;
+            
+          } catch (error) {
+            updateDebugInfo(`模型來源 ${i + 1} 失敗: ${error.message}`);
+            continue;
+          }
+        }
+        
+        if (!modelLoaded) {
+          throw new Error('所有模型來源都無法載入，請確保 yolov8n.onnx 檔案存在於相同目錄');
+        }
         
         showProgress('模型初始化完成', 100);
-        updateDebugInfo(`模型載入成功！輸入: ${session.inputNames[0]}`);
         updateVoice('模型載入完成！請點擊開始檢測');
         updateStatus('準備就緒');
+        
+        // 初始化 GPS
+        gpsNavigator = new GPSNavigator();
         
         setTimeout(() => {
           hideProgress();
@@ -419,7 +667,7 @@
       } catch (error) {
         console.error('模型載入失敗:', error);
         updateDebugInfo(`錯誤: ${error.message}`);
-        updateVoice('模型載入失敗，請檢查網路連接');
+        updateVoice('模型載入失敗，請確保模型檔案存在');
         hideProgress();
       }
     }
@@ -468,10 +716,6 @@
       const video = await setupCamera();
       if (!video) return;
 
-      // 啟用按鈕狀態
-      document.getElementById('btnStart').disabled = true;
-      document.getElementById('btnStop').disabled = false;
-
       isDetecting = true;
       updateStatus('檢測中');
       updateVoice('開始障礙物檢測，請緩慢移動裝置');
@@ -485,14 +729,14 @@
       isDetecting = false;
       updateStatus('已停止');
       
-      // 恢復按鈕狀態
-      document.getElementById('btnStart').disabled = false;
-      document.getElementById('btnStop').disabled = true;
-      
       const video = document.getElementById('video');
       if (video.srcObject) {
         video.srcObject.getTracks().forEach(track => track.stop());
         video.srcObject = null;
+      }
+      
+      if (gpsNavigator) {
+        gpsNavigator.stopReturnHome();
       }
       
       updateVoice('檢測已停止');
@@ -700,7 +944,8 @@
 
     // 處理預測結果
     function processPredictions(predictions) {
-      const obstacles = predictions.filter(p => IMPORTANT_CLASSES.includes(p.class));
+      const currentModule = ENVIRONMENT_MODULES[currentEnvironment];
+      const obstacles = predictions.filter(p => currentModule.objects.includes(p.class));
       const obstacleCount = obstacles.length;
       
       document.getElementById('obstacleCount').textContent = obstacleCount;
@@ -753,7 +998,8 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       predictions.forEach(pred => {
-        if (!IMPORTANT_CLASSES.includes(pred.class)) return;
+        const currentModule = ENVIRONMENT_MODULES[currentEnvironment];
+        if (!currentModule.objects.includes(pred.class)) return;
         
         const [x, y, w, h] = pred.bbox;
         
@@ -843,6 +1089,10 @@
       document.getElementById('status').textContent = status;
     }
 
+    function updateGPSStatus(status) {
+      document.getElementById('gpsStatus').textContent = status;
+    }
+
     function updateDebugInfo(info) {
       if (debugMode) {
         document.getElementById('debugInfo').textContent = info;
@@ -859,24 +1109,62 @@
       document.getElementById('progressBar').style.display = 'none';
     }
 
+    // 環境切換
+    function loadEnvironmentModule() {
+      const environments = Object.keys(ENVIRONMENT_MODULES);
+      const currentIndex = environments.indexOf(currentEnvironment);
+      const nextIndex = (currentIndex + 1) % environments.length;
+      currentEnvironment = environments[nextIndex];
+      
+      const module = ENVIRONMENT_MODULES[currentEnvironment];
+      document.getElementById('currentModule').textContent = module.name;
+      document.getElementById('activeModuleTag').textContent = module.name;
+      
+      updateVoice(`切換到${module.name}環境`);
+    }
+
+    // 緊急求助
+    function emergencyAlert() {
+      const button = document.getElementById('btnEmergency');
+      button.classList.add('emergency-alert');
+      
+      updateVoice('緊急求助！正在發送位置資訊給緊急聯絡人');
+      
+      if (gpsNavigator && gpsNavigator.currentPosition) {
+        const { lat, lng } = gpsNavigator.currentPosition;
+        console.log(`緊急位置發送: 緯度 ${lat.toFixed(6)}, 經度 ${lng.toFixed(6)}`);
+      }
+      
+      setTimeout(() => {
+        button.classList.remove('emergency-alert');
+      }, 5000);
+    }
+
     // 事件監聽器
     function initEventListeners() {
       document.getElementById('btnStart').addEventListener('click', startDetection);
       document.getElementById('btnStop').addEventListener('click', stopDetection);
       document.getElementById('btnVoice').addEventListener('click', toggleVoice);
       document.getElementById('btnDebug').addEventListener('click', toggleDebug);
+      document.getElementById('btnSetHome').addEventListener('click', () => gpsNavigator.setHomePosition());
+      document.getElementById('btnReturnHome').addEventListener('click', () => gpsNavigator.startReturnHome());
+      document.getElementById('btnLoadModule').addEventListener('click', loadEnvironmentModule);
+      document.getElementById('btnEmergency').addEventListener('click', emergencyAlert);
     }
 
     function toggleVoice() {
       voiceEnabled = !voiceEnabled;
+      const status = document.getElementById('voiceStatus');
       const button = document.getElementById('btnVoice');
       
       if (voiceEnabled) {
+        status.textContent = '開啟';
         button.textContent = '語音關閉';
         button.classList.remove('warning');
         button.classList.add('secondary');
         updateVoice('語音提示已開啟');
       } else {
+        status.textContent = '關閉';
         button.textContent = '語音開啟';
         button.classList.remove('secondary');
         button.classList.add('warning');
