@@ -336,6 +336,24 @@
       -ms-user-select: none;
       user-select: none;
     }
+
+    /* 模型載入進度條 */
+    .progress-container {
+      width: 100%;
+      height: 6px;
+      background: var(--glass-strong);
+      border-radius: 3px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    
+    .progress-bar {
+      height: 100%;
+      background: var(--good);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
   </style>
 </head>
 <body class="no-select">
@@ -352,6 +370,11 @@
 
     <section class="card panel">
       <div id="voiceAlert" class="voice-alert loading">系統初始化中…</div>
+      
+      <!-- 模型載入進度 -->
+      <div id="progressContainer" class="progress-container" style="display: none;">
+        <div id="progressBar" class="progress-bar"></div>
+      </div>
       
       <!-- 主要控制按鈕 -->
       <div class="controls">
@@ -427,9 +450,19 @@
 
   <script>
     /**********************
-     * 1) 參數區 - 使用本地模型
+     * 1) 參數區 - 多個模型來源
      **********************/
-    const MODEL_URL = 'yolov8n.onnx'; // 使用本地模型
+    const MODEL_SOURCES = [
+      // GitHub raw 檔案 (主要)
+      'https://raw.githubusercontent.com/wangsc2631/wangsc2631.github.io/main/yolov8n.onnx',
+      // 如果上面不行，嘗試這個格式
+      'https://github.com/wangsc2631/wangsc2631.github.io/raw/main/yolov8n.onnx',
+      // 本地路徑 (備用)
+      'yolov8n.onnx',
+      // 公開 CDN (最後備用)
+      'https://cdn.jsdelivr.net/gh/ultralytics/assets@main/yolov8n.onnx'
+    ];
+
     const INPUT_SIZE = 640;
     const SCORE_THR_BASE = 0.35;
     const IOU_THR = 0.5;
@@ -448,17 +481,6 @@
       'dining table','toilet','tv','laptop','mouse','remote','keyboard','cell phone','microwave','oven',
       'toaster','sink','refrigerator','book','clock','vase','scissors','teddy bear','hair drier','toothbrush'
     ];
-    
-    const zhMap = {
-      'person':'行人','bicycle':'自行車','car':'汽車','motorcycle':'摩托車','airplane':'飛機','bus':'公車','train':'火車','truck':'卡車','boat':'船','traffic light':'紅綠燈',
-      'fire hydrant':'消防栓','stop sign':'停止標誌','parking meter':'停車計時器','bench':'長椅','bird':'鳥','cat':'貓','dog':'狗','horse':'馬','sheep':'綿羊','cow':'牛',
-      'elephant':'大象','bear':'熊','zebra':'斑馬','giraffe':'長頸鹿','backpack':'背包','umbrella':'雨傘','handbag':'手提包','tie':'領帶','suitcase':'行李箱','frisbee':'飛盤',
-      'skis':'滑雪板','snowboard':'單板滑雪','sports ball':'球','kite':'風箏','baseball bat':'棒球棒','baseball glove':'棒球手套','skateboard':'滑板','surfboard':'衝浪板','tennis racket':'網球拍','bottle':'瓶子',
-      'wine glass':'紅酒杯','cup':'杯子','fork':'叉子','knife':'刀子','spoon':'湯匙','bowl':'碗','banana':'香蕉','apple':'蘋果','sandwich':'三明治','orange':'橘子',
-      'broccoli':'花椰菜','carrot':'紅蘿蔔','hot dog':'熱狗','pizza':'披薩','donut':'甜甜圈','cake':'蛋糕','chair':'椅子','couch':'沙發','potted plant':'盆栽','bed':'床',
-      'dining table':'餐桌','toilet':'馬桶','tv':'電視','laptop':'筆電','mouse':'滑鼠','remote':'遙控器','keyboard':'鍵盤','cell phone':'手機','microwave':'微波爐','oven':'烤箱',
-      'toaster':'烤麵包機','sink':'水槽','refrigerator':'冰箱','book':'書','clock':'時鐘','vase':'花瓶','scissors':'剪刀','teddy bear':'泰迪熊','hair drier':'吹風機','toothbrush':'牙刷'
-    };
 
     const MODE_PROFILE = { 
       walking: { nearM: 4, highObjM: 8, scoreThr: 0.45 }, 
@@ -486,11 +508,6 @@
           'dog': { name: '狗', danger: 'medium', voice: '前方有狗，請小心' },
           'cat': { name: '貓', danger: 'low', voice: '前方有貓' }
         },
-        voiceMessages: {
-          'high': '警告！前方有危險障礙物',
-          'medium': '注意！前方有障礙物',
-          'low': '前方有障礙物'
-        },
         triggers: ['car', 'motorcycle', 'bus', 'traffic light', 'stop sign', 'person']
       },
       kitchen: {
@@ -505,13 +522,7 @@
           'microwave': { name: '微波爐', danger: 'high', voice: '注意！前方有微波爐' },
           'refrigerator': { name: '冰箱', danger: 'medium', voice: '前方有冰箱' },
           'sink': { name: '水槽', danger: 'medium', voice: '前方有水槽' },
-          'bottle': { name: '瓶子', danger: 'medium', voice: '前方有瓶子' },
-          'toaster': { name: '烤麵包機', danger: 'medium', voice: '前方有烤麵包機' }
-        },
-        voiceMessages: {
-          'high': '廚房警告！前方有危險物品',
-          'medium': '廚房注意！前方有物品',
-          'low': '廚房前方有物品'
+          'bottle': { name: '瓶子', danger: 'medium', voice: '前方有瓶子' }
         },
         triggers: ['knife', 'oven', 'microwave', 'cup', 'bottle']
       },
@@ -523,11 +534,6 @@
           'bottle': { name: '洗髮精', danger: 'low', voice: '前方有洗髮精' },
           'toothbrush': { name: '牙刷', danger: 'low', voice: '前方有牙刷' },
           'hair drier': { name: '吹風機', danger: 'medium', voice: '前方有吹風機' }
-        },
-        voiceMessages: {
-          'high': '浴室警告！小心滑倒',
-          'medium': '浴室注意前方',
-          'low': '浴室物品'
         },
         triggers: ['toilet', 'sink', 'bottle']
       }
@@ -610,7 +616,6 @@
         updateGPSStatus('返航中');
         document.getElementById('btnReturnHome').classList.add('gps-active');
 
-        // 開始監聽位置
         this.watchId = navigator.geolocation.watchPosition(
           (position) => {
             this.currentPosition = {
@@ -630,7 +635,6 @@
           }
         );
 
-        // 每10秒更新一次導航
         this.returnHomeInterval = setInterval(() => {
           if (this.currentPosition) {
             this.updateNavigation();
@@ -642,10 +646,9 @@
         const navInfo = this.calculateNavigation();
         if (!navInfo) return;
 
-        const { distance, bearing, direction } = navInfo;
+        const { distance, direction } = navInfo;
         document.getElementById('homeDistance').textContent = `${distance}m`;
 
-        // 語音導航邏輯
         if (distance < 20) {
           updateVoice(`已到達家附近，距離${Math.round(distance)}公尺`);
           this.stopReturnHome();
@@ -659,7 +662,7 @@
       calculateNavigation() {
         if (!this.currentPosition || !this.homePosition) return null;
 
-        const R = 6371000; // 地球半徑(公尺)
+        const R = 6371000;
         const φ1 = this.currentPosition.lat * Math.PI/180;
         const φ2 = this.homePosition.lat * Math.PI/180;
         const Δφ = (this.homePosition.lat - this.currentPosition.lat) * Math.PI/180;
@@ -678,7 +681,7 @@
         const bearing = (θ * 180/Math.PI + 360) % 360;
 
         const direction = this.getDirectionFromBearing(bearing);
-        return { distance, bearing, direction };
+        return { distance, direction };
       }
 
       getDirectionFromBearing(bearing) {
@@ -714,69 +717,71 @@
     let frames = 0;
     let lastFpsTs = 0;
     let lastSpeechAt = 0;
-    let lastSaid = {cls: null, at: 0};
     let currentEnvironment = 'outdoor';
     let gpsNavigator = new GPSNavigator();
 
     /**********************
-     * 5) 初始化 / 相機
+     * 5) 模型載入 - 改進版本
      **********************/
     async function initModel() {
       try {
         updateVoice('正在初始化 ONNX Runtime Web…');
-        ort.env.wasm.numThreads = 2;
-        const opts = { executionProviders: ['wasm'] }; // 使用 WASM 確保兼容性
+        ort.env.wasm.numThreads = 1;
         
-        updateVoice('載入 YOLOv8n 模型…');
+        // 顯示進度條
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        progressContainer.style.display = 'block';
         
-        // 顯示載入進度
-        const voiceAlert = document.getElementById('voiceAlert');
-        voiceAlert.classList.add('loading');
+        let modelLoaded = false;
         
-        try {
-          console.log('嘗試載入主模型:', MODEL_URL);
-          session = await ort.InferenceSession.create(MODEL_URL, opts);
-          console.log('主模型載入成功');
-        } catch (e) {
-          console.log('主要模型載入失敗，嘗試備用模型:', e);
-          updateVoice('主要模型載入失敗，嘗試載入備用模型…');
+        // 嘗試所有模型來源
+        for (let i = 0; i < MODEL_SOURCES.length; i++) {
+          const modelUrl = MODEL_SOURCES[i];
           try {
-            console.log('嘗試載入備用模型:', BACKUP_MODEL_URL);
-            session = await ort.InferenceSession.create(BACKUP_MODEL_URL, opts);
-            console.log('備用模型載入成功');
-          } catch (backupError) {
-            console.log('備用模型也失敗:', backupError);
-            updateVoice('備用模型也失敗，嘗試載入本地模型…');
-            try {
-              console.log('嘗試載入本地模型:', LOCAL_MODEL_URL);
-              session = await ort.InferenceSession.create(LOCAL_MODEL_URL, opts);
-              console.log('本地模型載入成功');
-            } catch (localError) {
-              console.log('本地模型也失敗:', localError);
-              throw new Error('所有模型源都無法載入，請檢查網路連接或確保本地模型檔案存在');
-            }
+            updateVoice(`嘗試載入模型來源 ${i + 1}/${MODEL_SOURCES.length}...`);
+            progressBar.style.width = `${(i / MODEL_SOURCES.length) * 100}%`;
+            
+            console.log(`嘗試載入模型: ${modelUrl}`);
+            session = await ort.InferenceSession.create(modelUrl, {
+              executionProviders: ['wasm']
+            });
+            
+            modelLoaded = true;
+            progressBar.style.width = '100%';
+            progressBar.style.background = 'var(--good)';
+            updateVoice('模型載入成功！');
+            console.log('模型載入成功，來源:', modelUrl);
+            break;
+            
+          } catch (error) {
+            console.log(`模型來源 ${i + 1} 失敗:`, error.message);
+            continue;
           }
         }
         
-        // 移除載入動畫
-        voiceAlert.classList.remove('loading');
-        updateVoice('模型載入完成！點擊「開始檢測」開始使用');
+        progressContainer.style.display = 'none';
+        
+        if (!modelLoaded) {
+          throw new Error('所有模型來源都無法載入');
+        }
         
         // 初始化事件監聽
         initEventListeners();
-      } catch (e) {
-        console.error('模型載入錯誤:', e); 
-        updateVoice('模型載入失敗：' + e.message);
-        document.getElementById('voiceAlert').classList.remove('loading');
+        updateVoice('系統準備完成，請點擊開始檢測');
+        updateStatus('準備就緒');
         
-        // 提供錯誤解決建議
-        if (e.message.includes('Failed to fetch')) {
-          updateVoice('模型下載失敗，請檢查網路連接或刷新頁面重試');
-        } else if (e.message.includes('already closed')) {
-          updateVoice('模型文件損壞，請重新下載模型文件');
-        } else if (e.message.includes(' unable to verify ')) {
-          updateVoice('模型文件驗證失敗，請檢查文件完整性');
-        }
+      } catch (e) {
+        console.error('模型載入錯誤:', e);
+        updateVoice('模型載入失敗，請刷新頁面重試');
+        document.getElementById('progressContainer').style.display = 'none';
+        
+        // 顯示詳細錯誤資訊
+        const errorMsg = `錯誤: ${e.message}. 請確認: 
+        1. 網路連接正常
+        2. 模型檔案存在於 GitHub
+        3. 嘗試刷新頁面`;
+        console.error(errorMsg);
       }
     }
 
@@ -797,7 +802,7 @@
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
             facingMode: 'environment', 
-            width: { ideal: 640 }, // 降低解析度提高性能
+            width: { ideal: 640 },
             height: { ideal: 480 } 
           }, 
           audio: false 
@@ -831,7 +836,6 @@
       updateStatus('檢測中'); 
       updateVoice('開始障礙物檢測…');
       
-      // 開始檢測循環
       requestAnimationFrame((ts) => loop(video, ts));
     }
 
@@ -887,7 +891,6 @@
       const ctx = canvas.getContext('2d');
       const { videoWidth: w, videoHeight: h } = video;
       
-      // 使用較小的尺寸提高性能
       const scale = 0.5;
       canvas.width = w * scale;
       canvas.height = h * scale;
@@ -910,7 +913,6 @@
       
       const input = new Float32Array(3 * modelWidth * modelHeight);
       
-      // 簡化的預處理 - 提高性能
       for (let c = 0; c < 3; c++) {
         for (let h = 0; h < modelHeight; h++) {
           for (let w = 0; w < modelWidth; w++) {
@@ -1043,7 +1045,6 @@
           distanceElement.parentElement.classList.remove('obstacle-warning', 'danger-warning');
         }
         
-        // 語音警告
         if (voiceEnabled) {
           const now = Date.now();
           const cooldown = closestObject.distance < 3 ? 3000 : 5000;
@@ -1238,23 +1239,8 @@
       updateStatus('初始化中');
       updateVoice('盲人輔助導航系統啟動中...');
       
-      // 檢查 ONNX Runtime 是否已加載
-      if (typeof ort === 'undefined') {
-        updateVoice('錯誤：ONNX Runtime 未加載，請檢查網路連接');
-        console.error('ONNX Runtime 未加載');
-        return;
-      }
-      
-      console.log('ONNX Runtime 版本:', ort.version);
-      
+      // 直接初始化模型
       initModel();
-      
-      setupCamera().then(video => {
-        if (video) {
-          updateStatus('準備就緒');
-          updateVoice('系統準備完成，請點擊開始檢測');
-        }
-      });
     });
 
     // 防止頁面休眠
