@@ -724,7 +724,8 @@
     async function initModel() {
       try {
         updateVoice('正在初始化 ONNX Runtime Web…');
-        ort.env.wasm.numThreads = 1; // 減少為單線程提高穩定性
+        ort.env.wasm.numThreads = 2;
+        const opts = { executionProviders: ['wasm'] }; // 使用 WASM 確保兼容性
         
         updateVoice('載入 YOLOv8n 模型…');
         
@@ -733,15 +734,28 @@
         voiceAlert.classList.add('loading');
         
         try {
-          // 直接使用本地模型
-          session = await ort.InferenceSession.create(MODEL_URL, {
-            executionProviders: ['wasm']
-          });
-        } catch (localError) {
-          console.log('本地模型載入失敗:', localError);
-          updateVoice('模型載入失敗，請確保 yolov8n.onnx 檔案存在');
-          voiceAlert.classList.remove('loading');
-          return;
+          console.log('嘗試載入主模型:', MODEL_URL);
+          session = await ort.InferenceSession.create(MODEL_URL, opts);
+          console.log('主模型載入成功');
+        } catch (e) {
+          console.log('主要模型載入失敗，嘗試備用模型:', e);
+          updateVoice('主要模型載入失敗，嘗試載入備用模型…');
+          try {
+            console.log('嘗試載入備用模型:', BACKUP_MODEL_URL);
+            session = await ort.InferenceSession.create(BACKUP_MODEL_URL, opts);
+            console.log('備用模型載入成功');
+          } catch (backupError) {
+            console.log('備用模型也失敗:', backupError);
+            updateVoice('備用模型也失敗，嘗試載入本地模型…');
+            try {
+              console.log('嘗試載入本地模型:', LOCAL_MODEL_URL);
+              session = await ort.InferenceSession.create(LOCAL_MODEL_URL, opts);
+              console.log('本地模型載入成功');
+            } catch (localError) {
+              console.log('本地模型也失敗:', localError);
+              throw new Error('所有模型源都無法載入，請檢查網路連接或確保本地模型檔案存在');
+            }
+          }
         }
         
         // 移除載入動畫
@@ -754,6 +768,15 @@
         console.error('模型載入錯誤:', e); 
         updateVoice('模型載入失敗：' + e.message);
         document.getElementById('voiceAlert').classList.remove('loading');
+        
+        // 提供錯誤解決建議
+        if (e.message.includes('Failed to fetch')) {
+          updateVoice('模型下載失敗，請檢查網路連接或刷新頁面重試');
+        } else if (e.message.includes('already closed')) {
+          updateVoice('模型文件損壞，請重新下載模型文件');
+        } else if (e.message.includes(' unable to verify ')) {
+          updateVoice('模型文件驗證失敗，請檢查文件完整性');
+        }
       }
     }
 
@@ -1214,6 +1237,15 @@
     window.addEventListener('DOMContentLoaded', () => {
       updateStatus('初始化中');
       updateVoice('盲人輔助導航系統啟動中...');
+      
+      // 檢查 ONNX Runtime 是否已加載
+      if (typeof ort === 'undefined') {
+        updateVoice('錯誤：ONNX Runtime 未加載，請檢查網路連接');
+        console.error('ONNX Runtime 未加載');
+        return;
+      }
+      
+      console.log('ONNX Runtime 版本:', ort.version);
       
       initModel();
       
