@@ -4,18 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0ea5e9" />
-  <meta name="description" content="盲人輔助導航系統 - 即時障礙物檢測與GPS返航" />
+  <meta name="description" content="盲人輔助導航系統 - 即時障礙物檢測" />
   <title>🧭 盲人輔助導航系統</title>
   
-  <!-- PWA 支持 -->
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>">
   
-  <!-- ONNX Runtime Web -->
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
   
   <style>
-    /* 保持原有的 CSS 樣式不變 */
     :root {
       --bg1: #0ea5e9;
       --bg2: #6366f1;
@@ -26,7 +23,6 @@
       --warn: #f59e0b;
       --bad: #ef4444;
       --muted: #cbd5e1;
-      --shadow: 0 10px 30px rgba(0,0,0,0.25);
     }
     
     * {
@@ -39,7 +35,7 @@
       margin: 0;
       padding: 0;
       overflow-x: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       color: var(--text);
       background: linear-gradient(135deg, var(--bg1), var(--bg2));
       touch-action: manipulation;
@@ -53,52 +49,20 @@
     .app {
       max-width: 100%;
       margin: 0 auto;
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: 12px;
-      grid-template-columns: 1fr;
-    }
-    
-    @media (min-width: 920px) {
-      .app {
-        grid-template-columns: 6fr 4fr;
-      }
     }
     
     .card {
       background: var(--glass);
       backdrop-filter: blur(12px);
       border-radius: 16px;
-      box-shadow: var(--shadow);
-      overflow: hidden;
+      padding: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
     }
     
-    header.card {
-      padding: 14px 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    
-    header h1 {
-      font-size: clamp(18px, 5vw, 24px);
-      margin: 0;
-      font-weight: 700;
-    }
-    
-    .tips {
-      font-size: 12px;
-      color: var(--muted);
-      display: none;
-    }
-    
-    @media (min-width: 768px) {
-      .tips {
-        display: block;
-      }
-    }
-    
-    .camera {
+    .camera-container {
       position: relative;
       width: 100%;
       aspect-ratio: 16/9;
@@ -107,7 +71,7 @@
       overflow: hidden;
     }
     
-    .camera video, .camera canvas {
+    .camera-container video, .camera-container canvas {
       position: absolute;
       top: 0;
       left: 0;
@@ -115,15 +79,6 @@
       height: 100%;
       object-fit: cover;
       border-radius: 12px;
-    }
-    
-    .camera video {
-      transform: scaleX(-1);
-      background: #000;
-    }
-    
-    .camera canvas {
-      z-index: 2;
     }
     
     .camera-preview {
@@ -141,10 +96,6 @@
       z-index: 5;
     }
     
-    .panel {
-      padding: 16px;
-    }
-    
     .controls {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -152,13 +103,7 @@
       margin-bottom: 15px;
     }
     
-    @media (min-width: 480px) {
-      .controls {
-        grid-template-columns: repeat(4, 1fr);
-      }
-    }
-    
-    button.btn {
+    button {
       padding: 16px 12px;
       border: none;
       border-radius: 14px;
@@ -170,41 +115,30 @@
       user-select: none;
     }
     
-    button.btn:active {
+    button:active {
       transform: translateY(2px) scale(0.98);
     }
     
-    .primary {
+    .btn-primary {
       background: var(--good);
       color: #fff;
     }
     
-    .warning {
-      background: var(--warn);
-      color: #fff;
-    }
-    
-    .danger {
+    .btn-danger {
       background: var(--bad);
       color: #fff;
     }
     
-    .secondary {
+    .btn-secondary {
       background: var(--glass-strong);
       color: var(--text);
     }
     
-    .status {
+    .status-grid {
       display: grid;
-      gap: 8px;
       grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
       margin-bottom: 12px;
-    }
-    
-    @media (min-width: 480px) {
-      .status {
-        grid-template-columns: repeat(4, 1fr);
-      }
     }
     
     .status-item {
@@ -214,19 +148,18 @@
       text-align: center;
     }
     
-    .status-item .k {
+    .status-label {
       font-size: 11px;
       color: var(--muted);
       margin-bottom: 4px;
     }
     
-    .status-item .v {
+    .status-value {
       font-weight: 800;
-      font-size: clamp(14px, 4vw, 16px);
+      font-size: 16px;
     }
     
     .voice-alert {
-      margin: 12px 0;
       background: rgba(239,68,68,0.15);
       border: 1px solid rgba(239,68,68,0.35);
       color: #fff;
@@ -238,159 +171,22 @@
       align-items: center;
       justify-content: center;
       font-weight: 600;
-      line-height: 1.4;
+      margin-bottom: 15px;
     }
     
-    .list {
+    .detection-list {
       max-height: 200px;
       overflow-y: auto;
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: 6px;
-      padding-right: 4px;
-      -webkit-overflow-scrolling: touch;
     }
     
-    .chip {
+    .detection-item {
       background: var(--glass-strong);
       padding: 10px;
       border-radius: 10px;
       font-size: 13px;
-      line-height: 1.4;
-    }
-    
-    footer {
-      text-align: center;
-      font-size: 11px;
-      color: var(--muted);
-      padding: 8px;
-      margin-top: 10px;
-    }
-    
-    .module-tag {
-      display: inline-block;
-      background: var(--warn);
-      color: white;
-      padding: 3px 10px;
-      border-radius: 12px;
-      font-size: 10px;
-      margin-left: 8px;
-      font-weight: 600;
-    }
-    
-    .gps-active {
-      background: var(--good) !important;
-    }
-    
-    .emergency-alert {
-      animation: pulse 1s infinite;
-      border: 2px solid var(--bad);
-    }
-    
-    .loading {
-      background: linear-gradient(90deg, var(--bg1), var(--bg2), var(--bg1));
-      background-size: 200% 100%;
-      animation: loading 2s infinite;
-    }
-    
-    .obstacle-warning {
-      background: rgba(245,158,11,0.3);
-      border: 2px solid var(--warn);
-    }
-    
-    .danger-warning {
-      background: rgba(239,68,68,0.3);
-      border: 2px solid var(--bad);
-    }
-    
-    @keyframes pulse {
-      0% {
-        opacity: 1;
-      }
-      50% {
-        opacity: 0.7;
-      }
-      100% {
-        opacity: 1;
-      }
-    }
-    
-    @keyframes loading {
-      0% {
-        background-position: 200% 0;
-      }
-      100% {
-        background-position: -200% 0;
-      }
-    }
-    
-    /* 手機優化 */
-    @media (max-width: 480px) {
-      body {
-        padding: 8px;
-      }
-      
-      .panel {
-        padding: 12px;
-      }
-      
-      button.btn {
-        padding: 14px 10px;
-        font-size: 13px;
-        min-height: 50px;
-      }
-      
-      .status-item {
-        padding: 10px;
-      }
-      
-      .voice-alert {
-        padding: 14px;
-        min-height: 55px;
-        font-size: 14px;
-      }
-    }
-    
-    /* 防止文字選擇 */
-    .no-select {
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
-      user-select: none;
-    }
-
-    /* 檢測框樣式 */
-    .detection-box {
-      position: absolute;
-      border: 3px solid;
-      border-radius: 8px;
-      background: rgba(0,0,0,0.3);
-      pointer-events: none;
-      z-index: 10;
-    }
-    
-    .detection-label {
-      position: absolute;
-      background: inherit;
-      color: white;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: bold;
-      white-space: nowrap;
-      pointer-events: none;
-      z-index: 11;
-    }
-    
-    .camera-info {
-      position: absolute;
-      bottom: 10px;
-      left: 10px;
-      background: rgba(0,0,0,0.7);
-      color: white;
-      padding: 5px 10px;
-      border-radius: 5px;
-      font-size: 12px;
-      z-index: 10;
     }
     
     .debug-info {
@@ -401,347 +197,139 @@
       font-size: 12px;
       margin-top: 8px;
       font-family: monospace;
-    }
-
-    .progress-container {
-      width: 100%;
-      height: 6px;
-      background: var(--glass-strong);
-      border-radius: 3px;
-      margin: 10px 0;
-      overflow: hidden;
-    }
-    
-    .progress-bar {
-      height: 100%;
-      background: var(--good);
-      border-radius: 3px;
-      transition: width 0.3s ease;
-      width: 0%;
+      display: none;
     }
   </style>
 </head>
-<body class="no-select">
+<body>
   <div class="app">
-    <header class="card">
-      <h1>🧭 盲人輔助導航</h1>
-      <div class="tips">安全出行 · 障礙檢測 · GPS導航</div>
-    </header>
+    <!-- 標題 -->
+    <div class="card">
+      <h1 style="margin:0; text-align:center;">🧭 盲人輔助導航</h1>
+    </div>
 
-    <section class="card camera">
-      <div id="cameraPreview" class="camera-preview">
-        點擊「開啟相機」開始使用
+    <!-- 相機畫面 -->
+    <div class="card">
+      <div class="camera-container">
+        <div id="cameraPreview" class="camera-preview">
+          點擊「開啟相機」開始使用
+        </div>
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
       </div>
-      <video id="video" autoplay playsinline muted></video>
-      <canvas id="canvas"></canvas>
-      <div id="cameraInfo" class="camera-info"></div>
-      <div id="detectionContainer"></div>
-    </section>
+    </div>
 
-    <section class="card panel">
+    <!-- 控制面板 -->
+    <div class="card">
       <div id="voiceAlert" class="voice-alert">系統準備中…</div>
       
-      <!-- 模型載入進度 -->
-      <div id="progressContainer" class="progress-container" style="display: none;">
-        <div id="progressBar" class="progress-bar"></div>
-      </div>
-      
-      <!-- 相機控制按鈕 -->
       <div class="controls">
-        <button id="btnCamera" class="btn primary">開啟相機</button>
-        <button id="btnStart" class="btn primary" disabled>開始檢測</button>
-        <button id="btnVoice" class="btn secondary">語音關閉</button>
-        <button id="btnStop" class="btn danger">停止</button>
-      </div>
-      
-      <!-- 檢測控制 -->
-      <div class="controls">
-        <button id="btnMirror" class="btn secondary">關閉鏡像</button>
-        <button id="btnDebug" class="btn secondary">顯示檢測框</button>
-        <button id="btnSwitchCamera" class="btn secondary">切換鏡頭</button>
-        <button id="btnTestDetection" class="btn primary" disabled>測試檢測</button>
+        <button id="btnCamera" class="btn-primary">開啟相機</button>
+        <button id="btnStart" class="btn-primary" disabled>開始檢測</button>
+        <button id="btnTest" class="btn-secondary" disabled>測試檢測</button>
+        <button id="btnStop" class="btn-danger">停止</button>
       </div>
 
-      <!-- 狀態資訊 -->
-      <div class="status">
+      <div class="status-grid">
         <div class="status-item">
-          <div class="k">系統狀態</div>
-          <div class="v" id="status">準備中</div>
+          <div class="status-label">系統狀態</div>
+          <div class="status-value" id="status">準備中</div>
         </div>
         <div class="status-item">
-          <div class="k">模型狀態</div>
-          <div class="v" id="modelStatus">載入中</div>
+          <div class="status-label">模型狀態</div>
+          <div class="status-value" id="modelStatus">載入中</div>
         </div>
         <div class="status-item">
-          <div class="k">相機狀態</div>
-          <div class="v" id="cameraStatus">未開啟</div>
+          <div class="status-label">相機狀態</div>
+          <div class="status-value" id="cameraStatus">未開啟</div>
         </div>
         <div class="status-item">
-          <div class="k">檢測狀態</div>
-          <div class="v" id="detectionStatus">未開始</div>
-        </div>
-      </div>
-      
-      <div class="status">
-        <div class="status-item">
-          <div class="k">檢測框數</div>
-          <div class="v" id="boxCount">0</div>
-        </div>
-        <div class="status-item">
-          <div class="k">最高置信度</div>
-          <div class="v" id="maxConfidence">0%</div>
-        </div>
-        <div class="status-item">
-          <div class="k">當前環境</div>
-          <div class="v" id="currentModule">戶外</div>
-        </div>
-        <div class="status-item">
-          <div class="k">語音狀態</div>
-          <div class="v" id="voiceStatus">開啟</div>
+          <div class="status-label">檢測狀態</div>
+          <div class="status-value" id="detectionStatus">未開始</div>
         </div>
       </div>
 
-      <!-- 調試信息 -->
       <div id="debugInfo" class="debug-info"></div>
-    </section>
+    </div>
 
-    <aside class="card panel">
-      <h3 style="margin:0 0 12px 0; font-size:16px;">
-        即時偵測 <span id="activeModuleTag" class="module-tag">戶外模式</span>
-      </h3>
-      <div id="detectionList" class="list">
-        <div class="chip" style="text-align:center; color:var(--muted);">
-          等待開啟相機…
+    <!-- 檢測結果 -->
+    <div class="card">
+      <h3 style="margin:0 0 12px 0;">即時偵測結果</h3>
+      <div id="detectionList" class="detection-list">
+        <div class="detection-item" style="text-align:center; color:var(--muted);">
+          等待開始偵測…
         </div>
       </div>
-      <footer>
-        專為視障朋友設計 · 安全出行伴侶<br>
-        請在光線充足環境使用以獲得最佳效果
-      </footer>
-    </aside>
+    </div>
   </div>
 
   <script>
-    /**********************
-     * 1) 參數區 - 修復版本
-     **********************/
-    // 多個模型來源，優先使用可靠的
-    const MODEL_SOURCES = [
-      // 主要：公開 CDN
-      'https://cdn.jsdelivr.net/gh/ultralytics/assets@main/yolov8n.onnx',
-      // 備用：你的 GitHub
-      'https://raw.githubusercontent.com/wangsc2631/wangsc2631.github.io/main/yolov8n.onnx',
-      // 最後：本地
-      'yolov8n.onnx'
-    ];
-
+    // 簡單的模型配置
+    const MODEL_URL = 'https://cdn.jsdelivr.net/gh/ultralytics/assets@main/yolov8n.onnx';
     const INPUT_SIZE = 640;
-    let SCORE_THRESHOLD = 0.25;
-    const IOU_THR = 0.45;
-    const TARGET_FPS = 10;
-
-    // COCO80 類別
-    const coco80 = [
-      'person','bicycle','car','motorcycle','airplane','bus','train','truck','boat','traffic light',
-      'fire hydrant','stop sign','parking meter','bench','bird','cat','dog','horse','sheep','cow',
-      'elephant','bear','zebra','giraffe','backpack','umbrella','handbag','tie','suitcase','frisbee',
-      'skis','snowboard','sports ball','kite','baseball bat','baseball glove','skateboard','surfboard','tennis racket','bottle',
-      'wine glass','cup','fork','knife','spoon','bowl','banana','apple','sandwich','orange',
-      'broccoli','carrot','hot dog','pizza','donut','cake','chair','couch','potted plant','bed',
-      'dining table','toilet','tv','laptop','mouse','remote','keyboard','cell phone','microwave','oven',
-      'toaster','sink','refrigerator','book','clock','vase','scissors','teddy bear','hair drier','toothbrush'
+    
+    // COCO 類別名稱
+    const CLASS_NAMES = [
+      'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
+      'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
+      'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+      'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+      'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+      'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+      'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
+      'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse',
+      'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator',
+      'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
     ];
 
-    const environmentModules = {
-      outdoor: {
-        name: '戶外導航',
-        objects: {
-          'person': { name: '行人', danger: 'medium', voice: '前方有行人' },
-          'car': { name: '汽車', danger: 'high', voice: '前方有汽車' },
-          'motorcycle': { name: '摩托車', danger: 'high', voice: '注意摩托車' },
-          'bicycle': { name: '腳踏車', danger: 'medium', voice: '前方有腳踏車' },
-          'bus': { name: '公車', danger: 'high', voice: '警告！公車' },
-          'truck': { name: '卡車', danger: 'high', voice: '警告！卡車' }
-        },
-        // 修正：使用 filterOut 來排除容易誤判的類別
-        filterOut: ['cat', 'dog', 'bird', 'bottle', 'cup', 'book', 'laptop', 'cell phone']
-      },
-      indoor: {
-        name: '室內環境',
-        objects: {
-          'person': { name: '人員', danger: 'medium', voice: '前方有人員' },
-          'chair': { name: '椅子', danger: 'medium', voice: '前方有椅子' },
-          'couch': { name: '沙發', danger: 'medium', voice: '前方有沙發' },
-          'bed': { name: '床', danger: 'medium', voice: '前方有床' },
-          'dining table': { name: '餐桌', danger: 'medium', voice: '前方有餐桌' }
-        },
-        filterOut: ['cat', 'dog', 'bird', 'bottle', 'cup', 'book', 'laptop', 'cell phone']
-      }
-    };
-
-    /**********************
-     * 2) 狀態變數
-     **********************/
+    // 狀態變數
     let session = null;
     let isDetecting = false;
-    let voiceEnabled = true;
-    let isMirrored = true;
-    let showDetectionBoxes = true;
-    let currentEnvironment = 'outdoor';
     let currentStream = null;
-    let usingFrontCamera = false;
     let detectionInterval = null;
-    let lastSpeechTime = 0;
-    const SPEECH_COOLDOWN = 3000; // 3秒冷卻
 
-    /**********************
-     * 3) 模型載入 - 修復版本
-     **********************/
-    async function initModel() {
+    // 初始化
+    async function init() {
       try {
-        updateVoice('正在初始化 ONNX Runtime…');
-        updateStatus('初始化中');
-        updateModelStatus('開始載入');
+        updateStatus('載入模型中');
+        updateVoice('正在載入 AI 模型…');
         
-        ort.env.wasm.numThreads = 1;
-        ort.env.wasm.proxy = false;
+        // 載入 ONNX 模型
+        session = await ort.InferenceSession.create(MODEL_URL, {
+          executionProviders: ['wasm']
+        });
         
-        // 顯示進度條
-        const progressContainer = document.getElementById('progressContainer');
-        const progressBar = document.getElementById('progressBar');
-        progressContainer.style.display = 'block';
+        console.log('✅ 模型載入成功');
+        console.log('輸入:', session.inputNames);
+        console.log('輸出:', session.outputNames);
         
-        let modelLoaded = false;
-        let lastError = null;
-        
-        for (let i = 0; i < MODEL_SOURCES.length; i++) {
-          try {
-            const modelUrl = MODEL_SOURCES[i];
-            updateVoice(`嘗試載入模型來源 ${i + 1}/${MODEL_SOURCES.length}`);
-            updateModelStatus(`嘗試來源 ${i + 1}`);
-            progressBar.style.width = `${(i / MODEL_SOURCES.length) * 100}%`;
-            
-            console.log('嘗試載入模型:', modelUrl);
-            
-            const cacheBuster = `?t=${Date.now()}`;
-            session = await ort.InferenceSession.create(modelUrl + cacheBuster, {
-              executionProviders: ['wasm'],
-              graphOptimizationLevel: 'all'
-            });
-            
-            modelLoaded = true;
-            progressBar.style.width = '100%';
-            progressBar.style.background = 'var(--good)';
-            
-            console.log('✅ 模型載入成功！來源:', modelUrl);
-            console.log('模型輸入:', session.inputNames);
-            console.log('模型輸出:', session.outputNames);
-            
-            break;
-            
-          } catch (error) {
-            console.warn('❌ 模型載入錯誤:', error.message);
-            lastError = error;
-            continue;
-          }
-        }
-        
-        progressContainer.style.display = 'none';
-        
-        if (!modelLoaded) {
-          throw new Error(`所有模型來源都失敗。最後錯誤: ${lastError?.message}`);
-        }
-        
-        // 測試模型推理
-        await testModelInference();
+        updateModelStatus('載入成功');
+        updateStatus('準備就緒');
+        updateVoice('AI 模型載入成功！請開啟相機開始使用');
         
         initEventListeners();
-        updateStatus('準備就緒');
-        updateModelStatus('載入成功');
-        updateVoice('AI 模型載入成功！請先開啟相機');
         
       } catch (error) {
-        console.error('模型載入最終錯誤:', error);
-        handleModelLoadError(error);
+        console.error('❌ 模型載入失敗:', error);
+        updateModelStatus('載入失敗');
+        updateVoice('模型載入失敗，請檢查網路連接');
       }
-    }
-
-    async function testModelInference() {
-      if (!session) {
-        console.log('❌ 模型未載入，無法測試');
-        return;
-      }
-      
-      try {
-        console.log('開始模型推理測試...');
-        
-        // 創建測試張量
-        const testData = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE).fill(0.5);
-        const testTensor = new ort.Tensor('float32', testData, [1, 3, INPUT_SIZE, INPUT_SIZE]);
-        const feeds = { [session.inputNames[0]]: testTensor };
-        
-        // 執行推理
-        const results = await session.run(feeds);
-        const output = results[session.outputNames[0]];
-        
-        console.log('✅ 模型推理測試成功');
-        console.log('輸出形狀:', output.dims);
-        console.log('輸出數據長度:', output.data.length);
-        
-        updateModelStatus('測試通過');
-        
-      } catch (error) {
-        console.error('❌ 模型推理測試失敗:', error);
-        updateModelStatus('測試失敗');
-      }
-    }
-
-    function handleModelLoadError(error) {
-      updateVoice('模型載入失敗，請檢查網路連接');
-      updateStatus('載入失敗');
-      updateModelStatus('失敗');
-      
-      const progressContainer = document.getElementById('progressContainer');
-      progressContainer.style.display = 'none';
-      
-      let errorDetails = '模型載入失敗詳細信息:\n';
-      
-      if (error.message.includes('Failed to fetch')) {
-        errorDetails += '1. 網路連接問題\n';
-        errorDetails += '2. 模型URL不可訪問\n';
-      } else if (error.message.includes('CORS')) {
-        errorDetails += '跨域訪問被阻止\n';
-      } else {
-        errorDetails += error.message;
-      }
-      
-      console.error(errorDetails);
     }
 
     function initEventListeners() {
       document.getElementById('btnCamera').addEventListener('click', setupCamera);
       document.getElementById('btnStart').addEventListener('click', startDetection);
+      document.getElementById('btnTest').addEventListener('click', testDetection);
       document.getElementById('btnStop').addEventListener('click', stopDetection);
-      document.getElementById('btnVoice').addEventListener('click', toggleVoice);
-      document.getElementById('btnMirror').addEventListener('click', toggleMirror);
-      document.getElementById('btnDebug').addEventListener('click', toggleDetectionBoxes);
-      document.getElementById('btnSwitchCamera').addEventListener('click', switchCamera);
-      document.getElementById('btnTestDetection').addEventListener('click', testSingleDetection);
     }
 
-    function updateModelStatus(status) {
-      document.getElementById('modelStatus').textContent = status;
-    }
-
-    /**********************
-     * 4) 攝像頭控制
-     **********************/
+    // 相機設置
     async function setupCamera() {
       try {
-        updateVoice('正在請求相機權限…');
-        updateCameraStatus('請求權限中');
+        updateVoice('正在開啟相機…');
+        updateCameraStatus('開啟中');
         
-        // 停止之前的 stream
+        // 停止之前的串流
         if (currentStream) {
           currentStream.getTracks().forEach(track => track.stop());
         }
@@ -749,132 +337,49 @@
         const video = document.getElementById('video');
         const preview = document.getElementById('cameraPreview');
         
-        // 簡單的相機配置
-        const constraints = {
+        // 請求相機權限
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             width: { ideal: 640 },
             height: { ideal: 480 },
-            facingMode: usingFrontCamera ? 'user' : 'environment'
+            facingMode: 'environment'
           },
           audio: false
-        };
+        });
         
-        console.log('嘗試相機配置:', constraints);
-        
-        // 請求相機權限
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         currentStream = stream;
         video.srcObject = stream;
         
-        // 等待視頻準備好
-        await new Promise((resolve, reject) => {
-          video.onloadedmetadata = () => {
-            console.log('✅ 相機準備完成:', video.videoWidth, 'x', video.videoHeight);
-            resolve(video);
-          };
-          video.onerror = reject;
+        // 等待影片載入
+        await new Promise((resolve) => {
+          video.onloadedmetadata = () => resolve(video);
         });
         
-        // 開始播放視頻
         await video.play();
         
         // 隱藏預覽畫面
         preview.style.display = 'none';
         
-        // 更新鏡像效果
-        updateMirrorEffect();
-        
-        // 更新相機信息
-        updateCameraInfo();
-        
-        // 啟用開始檢測按鈕
+        // 啟用按鈕
         document.getElementById('btnStart').disabled = false;
-        document.getElementById('btnTestDetection').disabled = false;
+        document.getElementById('btnTest').disabled = false;
         
         updateCameraStatus('已開啟');
-        updateVoice('相機開啟成功！現在可以開始檢測');
+        updateVoice('相機開啟成功！可以開始檢測');
         
-        console.log('🎥 相機成功開啟');
-        return video;
+        console.log('🎥 相機開啟成功');
         
       } catch (error) {
-        console.error('❌ 相機錯誤:', error);
-        handleCameraError(error);
-        return null;
+        console.error('❌ 相機開啟失敗:', error);
+        updateCameraStatus('開啟失敗');
+        updateVoice('無法開啟相機，請檢查權限設定');
       }
     }
 
-    function handleCameraError(error) {
-      const preview = document.getElementById('cameraPreview');
-      let errorMessage = '無法開啟相機：';
-      
-      switch(error.name) {
-        case 'NotAllowedError':
-          errorMessage += '請允許相機權限，然後刷新頁面';
-          break;
-        case 'NotFoundError':
-          errorMessage += '未找到相機設備';
-          break;
-        default:
-          errorMessage += error.message;
-      }
-      
-      preview.innerHTML = `
-        <div style="text-align: center;">
-          <div style="font-size: 48px; margin-bottom: 10px;">📷</div>
-          <div>${errorMessage}</div>
-          <button onclick="retryCamera()" style="margin-top: 10px; padding: 8px 16px; background: var(--good); color: white; border: none; border-radius: 8px;">
-            重試
-          </button>
-        </div>
-      `;
-      
-      updateCameraStatus('開啟失敗');
-      updateVoice('相機開啟失敗，請檢查權限');
-    }
-
-    function retryCamera() {
-      setupCamera();
-    }
-
-    async function switchCamera() {
-      usingFrontCamera = !usingFrontCamera;
-      updateVoice(usingFrontCamera ? '切換到前置鏡頭' : '切換到後置鏡頭');
-      await setupCamera();
-    }
-
-    function updateCameraInfo() {
-      const video = document.getElementById('video');
-      const info = document.getElementById('cameraInfo');
-      
-      if (video.videoWidth && video.videoHeight) {
-        info.textContent = `${video.videoWidth}×${video.videoHeight} ${usingFrontCamera ? '前置' : '後置'}`;
-      }
-    }
-
-    function updateCameraStatus(status) {
-      document.getElementById('cameraStatus').textContent = status;
-    }
-
-    function toggleMirror() {
-      isMirrored = !isMirrored;
-      const button = document.getElementById('btnMirror');
-      button.textContent = isMirrored ? '關閉鏡像' : '開啟鏡像';
-      updateMirrorEffect();
-    }
-
-    function updateMirrorEffect() {
-      const video = document.getElementById('video');
-      // 只有前置鏡頭才需要鏡像
-      video.style.transform = (isMirrored && usingFrontCamera) ? 'scaleX(-1)' : 'scaleX(1)';
-    }
-
-    /**********************
-     * 5) 檢測功能 - 修復版本
-     **********************/
-    async function startDetection() {
+    // 開始檢測
+    function startDetection() {
       if (!session) {
-        updateVoice('模型尚未載入完成');
+        updateVoice('模型尚未載入');
         return;
       }
       
@@ -889,42 +394,23 @@
       updateDetectionStatus('運行中');
       updateVoice('開始障礙物檢測');
       
-      // 使用 setInterval 而不是 requestAnimationFrame，避免衝突
+      // 開始檢測循環
       detectionInterval = setInterval(async () => {
         if (!isDetecting) return;
         
         try {
-          const frameW = video.videoWidth;
-          const frameH = video.videoHeight;
-          const { predictions } = await runOnce(video, frameW, frameH);
-          
-          updateDebugInfo(`檢測到 ${predictions.length} 個物體`);
-          processPredictions(predictions, frameW, frameH);
-          updateDetectionBoxes(predictions, frameW, frameH);
-          updateStats(predictions);
+          const predictions = await detectObjects(video);
+          updateDetectionDisplay(predictions);
         } catch (error) {
           console.error('檢測錯誤:', error);
-          updateDebugInfo(`檢測錯誤: ${error.message}`);
         }
-      }, 1000 / TARGET_FPS);
+      }, 1000); // 每秒檢測一次
     }
 
-    function stopDetection() {
-      isDetecting = false;
-      if (detectionInterval) {
-        clearInterval(detectionInterval);
-        detectionInterval = null;
-      }
-      updateStatus('已停止');
-      updateDetectionStatus('已停止');
-      clearDetectionBoxes();
-      updateVoice('檢測已停止');
-    }
-
-    // 單次測試檢測
-    async function testSingleDetection() {
+    // 測試檢測
+    async function testDetection() {
       if (!session) {
-        updateVoice('模型尚未載入完成');
+        updateVoice('模型尚未載入');
         return;
       }
       
@@ -934,350 +420,196 @@
         return;
       }
       
-      updateVoice('執行單次檢測測試');
+      updateVoice('執行測試檢測');
       
       try {
-        const frameW = video.videoWidth;
-        const frameH = video.videoHeight;
-        const { predictions } = await runOnce(video, frameW, frameH);
-        updateDebugInfo(`測試檢測: ${predictions.length} 個物體`);
-        
+        const predictions = await detectObjects(video);
         if (predictions.length > 0) {
-          const objects = predictions.map(p => p.class).join(', ');
-          updateVoice(`測試成功！檢測到: ${objects}`);
+          updateVoice(`測試成功！檢測到 ${predictions.length} 個物體`);
         } else {
           updateVoice('測試完成，未檢測到物體');
         }
-        
-        processPredictions(predictions, frameW, frameH);
-        updateDetectionBoxes(predictions, frameW, frameH);
-        updateStats(predictions);
-        
+        updateDetectionDisplay(predictions);
       } catch (error) {
         console.error('測試檢測錯誤:', error);
         updateVoice('檢測測試失敗');
       }
     }
 
-    /**********************
-     * 6) YOLO 推理 - 修復版本
-     **********************/
-    async function runOnce(video, frameW, frameH) {
+    // 停止檢測
+    function stopDetection() {
+      isDetecting = false;
+      if (detectionInterval) {
+        clearInterval(detectionInterval);
+      }
+      updateStatus('已停止');
+      updateDetectionStatus('已停止');
+      updateVoice('檢測已停止');
+      clearDetectionDisplay();
+    }
+
+    // 物件檢測主函數
+    async function detectObjects(video) {
       try {
-        const frame = captureFrame(video);
-        const predictions = await inference(frame, frameW, frameH);
-        return { predictions };
+        // 1. 擷取畫面
+        const imageData = captureFrame(video);
+        
+        // 2. 預處理
+        const inputTensor = preprocess(imageData);
+        
+        // 3. 模型推理
+        const feeds = { [session.inputNames[0]]: inputTensor };
+        const results = await session.run(feeds);
+        
+        // 4. 後處理
+        const predictions = postprocess(results, video.videoWidth, video.videoHeight);
+        
+        console.log(`檢測到 ${predictions.length} 個物體:`, predictions);
+        return predictions;
+        
       } catch (error) {
-        console.error('推理錯誤:', error);
-        return { predictions: [] };
+        console.error('檢測過程錯誤:', error);
+        return [];
       }
     }
 
+    // 擷取畫面
     function captureFrame(video) {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      const { videoWidth: w, videoHeight: h } = video;
       
       canvas.width = INPUT_SIZE;
       canvas.height = INPUT_SIZE;
       
-      // 直接繪製，不進行複雜計算
+      // 繪製影片畫面到 canvas
       ctx.drawImage(video, 0, 0, INPUT_SIZE, INPUT_SIZE);
       
       return ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
     }
 
-    async function inference(imageData, frameW, frameH) {
-      if (!session) {
-        throw new Error('模型未載入');
-      }
-      
-      const inferenceTensor = preprocess(imageData);
-      const feeds = { [session.inputNames[0]]: inferenceTensor };
-      const results = await session.run(feeds);
-      const predictions = postprocess(results, frameW, frameH);
-      return predictions;
-    }
-
+    // 預處理
     function preprocess(imageData) {
       const { data } = imageData;
       const input = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
       
-      // 正確的預處理：RGB 順序，0-1 歸一化
+      // 簡單的 RGB 歸一化
       for (let i = 0; i < data.length; i += 4) {
         const pixelIndex = Math.floor(i / 4);
-        const r = data[i] / 255.0;
-        const g = data[i + 1] / 255.0;
-        const b = data[i + 2] / 255.0;
-        
-        // YOLO 通常使用 RGB 順序
-        input[pixelIndex] = r;
-        input[INPUT_SIZE * INPUT_SIZE + pixelIndex] = g;
-        input[2 * INPUT_SIZE * INPUT_SIZE + pixelIndex] = b;
+        input[pixelIndex] = data[i] / 255.0;         // R
+        input[INPUT_SIZE * INPUT_SIZE + pixelIndex] = data[i + 1] / 255.0; // G
+        input[2 * INPUT_SIZE * INPUT_SIZE + pixelIndex] = data[i + 2] / 255.0; // B
       }
       
       return new ort.Tensor('float32', input, [1, 3, INPUT_SIZE, INPUT_SIZE]);
     }
 
-    function postprocess(results, frameW, frameH) {
+    // 後處理
+    function postprocess(results, frameWidth, frameHeight) {
       const output = results[session.outputNames[0]];
-      const predictions = [];
       const outputData = output.data;
-      const outputDims = output.dims;
+      const predictions = [];
       
       // YOLOv8 輸出格式: [1, 84, 8400]
-      const numBoxes = outputDims[2]; // 8400
-      const numClasses = outputDims[1] - 4; // 84 - 4 = 80
+      const numBoxes = output.dims[2]; // 8400
+      const numClasses = output.dims[1] - 4; // 84 - 4 = 80
       
       for (let i = 0; i < numBoxes; i++) {
-        const offset = i * outputDims[1];
-        const xCenter = outputData[offset];
-        const yCenter = outputData[offset + 1];
+        const offset = i * output.dims[1];
+        
+        // 獲取邊界框資訊
+        const x = outputData[offset];
+        const y = outputData[offset + 1];
         const w = outputData[offset + 2];
         const h = outputData[offset + 3];
         
         // 獲取類別分數
-        const classScores = [];
+        let maxScore = 0;
+        let classId = -1;
+        
         for (let j = 0; j < numClasses; j++) {
-          classScores.push(outputData[offset + 4 + j]);
+          const score = outputData[offset + 4 + j];
+          if (score > maxScore) {
+            maxScore = score;
+            classId = j;
+          }
         }
         
-        const maxScore = Math.max(...classScores);
-        const classId = classScores.indexOf(maxScore);
+        // 過濾低分數檢測
+        if (maxScore < 0.25 || classId === -1) continue;
         
-        if (maxScore < SCORE_THRESHOLD) continue;
-        if (classId >= coco80.length) continue;
+        // 轉換為像素坐標
+        const x1 = (x - w / 2) * frameWidth;
+        const y1 = (y - h / 2) * frameHeight;
+        const width = w * frameWidth;
+        const height = h * frameHeight;
         
-        // 正確的坐標轉換：中心點轉為左上角，並縮放到原始影像尺寸
-        const x = (xCenter - w / 2) * frameW;
-        const y = (yCenter - h / 2) * frameH;
-        const width = w * frameW;
-        const height = h * frameH;
-        
-        // 確保邊界框在畫面內
-        const clampedX = Math.max(0, x);
-        const clampedY = Math.max(0, y);
-        const clampedWidth = Math.min(frameW - clampedX, width);
-        const clampedHeight = Math.min(frameH - clampedY, height);
-        
-        if (clampedWidth <= 0 || clampedHeight <= 0) continue;
-        
-        const distance = estimateDistance(clampedWidth, clampedHeight, classId);
+        // 估算距離
+        const distance = estimateDistance(width, height, classId);
         
         predictions.push({
-          class: coco80[classId],
+          class: CLASS_NAMES[classId],
           score: maxScore,
-          bbox: [clampedX, clampedY, clampedWidth, clampedHeight],
+          bbox: [x1, y1, width, height],
           distance: distance
         });
       }
       
-      return nonMaxSuppression(predictions, IOU_THR);
+      return predictions;
     }
 
+    // 估算距離
     function estimateDistance(width, height, classId) {
-      const className = coco80[classId];
-      const pixelArea = width * height;
-      const referenceSizes = {
-        'person': 15000, 'car': 80000, 'chair': 12000,
-        'bicycle': 20000, 'motorcycle': 25000, 'bus': 100000, 'truck': 90000
+      const area = width * height;
+      const referenceAreas = {
+        'person': 15000,
+        'car': 80000,
+        'chair': 12000,
+        'bottle': 3000
       };
-      const refSize = referenceSizes[className] || 20000;
-      const distance = Math.sqrt(refSize / pixelArea) * 2;
-      return Math.min(distance, 20);
+      
+      const className = CLASS_NAMES[classId];
+      const refArea = referenceAreas[className] || 20000;
+      
+      return Math.sqrt(refArea / area) * 2;
     }
 
-    function nonMaxSuppression(predictions, iouThr) {
-      predictions.sort((a, b) => b.score - a.score);
-      const selected = [];
-      
-      while (predictions.length > 0) {
-        const current = predictions[0];
-        selected.push(current);
-        
-        predictions = predictions.filter(pred => {
-          const iou = calculateIOU(current.bbox, pred.bbox);
-          return iou < iouThr;
-        });
-      }
-      
-      return selected;
-    }
-
-    function calculateIOU(box1, box2) {
-      const [x1, y1, w1, h1] = box1;
-      const [x2, y2, w2, h2] = box2;
-      
-      const xi1 = Math.max(x1, x2);
-      const yi1 = Math.max(y1, y2);
-      const xi2 = Math.min(x1 + w1, x2 + w2);
-      const yi2 = Math.min(y1 + h1, y2 + h2);
-      
-      const interArea = Math.max(0, xi2 - xi1) * Math.max(0, yi2 - yi1);
-      const box1Area = w1 * h1;
-      const box2Area = w2 * h2;
-      
-      return interArea / (box1Area + box2Area - interArea);
-    }
-
-    /**********************
-     * 7) 視覺化和處理 - 修復版本
-     **********************/
-    function toggleDetectionBoxes() {
-      showDetectionBoxes = !showDetectionBoxes;
-      const button = document.getElementById('btnDebug');
-      button.textContent = showDetectionBoxes ? '隱藏檢測框' : '顯示檢測框';
-      if (!showDetectionBoxes) {
-        clearDetectionBoxes();
-      }
-    }
-
-    function createDetectionBox(prediction, videoWidth, videoHeight) {
-      const container = document.getElementById('detectionContainer');
-      const [x, y, w, h] = prediction.bbox;
-      
-      const box = document.createElement('div');
-      box.className = 'detection-box';
-      box.style.left = x + 'px';
-      box.style.top = y + 'px';
-      box.style.width = w + 'px';
-      box.style.height = h + 'px';
-      
-      const module = environmentModules[currentEnvironment];
-      const objConfig = module.objects[prediction.class];
-      let color = '#22c55e';
-      
-      if (objConfig) {
-        switch(objConfig.danger) {
-          case 'high': color = '#ef4444'; break;
-          case 'medium': color = '#f59e0b'; break;
-        }
-      } else {
-        color = '#6b7280'; // 灰色表示過濾掉的物體
-      }
-      
-      box.style.borderColor = color;
-      box.style.background = color.replace(')', ', 0.1)').replace('rgb', 'rgba');
-      
-      const label = document.createElement('div');
-      label.className = 'detection-label';
-      label.style.left = x + 'px';
-      label.style.top = (y - 25) + 'px';
-      label.style.background = color;
-      
-      const confidencePercent = (prediction.score * 100).toFixed(0);
-      label.textContent = `${objConfig ? objConfig.name : prediction.class} ${confidencePercent}%`;
-      
-      container.appendChild(box);
-      container.appendChild(label);
-    }
-
-    function clearDetectionBoxes() {
-      const container = document.getElementById('detectionContainer');
-      container.innerHTML = '';
-    }
-
-    function updateDetectionBoxes(predictions, videoWidth, videoHeight) {
-      clearDetectionBoxes();
-      
-      if (!showDetectionBoxes) return;
-      
-      predictions.forEach(prediction => {
-        createDetectionBox(prediction, videoWidth, videoHeight);
-      });
-    }
-
-    function processPredictions(predictions, frameW, frameH) {
-      const module = environmentModules[currentEnvironment];
-      
-      // 修正篩選邏輯：只顯示相關且不在過濾列表中的物體
-      const relevantPredictions = predictions.filter(p => {
-        const isRelevant = module.objects[p.class];
-        const isFilteredOut = module.filterOut.includes(p.class);
-        return isRelevant && !isFilteredOut && p.score > SCORE_THRESHOLD;
-      });
-      
-      document.getElementById('obstacleCount').textContent = relevantPredictions.length;
-      document.getElementById('boxCount').textContent = predictions.length;
-      
-      let closestDistance = Infinity;
-      let closestObject = null;
-      
-      relevantPredictions.forEach(pred => {
-        if (pred.distance < closestDistance) {
-          closestDistance = pred.distance;
-          closestObject = pred;
-        }
-      });
-      
-      const distanceElement = document.getElementById('closestDistance');
-      if (closestObject) {
-        distanceElement.textContent = closestDistance.toFixed(1) + ' 公尺';
-        
-        if (closestDistance < 1.5) {
-          distanceElement.parentElement.classList.add('danger-warning');
-          // 語音警告（帶冷卻時間）
-          const now = Date.now();
-          if (now - lastSpeechTime > SPEECH_COOLDOWN) {
-            const objConfig = module.objects[closestObject.class];
-            updateVoice(`緊急！${objConfig.name}非常接近，僅${closestDistance.toFixed(1)}公尺`);
-            lastSpeechTime = now;
-          }
-        } else if (closestDistance < 3) {
-          distanceElement.parentElement.classList.add('obstacle-warning');
-        } else {
-          distanceElement.parentElement.classList.remove('obstacle-warning', 'danger-warning');
-        }
-      } else {
-        distanceElement.textContent = '— 公尺';
-        distanceElement.parentElement.classList.remove('obstacle-warning', 'danger-warning');
-      }
-      
-      updateDetectionList(relevantPredictions);
-    }
-
-    function updateDetectionList(predictions) {
+    // 更新檢測顯示
+    function updateDetectionDisplay(predictions) {
       const list = document.getElementById('detectionList');
-      const module = environmentModules[currentEnvironment];
       
       if (predictions.length === 0) {
-        list.innerHTML = '<div class="chip" style="text-align:center; color:var(--muted);">未偵測到障礙物</div>';
+        list.innerHTML = '<div class="detection-item" style="text-align:center; color:var(--muted);">未偵測到障礙物</div>';
         return;
       }
       
+      // 按距離排序
       predictions.sort((a, b) => a.distance - b.distance);
       
-      list.innerHTML = predictions.map(pred => {
-        const objConfig = module.objects[pred.class];
-        const dangerLevel = objConfig ? objConfig.danger : 'low';
-        const dangerColors = {
-          'high': 'var(--bad)', 'medium': 'var(--warn)', 'low': 'var(--good)'
-        };
-        
-        return `
-          <div class="chip" style="border-left: 4px solid ${dangerColors[dangerLevel]}">
-            <strong>${objConfig ? objConfig.name : pred.class}</strong><br>
-            距離: ${pred.distance.toFixed(1)}公尺 | 置信度: ${(pred.score * 100).toFixed(0)}%
-          </div>
-        `;
-      }).join('');
+      list.innerHTML = predictions.map(pred => `
+        <div class="detection-item">
+          <strong>${pred.class}</strong><br>
+          距離: ${pred.distance.toFixed(1)}公尺 | 置信度: ${(pred.score * 100).toFixed(0)}%
+        </div>
+      `).join('');
+      
+      // 語音提示最近的物體
+      const closest = predictions[0];
+      if (closest.distance < 2) {
+        updateVoice(`警告！${closest.class}非常接近，僅${closest.distance.toFixed(1)}公尺`);
+      }
     }
 
-    function updateStats(predictions) {
-      const maxConfidence = predictions.length > 0 ? 
-        Math.max(...predictions.map(p => p.score)) : 0;
-      document.getElementById('maxConfidence').textContent = 
-        (maxConfidence * 100).toFixed(0) + '%';
+    function clearDetectionDisplay() {
+      const list = document.getElementById('detectionList');
+      list.innerHTML = '<div class="detection-item" style="text-align:center; color:var(--muted);">檢測已停止</div>';
     }
 
-    /**********************
-     * 8) 工具函數
-     **********************/
+    // 工具函數
     function updateVoice(message) {
       const voiceAlert = document.getElementById('voiceAlert');
       voiceAlert.textContent = message;
       
-      if (voiceEnabled && window.speechSynthesis) {
+      if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(message);
         utterance.lang = 'zh-TW';
@@ -1290,40 +622,20 @@
       document.getElementById('status').textContent = status;
     }
 
+    function updateModelStatus(status) {
+      document.getElementById('modelStatus').textContent = status;
+    }
+
+    function updateCameraStatus(status) {
+      document.getElementById('cameraStatus').textContent = status;
+    }
+
     function updateDetectionStatus(status) {
       document.getElementById('detectionStatus').textContent = status;
     }
 
-    function updateDebugInfo(message) {
-      const debugElement = document.getElementById('debugInfo');
-      debugElement.textContent = `調試: ${message}`;
-      console.log(message);
-    }
-
-    function toggleVoice() {
-      voiceEnabled = !voiceEnabled;
-      const status = document.getElementById('voiceStatus');
-      const button = document.getElementById('btnVoice');
-      
-      if (voiceEnabled) {
-        status.textContent = '開啟';
-        button.textContent = '語音關閉';
-        updateVoice('語音提示已開啟');
-      } else {
-        status.textContent = '關閉';
-        button.textContent = '語音開啟';
-        window.speechSynthesis.cancel();
-      }
-    }
-
-    /**********************
-     * 9) 初始化
-     **********************/
-    window.addEventListener('DOMContentLoaded', () => {
-      updateStatus('初始化中');
-      updateVoice('盲人輔助導航系統啟動中...');
-      initModel();
-    });
+    // 啟動應用
+    window.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
 </html>
