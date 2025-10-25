@@ -12,8 +12,8 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>">
   
   <!-- TensorFlow.js 和 COCO-SSD -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
   
   <style>
     /* 保持原有的 CSS 樣式不變 */
@@ -1628,91 +1628,15 @@
       }
     }
 
-      // 啟動紅外線測距
-      activate() {
-        this.isActive = true;
-        updateVoice('紅外線測距已啟動，開始精確距離測量');
-      }
-
-      // 停止紅外線測距
-      deactivate() {
+    /**********************
+     * 6) 紅外線測距系統
+     **********************/
+    class InfraredRangefinder {
+      constructor() {
         this.isActive = false;
-        updateVoice('紅外線測距已關閉');
+        this.lastMeasurement = 0;
+        this.measurementCooldown = 1000; // 1秒冷卻時間
       }
-
-      // 測量距離（模擬紅外線測距功能）
-      measureDistance(visualDistance, objectType) {
-        const now = Date.now();
-        if (now - this.lastMeasurement < this.measurementCooldown) {
-          return visualDistance; // 返回視覺測量結果
-        }
-
-        this.lastMeasurement = now;
-        
-        if (!this.isActive) {
-          return visualDistance;
-        }
-
-        // 模擬紅外線測距（比視覺測量更精確）
-        let infraredDistance = visualDistance;
-        
-        // 根據物體類型調整測量精度
-        switch(objectType) {
-          case 'person':
-          case 'car':
-          case 'building':
-            // 對於大型物體，紅外線測距更準確
-            infraredDistance = visualDistance * (0.95 + Math.random() * 0.1);
-            break;
-          case 'curb':
-          case 'step':
-          case 'small_obstacle':
-            // 對於小型地面障礙物，使用更高精度
-            infraredDistance = visualDistance * (0.98 + Math.random() * 0.04);
-            break;
-          default:
-            // 一般物體
-            infraredDistance = visualDistance * (0.96 + Math.random() * 0.08);
-        }
-
-        // 確保距離為正值
-        infraredDistance = Math.max(0.1, infraredDistance);
-        
-        // 更新顯示
-        this.updateDisplay(infraredDistance);
-        
-        return infraredDistance;
-      }
-
-      // 更新紅外線測距顯示
-      updateDisplay(distance) {
-        const infraredDisplay = document.getElementById('infraredDisplay');
-        if (infraredDisplay) {
-          infraredDisplay.textContent = `紅外線測距: ${distance.toFixed(2)} 公尺`;
-          infraredDisplay.style.display = this.isActive ? 'block' : 'none';
-        }
-      }
-
-      // 提供精確距離語音提示
-      providePreciseDistanceAlert(distance, objectName) {
-        if (!this.isActive) return;
-        
-        const now = Date.now();
-        if (now - this.lastMeasurement < this.measurementCooldown) return;
-
-        let alertMessage = '';
-        
-        if (distance < 1.0) {
-          alertMessage = `緊急！${objectName}非常接近，僅${distance.toFixed(2)}公尺`;
-        } else if (distance < 3.0) {
-          alertMessage = `注意！${objectName}接近，精確距離${distance.toFixed(2)}公尺`;
-        }
-
-        if (alertMessage) {
-          updateVoice(alertMessage);
-        }
-      }
-    }
 
       // 啟動紅外線測距
       activate() {
@@ -1801,7 +1725,7 @@
     }
 
     /**********************
-     * 6) 狀態變數
+     * 7) 狀態變數
      **********************/
     let model = null;
     let isDetecting = false;
@@ -2018,7 +1942,10 @@
           updateStatus('初始化失敗');
         }
         
-        document.getElementById('progressContainer').style.display = 'none';
+        // 確保進度條被隱藏
+        setTimeout(() => {
+          document.getElementById('progressContainer').style.display = 'none';
+        }, 1000);
         
         const errorMsg = `錯誤: ${e.message}. 請確認網路連接正常`;
         console.error(errorMsg);
@@ -2049,6 +1976,7 @@
       document.getElementById('btnSetHome').addEventListener('click', () => gpsNavigator.setHomePosition());
       document.getElementById('btnReturnHome').addEventListener('click', toggleSafetyCorridor);
       document.getElementById('btnLoadModule').addEventListener('click', loadEnvironmentModule);
+      document.getElementById('btnInfrared').addEventListener('click', toggleInfrared);
       document.getElementById('btnEmergency').addEventListener('click', emergencyAlert);
     }
 
@@ -2519,17 +2447,6 @@
       updateStatus('初始化中');
       updateVoice('老人返家輔助導航系統啟動中...');
       
-      // 綁定按鈕事件
-      document.getElementById('btnStart').addEventListener('click', startDetection);
-      document.getElementById('btnStop').addEventListener('click', stopDetection);
-      document.getElementById('btnVoice').addEventListener('click', toggleVoice);
-      document.getElementById('btnMode').addEventListener('click', toggleMode);
-      document.getElementById('btnSetHome').addEventListener('click', () => gpsNavigator.setHomeLocation());
-      document.getElementById('btnReturnHome').addEventListener('click', () => gpsNavigator.startReturnHome());
-      document.getElementById('btnLoadModule').addEventListener('click', loadEnvironmentModule);
-      document.getElementById('btnInfrared').addEventListener('click', toggleInfrared);
-      document.getElementById('btnEmergency').addEventListener('click', emergencyAlert);
-      
       // 初始化 TensorFlow.js COCO-SSD 模型
       initModel();
     });
@@ -2555,4 +2472,5 @@
     requestWakeLock();
   </script>
 </body>
+</html>
 </html>
