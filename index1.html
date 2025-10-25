@@ -117,8 +117,9 @@
       border-radius: 12px;
     }
     
+    /* 移除鏡像效果 */
     .camera video {
-      transform: scaleX(-1);
+      transform: scaleX(1);
     }
     
     .panel {
@@ -355,13 +356,26 @@
       transition: width 0.3s ease;
       width: 0%;
     }
+
+    /* 環境指示器 */
+    .environment-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    
+    .indoor-indicator { background: #2196F3; }
+    .outdoor-indicator { background: #4CAF50; }
+    .auto-indicator { background: #FF9800; }
   </style>
 </head>
 <body class="no-select">
   <div class="app">
     <header class="card">
       <h1>🧭 盲人輔助導航</h1>
-      <div class="tips">安全出行 · 障礙檢測 · GPS導航</div>
+      <div class="tips">安全出行 · 智能環境檢測 · GPS導航</div>
     </header>
 
     <section class="card camera">
@@ -381,7 +395,7 @@
       <div class="controls">
         <button id="btnStart" class="btn primary">開始檢測</button>
         <button id="btnVoice" class="btn secondary">語音關閉</button>
-        <button id="btnMode" class="btn primary">步行模式</button>
+        <button id="btnMode" class="btn primary">智能模式</button>
         <button id="btnStop" class="btn danger">停止</button>
       </div>
       
@@ -389,7 +403,7 @@
       <div class="controls">
         <button id="btnSetHome" class="btn primary">設定家的位置</button>
         <button id="btnReturnHome" class="btn warning">一鍵返航</button>
-        <button id="btnLoadModule" class="btn primary">切換環境</button>
+        <button id="btnLoadModule" class="btn primary">手動切換環境</button>
         <button id="btnEmergency" class="btn danger">緊急求助</button>
       </div>
 
@@ -423,8 +437,10 @@
           <div class="v" id="homeDistance">--</div>
         </div>
         <div class="status-item">
-          <div class="k">當前環境</div>
-          <div class="v" id="currentModule">戶外</div>
+          <div class="k">環境判斷</div>
+          <div class="v" id="currentModule">
+            <span class="environment-indicator auto-indicator"></span>自動
+          </div>
         </div>
         <div class="status-item">
           <div class="k">語音狀態</div>
@@ -435,7 +451,7 @@
 
     <aside class="card panel">
       <h3 style="margin:0 0 12px 0; font-size:16px;">
-        即時偵測 <span id="activeModuleTag" class="module-tag">戶外模式</span>
+        即時偵測 <span id="activeModuleTag" class="module-tag">智能模式</span>
       </h3>
       <div id="detectionList" class="list">
         <div class="chip" style="text-align:center; color:var(--muted);">
@@ -443,8 +459,8 @@
         </div>
       </div>
       <footer>
-        專為視障朋友設計 · 安全出行伴侶<br>
-        請在光線充足環境使用以獲得最佳效果
+        專為視障朋友設計 · 智能環境識別<br>
+        自動判斷室內外環境，檢測更多居家物品
       </footer>
     </aside>
   </div>
@@ -455,15 +471,10 @@
      **********************/
     const TARGET_FPS = 15;
     const INTERVAL = 1000 / TARGET_FPS;
-    const SCORE_THRESHOLD = 0.5; // COCO-SSD 置信度閾值
-
-    const MODE_PROFILE = { 
-      walking: { nearM: 4, highObjM: 8 }, 
-      navigate: { nearM: 6, highObjM: 10 } 
-    };
+    const SCORE_THRESHOLD = 0.4; // 降低閾值以檢測更多物體
 
     /**********************
-     * 2) 環境模組系統
+     * 2) 擴展環境模組系統 - 增加更多室內物體
      **********************/
     const environmentModules = {
       outdoor: {
@@ -477,13 +488,40 @@
           'traffic light': { name: '紅綠燈', danger: 'medium', voice: '前方有紅綠燈，請注意交通號誌' },
           'stop sign': { name: '停止標誌', danger: 'medium', voice: '停止標誌，請停車觀察' },
           'person': { name: '行人', danger: 'medium', voice: '前方有行人' },
-          'bench': { name: '公車站', danger: 'low', voice: '公車站' },
+          'bench': { name: '長椅', danger: 'low', voice: '前方有長椅' },
           'fire hydrant': { name: '消防栓', danger: 'medium', voice: '前方有消防栓' },
           'bird': { name: '鳥', danger: 'low', voice: '前方有小鳥' },
           'dog': { name: '狗', danger: 'medium', voice: '前方有狗，請小心' },
           'cat': { name: '貓', danger: 'low', voice: '前方有貓' }
         },
         triggers: ['car', 'motorcycle', 'bus', 'traffic light', 'stop sign', 'person']
+      },
+      indoor: {
+        name: '室內環境',
+        objects: {
+          'chair': { name: '椅子', danger: 'medium', voice: '前方有椅子，請繞行' },
+          'couch': { name: '沙發', danger: 'medium', voice: '前方有沙發' },
+          'bed': { name: '床', danger: 'medium', voice: '前方有床' },
+          'dining table': { name: '餐桌', danger: 'medium', voice: '前方有餐桌' },
+          'potted plant': { name: '盆栽', danger: 'low', voice: '前方有盆栽' },
+          'tv': { name: '電視', danger: 'medium', voice: '前方有電視' },
+          'laptop': { name: '筆記型電腦', danger: 'medium', voice: '前方有電腦' },
+          'mouse': { name: '滑鼠', danger: 'low', voice: '前方有滑鼠' },
+          'remote': { name: '遙控器', danger: 'low', voice: '前方有遙控器' },
+          'keyboard': { name: '鍵盤', danger: 'low', voice: '前方有鍵盤' },
+          'cell phone': { name: '手機', danger: 'low', voice: '前方有手機' },
+          'book': { name: '書本', danger: 'low', voice: '前方有書本' },
+          'vase': { name: '花瓶', danger: 'medium', voice: '前方有花瓶，易碎物品請小心' },
+          'clock': { name: '時鐘', danger: 'low', voice: '前方有時鐘' },
+          'scissors': { name: '剪刀', danger: 'high', voice: '警告！前方有剪刀，鋒利物品請小心' },
+          'bottle': { name: '瓶子', danger: 'medium', voice: '前方有瓶子' },
+          'cup': { name: '杯子', danger: 'medium', voice: '前方有杯子' },
+          'bowl': { name: '碗', danger: 'medium', voice: '前方有碗' },
+          'fork': { name: '叉子', danger: 'medium', voice: '前方有叉子' },
+          'knife': { name: '刀子', danger: 'high', voice: '警告！前方有刀子，鋒利物品請小心' },
+          'spoon': { name: '湯匙', danger: 'low', voice: '前方有湯匙' }
+        },
+        triggers: ['chair', 'bed', 'dining table', 'tv', 'laptop', 'vase', 'knife', 'scissors']
       },
       kitchen: {
         name: '廚房環境',
@@ -497,7 +535,9 @@
           'microwave': { name: '微波爐', danger: 'high', voice: '注意！前方有微波爐' },
           'refrigerator': { name: '冰箱', danger: 'medium', voice: '前方有冰箱' },
           'sink': { name: '水槽', danger: 'medium', voice: '前方有水槽' },
-          'bottle': { name: '瓶子', danger: 'medium', voice: '前方有瓶子' }
+          'bottle': { name: '瓶子', danger: 'medium', voice: '前方有瓶子' },
+          'dining table': { name: '餐桌', danger: 'medium', voice: '前方有餐桌' },
+          'chair': { name: '椅子', danger: 'medium', voice: '前方有椅子' }
         },
         triggers: ['knife', 'oven', 'microwave', 'cup', 'bottle']
       },
@@ -508,10 +548,48 @@
           'sink': { name: '洗手台', danger: 'medium', voice: '前方有洗手台' },
           'bottle': { name: '洗髮精', danger: 'low', voice: '前方有洗髮精' },
           'toothbrush': { name: '牙刷', danger: 'low', voice: '前方有牙刷' },
-          'hair drier': { name: '吹風機', danger: 'medium', voice: '前方有吹風機' }
+          'hair drier': { name: '吹風機', danger: 'medium', voice: '前方有吹風機' },
+          'cup': { name: '杯子', danger: 'medium', voice: '前方有杯子' }
         },
         triggers: ['toilet', 'sink', 'bottle']
+      },
+      office: {
+        name: '辦公室環境',
+        objects: {
+          'chair': { name: '辦公椅', danger: 'medium', voice: '前方有辦公椅' },
+          'desk': { name: '辦公桌', danger: 'medium', voice: '前方有辦公桌' },
+          'laptop': { name: '筆記型電腦', danger: 'medium', voice: '前方有電腦' },
+          'mouse': { name: '滑鼠', danger: 'low', voice: '前方有滑鼠' },
+          'keyboard': { name: '鍵盤', danger: 'low', voice: '前方有鍵盤' },
+          'book': { name: '書本', danger: 'low', voice: '前方有書本' },
+          'cell phone': { name: '手機', danger: 'low', voice: '前方有手機' },
+          'bottle': { name: '水瓶', danger: 'low', voice: '前方有水瓶' },
+          'cup': { name: '杯子', danger: 'medium', voice: '前方有杯子' }
+        },
+        triggers: ['chair', 'desk', 'laptop']
       }
+    };
+
+    // 擴展 COCO-SSD 類別映射（將相似物體映射到已知類別）
+    const classMapping = {
+      'teddy bear': 'toy',
+      'sports ball': 'ball',
+      'kite': 'toy',
+      'baseball bat': 'sports',
+      'skateboard': 'sports',
+      'surfboard': 'sports',
+      'tennis racket': 'sports',
+      'wine glass': 'cup',
+      'hot dog': 'food',
+      'pizza': 'food',
+      'donut': 'food',
+      'cake': 'food',
+      'banana': 'food',
+      'apple': 'food',
+      'sandwich': 'food',
+      'orange': 'food',
+      'broccoli': 'food',
+      'carrot': 'food'
     };
 
     /**********************
@@ -687,16 +765,102 @@
     let model = null;
     let isDetecting = false;
     let voiceEnabled = true;
-    let currentMode = 'walking';
+    let currentMode = 'auto'; // 改為智能模式
     let lastTick = 0;
     let frames = 0;
     let lastFpsTs = 0;
     let lastSpeechAt = 0;
-    let currentEnvironment = 'outdoor';
+    let currentEnvironment = 'auto';
     let gpsNavigator = new GPSNavigator();
+    let environmentHistory = [];
 
     /**********************
-     * 5) 模型載入 - TensorFlow.js COCO-SSD
+     * 5) 智能環境判斷系統
+     **********************/
+    class EnvironmentAnalyzer {
+      constructor() {
+        this.indoorScore = 0;
+        this.outdoorScore = 0;
+        this.lastEnvironment = 'auto';
+        this.confidenceThreshold = 3;
+      }
+
+      analyze(predictions) {
+        let indoorPoints = 0;
+        let outdoorPoints = 0;
+        
+        predictions.forEach(pred => {
+          if (pred.score < SCORE_THRESHOLD) return;
+          
+          // 檢查每個環境模組中的物體
+          Object.keys(environmentModules).forEach(env => {
+            if (env === 'auto') return;
+            
+            if (environmentModules[env].objects[pred.class]) {
+              if (env === 'outdoor') {
+                outdoorPoints += pred.score * 2;
+              } else {
+                indoorPoints += pred.score * 2;
+              }
+            }
+          });
+        });
+
+        // 記錄環境分數
+        environmentHistory.push({ indoor: indoorPoints, outdoor: outdoorPoints });
+        if (environmentHistory.length > 10) {
+          environmentHistory.shift();
+        }
+
+        // 計算平均分數
+        const avgIndoor = environmentHistory.reduce((sum, item) => sum + item.indoor, 0) / environmentHistory.length;
+        const avgOutdoor = environmentHistory.reduce((sum, item) => sum + item.outdoor, 0) / environmentHistory.length;
+
+        let detectedEnvironment = 'auto';
+        
+        if (avgIndoor > avgOutdoor + this.confidenceThreshold) {
+          detectedEnvironment = 'indoor';
+        } else if (avgOutdoor > avgIndoor + this.confidenceThreshold) {
+          detectedEnvironment = 'outdoor';
+        }
+
+        // 如果環境改變，更新顯示
+        if (detectedEnvironment !== this.lastEnvironment && environmentHistory.length >= 5) {
+          this.lastEnvironment = detectedEnvironment;
+          updateEnvironmentDisplay(detectedEnvironment);
+        }
+
+        return detectedEnvironment;
+      }
+    }
+
+    const environmentAnalyzer = new EnvironmentAnalyzer();
+
+    function updateEnvironmentDisplay(environment) {
+      const moduleElement = document.getElementById('currentModule');
+      const tagElement = document.getElementById('activeModuleTag');
+      
+      let displayName = '自動';
+      let indicatorClass = 'auto-indicator';
+      
+      if (environment === 'indoor') {
+        displayName = '室內';
+        indicatorClass = 'indoor-indicator';
+      } else if (environment === 'outdoor') {
+        displayName = '室外';
+        indicatorClass = 'outdoor-indicator';
+      }
+      
+      moduleElement.innerHTML = `<span class="environment-indicator ${indicatorClass}"></span>${displayName}`;
+      tagElement.textContent = displayName + '模式';
+      
+      if (environment !== 'auto') {
+        updateVoice(`檢測到${displayName}環境，已自動切換模式`);
+      }
+    }
+
+    /**********************
+     * 6) 模型載入 - TensorFlow.js COCO-SSD
      **********************/
     async function initModel() {
       try {
@@ -772,7 +936,7 @@
     }
 
     /**********************
-     * 6) 主流程（使用 COCO-SSD 檢測）
+     * 7) 主流程（使用 COCO-SSD 檢測）
      **********************/
     async function startDetection() {
       if (!model) {
@@ -785,7 +949,7 @@
       
       isDetecting = true; 
       updateStatus('檢測中'); 
-      updateVoice('開始障礙物檢測…');
+      updateVoice('開始障礙物檢測，智能環境識別已啟動…');
       
       requestAnimationFrame((ts) => loop(video, ts));
     }
@@ -809,8 +973,11 @@
           // 使用 COCO-SSD 進行檢測
           const predictions = await model.detect(video);
           
+          // 智能環境判斷
+          const detectedEnvironment = environmentAnalyzer.analyze(predictions);
+          
           // 處理檢測結果
-          processPredictions(predictions, video.videoWidth);
+          processPredictions(predictions, video.videoWidth, detectedEnvironment);
           draw(predictions, video.videoWidth, video.videoHeight);
 
           frames++; 
@@ -830,15 +997,24 @@
     }
 
     /**********************
-     * 7) 預測處理與繪圖
+     * 8) 預測處理與繪圖
      **********************/
-    function processPredictions(predictions, frameW) {
-      const module = environmentModules[currentEnvironment];
+    function processPredictions(predictions, frameW, detectedEnvironment) {
+      // 根據檢測到的環境選擇對應的模組，如果為auto則使用所有模組
+      let activeModules = [];
+      if (detectedEnvironment === 'auto') {
+        activeModules = Object.keys(environmentModules).filter(env => env !== 'auto');
+      } else {
+        activeModules = [detectedEnvironment];
+      }
       
-      // 過濾相關物體（置信度 > 0.5 且存在於當前環境）
-      const relevantPredictions = predictions.filter(p => 
-        p.score > SCORE_THRESHOLD && module.objects[p.class]
-      ).map(pred => {
+      // 過濾相關物體（置信度 > 0.4 且存在於當前環境）
+      const relevantPredictions = predictions.filter(p => {
+        if (p.score < SCORE_THRESHOLD) return false;
+        
+        // 檢查是否在任何活躍模組中
+        return activeModules.some(env => environmentModules[env].objects[p.class]);
+      }).map(pred => {
         // 計算距離
         const distance = estimateDistance(pred.bbox[2], pred.bbox[3], pred.class);
         return {
@@ -876,17 +1052,27 @@
           const cooldown = closestObject.distance < 3 ? 3000 : 5000;
           
           if (now - lastSpeechAt > cooldown) {
-            const objConfig = module.objects[closestObject.class];
-            let voiceMsg = objConfig.voice;
-            
-            if (closestObject.distance < 2) {
-              voiceMsg = `緊急！${objConfig.name}非常接近，僅${closestObject.distance.toFixed(1)}公尺`;
-            } else if (closestObject.distance < 5) {
-              voiceMsg = `注意！${objConfig.name}接近，距離${closestObject.distance.toFixed(1)}公尺`;
+            // 找到物體對應的模組和配置
+            let objConfig = null;
+            for (const env of activeModules) {
+              if (environmentModules[env].objects[closestObject.class]) {
+                objConfig = environmentModules[env].objects[closestObject.class];
+                break;
+              }
             }
             
-            updateVoice(voiceMsg);
-            lastSpeechAt = now;
+            if (objConfig) {
+              let voiceMsg = objConfig.voice;
+              
+              if (closestObject.distance < 2) {
+                voiceMsg = `緊急！${objConfig.name}非常接近，僅${closestObject.distance.toFixed(1)}公尺`;
+              } else if (closestObject.distance < 5) {
+                voiceMsg = `注意！${objConfig.name}接近，距離${closestObject.distance.toFixed(1)}公尺`;
+              }
+              
+              updateVoice(voiceMsg);
+              lastSpeechAt = now;
+            }
           }
         }
       } else {
@@ -894,7 +1080,7 @@
         distanceElement.parentElement.classList.remove('obstacle-warning', 'danger-warning');
       }
       
-      updateDetectionList(relevantPredictions);
+      updateDetectionList(relevantPredictions, activeModules);
     }
 
     function estimateDistance(width, height, className) {
@@ -905,9 +1091,15 @@
         'car': 40000,
         'bicycle': 12000,
         'chair': 6000,
+        'bed': 15000,
+        'couch': 20000,
+        'dining table': 25000,
+        'tv': 8000,
+        'laptop': 3000,
         'bottle': 1500,
         'cup': 1000,
-        'book': 2000
+        'book': 2000,
+        'vase': 2000
       };
       
       const refSize = referenceSizes[className] || 8000;
@@ -916,9 +1108,8 @@
       return Math.min(distance, 50);
     }
 
-    function updateDetectionList(predictions) {
+    function updateDetectionList(predictions, activeModules) {
       const list = document.getElementById('detectionList');
-      const module = environmentModules[currentEnvironment];
       
       if (predictions.length === 0) {
         list.innerHTML = '<div class="chip" style="text-align:center; color:var(--muted);">未偵測到障礙物</div>';
@@ -928,7 +1119,15 @@
       predictions.sort((a, b) => a.distance - b.distance);
       
       list.innerHTML = predictions.map(pred => {
-        const objConfig = module.objects[pred.class];
+        // 找到物體對應的模組和配置
+        let objConfig = null;
+        for (const env of activeModules) {
+          if (environmentModules[env].objects[pred.class]) {
+            objConfig = environmentModules[env].objects[pred.class];
+            break;
+          }
+        }
+        
         const dangerLevel = objConfig ? objConfig.danger : 'low';
         const dangerColors = {
           'high': 'var(--bad)',
@@ -936,9 +1135,11 @@
           'low': 'var(--good)'
         };
         
+        const displayName = objConfig ? objConfig.name : pred.class;
+        
         return `
           <div class="chip" style="border-left: 4px solid ${dangerColors[dangerLevel]}">
-            <strong>${objConfig ? objConfig.name : pred.class}</strong><br>
+            <strong>${displayName}</strong><br>
             距離: ${pred.distance.toFixed(1)}公尺 | 置信度: ${(pred.score * 100).toFixed(0)}%
           </div>
         `;
@@ -959,11 +1160,18 @@
       predictions.forEach(pred => {
         if (pred.score < SCORE_THRESHOLD) return;
         
-        const module = environmentModules[currentEnvironment];
-        if (!module.objects[pred.class]) return;
-        
         const [x, y, w, h] = pred.bbox;
-        const objConfig = module.objects[pred.class];
+        
+        // 找到物體對應的模組和配置
+        let objConfig = null;
+        for (const env in environmentModules) {
+          if (env !== 'auto' && environmentModules[env].objects[pred.class]) {
+            objConfig = environmentModules[env].objects[pred.class];
+            break;
+          }
+        }
+        
+        if (!objConfig) return;
         
         let color;
         switch(objConfig.danger) {
@@ -989,7 +1197,7 @@
     }
 
     /**********************
-     * 8) 工具函數
+     * 9) 工具函數
      **********************/
     function updateVoice(message) {
       const voiceAlert = document.getElementById('voiceAlert');
@@ -1038,19 +1246,20 @@
 
     function toggleMode() {
       const button = document.getElementById('btnMode');
-      currentMode = currentMode === 'walking' ? 'navigate' : 'walking';
+      currentMode = currentMode === 'auto' ? 'manual' : 'auto';
       
-      if (currentMode === 'walking') {
-        button.textContent = '導航模式';
-        updateVoice('切換到步行模式');
+      if (currentMode === 'auto') {
+        button.textContent = '手動模式';
+        updateVoice('切換到智能模式，自動判斷環境');
+        environmentHistory = []; // 重置環境歷史
       } else {
-        button.textContent = '步行模式';
-        updateVoice('切換到導航模式');
+        button.textContent = '智能模式';
+        updateVoice('切換到手動模式');
       }
     }
 
     function loadEnvironmentModule() {
-      const environments = Object.keys(environmentModules);
+      const environments = Object.keys(environmentModules).filter(env => env !== 'auto');
       const currentIndex = environments.indexOf(currentEnvironment);
       const nextIndex = (currentIndex + 1) % environments.length;
       currentEnvironment = environments[nextIndex];
@@ -1059,7 +1268,7 @@
       document.getElementById('currentModule').textContent = module.name;
       document.getElementById('activeModuleTag').textContent = module.name;
       
-      updateVoice(`切換到${module.name}環境`);
+      updateVoice(`手動切換到${module.name}`);
     }
 
     function emergencyAlert() {
@@ -1079,7 +1288,7 @@
     }
 
     /**********************
-     * 9) 初始化應用
+     * 10) 初始化應用
      **********************/
     window.addEventListener('DOMContentLoaded', () => {
       updateStatus('初始化中');
