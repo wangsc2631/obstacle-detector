@@ -339,6 +339,133 @@
       user-select: none;
     }
 
+    /* 安全通道導航系統 */
+    .safety-corridor {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+      display: none;
+    }
+    
+    .safety-corridor.active {
+      display: block;
+    }
+    
+    .corridor-path {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 80%;
+      height: 60%;
+      background: linear-gradient(90deg, 
+        rgba(34, 197, 94, 0.1) 0%, 
+        rgba(34, 197, 94, 0.3) 30%, 
+        rgba(34, 197, 94, 0.3) 70%, 
+        rgba(34, 197, 94, 0.1) 100%);
+      border-radius: 20px;
+      border: 2px dashed rgba(34, 197, 94, 0.5);
+      animation: pathGlow 2s ease-in-out infinite alternate;
+    }
+    
+    .corridor-left {
+      position: absolute;
+      left: 10%;
+      top: 20%;
+      width: 20%;
+      height: 60%;
+      background: rgba(245, 158, 11, 0.1);
+      border: 2px solid rgba(245, 158, 11, 0.3);
+      border-radius: 10px;
+    }
+    
+    .corridor-right {
+      position: absolute;
+      right: 10%;
+      top: 20%;
+      width: 20%;
+      height: 60%;
+      background: rgba(245, 158, 11, 0.1);
+      border: 2px solid rgba(245, 158, 11, 0.3);
+      border-radius: 10px;
+    }
+    
+    .corridor-front {
+      position: absolute;
+      left: 30%;
+      top: 10%;
+      width: 40%;
+      height: 20%;
+      background: rgba(239, 68, 68, 0.1);
+      border: 2px solid rgba(239, 68, 68, 0.3);
+      border-radius: 10px;
+    }
+    
+    .obstacle-left {
+      background: rgba(239, 68, 68, 0.2) !important;
+      border: 2px solid rgba(239, 68, 68, 0.5) !important;
+      animation: dangerPulse 1s infinite;
+    }
+    
+    .obstacle-right {
+      background: rgba(239, 68, 68, 0.2) !important;
+      border: 2px solid rgba(239, 68, 68, 0.5) !important;
+      animation: dangerPulse 1s infinite;
+    }
+    
+    .obstacle-front {
+      background: rgba(239, 68, 68, 0.3) !important;
+      border: 2px solid rgba(239, 68, 68, 0.7) !important;
+      animation: dangerPulse 0.5s infinite;
+    }
+    
+    .navigation-guidance {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 15px 20px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      text-align: center;
+      z-index: 20;
+      max-width: 90%;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      display: none;
+    }
+    
+    .navigation-guidance.active {
+      display: block;
+    }
+    
+    @keyframes pathGlow {
+      0% {
+        box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+      }
+      100% {
+        box-shadow: 0 0 40px rgba(34, 197, 94, 0.6);
+      }
+    }
+    
+    @keyframes dangerPulse {
+      0% {
+        opacity: 0.7;
+      }
+      50% {
+        opacity: 1;
+      }
+      100% {
+        opacity: 0.7;
+      }
+    }
+
     /* 模型載入進度條 */
     .progress-container {
       width: 100%;
@@ -381,6 +508,18 @@
     <section class="card camera">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="canvas"></canvas>
+      
+      <!-- 安全通道導航系統 -->
+      <div id="safetyCorridor" class="safety-corridor">
+        <div class="corridor-path"></div>
+        <div id="corridorLeft" class="corridor-left"></div>
+        <div id="corridorRight" class="corridor-right"></div>
+        <div id="corridorFront" class="corridor-front"></div>
+      </div>
+      
+      <div id="navigationGuidance" class="navigation-guidance">
+        安全通道導航中...
+      </div>
     </section>
 
     <section class="card panel">
@@ -402,7 +541,7 @@
       <!-- 導航控制按鈕 -->
       <div class="controls">
         <button id="btnSetHome" class="btn primary">設定家的位置</button>
-        <button id="btnReturnHome" class="btn warning">一鍵返航</button>
+        <button id="btnReturnHome" class="btn warning">安全通道導航</button>
         <button id="btnLoadModule" class="btn primary">手動切換環境</button>
         <button id="btnEmergency" class="btn danger">緊急求助</button>
       </div>
@@ -981,7 +1120,152 @@
     }
 
     /**********************
-     * 5) 狀態變數
+     * 5) 安全通道導航系統
+     **********************/
+    class SafetyCorridorNavigator {
+      constructor() {
+        this.isActive = false;
+        this.obstacleLeft = false;
+        this.obstacleRight = false;
+        this.obstacleFront = false;
+        this.lastGuidanceTime = 0;
+        this.guidanceCooldown = 3000; // 3秒冷卻時間
+      }
+
+      start() {
+        this.isActive = true;
+        this.showCorridor();
+        this.updateGuidance('安全通道導航已啟動，請沿著綠色通道前進');
+      }
+
+      stop() {
+        this.isActive = false;
+        this.hideCorridor();
+        this.updateGuidance('安全通道導航已關閉');
+      }
+
+      showCorridor() {
+        const corridor = document.getElementById('safetyCorridor');
+        const guidance = document.getElementById('navigationGuidance');
+        corridor.classList.add('active');
+        guidance.classList.add('active');
+      }
+
+      hideCorridor() {
+        const corridor = document.getElementById('safetyCorridor');
+        const guidance = document.getElementById('navigationGuidance');
+        corridor.classList.remove('active');
+        guidance.classList.remove('active');
+      }
+
+      updateObstacles(predictions, frameWidth, frameHeight) {
+        if (!this.isActive) return;
+
+        this.obstacleLeft = false;
+        this.obstacleRight = false;
+        this.obstacleFront = false;
+
+        // 分析障礙物位置
+        predictions.forEach(pred => {
+          if (pred.score < SCORE_THRESHOLD) return;
+          
+          const [x, y, w, h] = pred.bbox;
+          const centerX = x + w / 2;
+          const centerY = y + h / 2;
+
+          // 左側區域檢測 (左側20%)
+          if (centerX < frameWidth * 0.2 && centerY > frameHeight * 0.3) {
+            this.obstacleLeft = true;
+          }
+          
+          // 右側區域檢測 (右側20%)
+          if (centerX > frameWidth * 0.8 && centerY > frameHeight * 0.3) {
+            this.obstacleRight = true;
+          }
+          
+          // 前方區域檢測 (前方30%)
+          if (centerY < frameHeight * 0.3) {
+            this.obstacleFront = true;
+          }
+        });
+
+        this.updateCorridorDisplay();
+        this.provideGuidance();
+      }
+
+      updateCorridorDisplay() {
+        const leftCorridor = document.getElementById('corridorLeft');
+        const rightCorridor = document.getElementById('corridorRight');
+        const frontCorridor = document.getElementById('corridorFront');
+
+        // 更新左側通道顯示
+        if (this.obstacleLeft) {
+          leftCorridor.classList.add('obstacle-left');
+        } else {
+          leftCorridor.classList.remove('obstacle-left');
+        }
+
+        // 更新右側通道顯示
+        if (this.obstacleRight) {
+          rightCorridor.classList.add('obstacle-right');
+        } else {
+          rightCorridor.classList.remove('obstacle-right');
+        }
+
+        // 更新前方通道顯示
+        if (this.obstacleFront) {
+          frontCorridor.classList.add('obstacle-front');
+        } else {
+          frontCorridor.classList.remove('obstacle-front');
+        }
+      }
+
+      provideGuidance() {
+        const now = Date.now();
+        if (now - this.lastGuidanceTime < this.guidanceCooldown) return;
+
+        let guidanceMessage = '';
+
+        if (this.obstacleFront) {
+          if (this.obstacleLeft && !this.obstacleRight) {
+            guidanceMessage = '前方有障礙物，左側有障礙物，請向右繞行';
+          } else if (this.obstacleRight && !this.obstacleLeft) {
+            guidanceMessage = '前方有障礙物，右側有障礙物，請向左繞行';
+          } else if (this.obstacleLeft && this.obstacleRight) {
+            guidanceMessage = '前方有障礙物，左右都有障礙物，請停止前進，尋找其他路線';
+          } else {
+            guidanceMessage = '前方有障礙物，請向左或向右繞行';
+          }
+        } else if (this.obstacleLeft) {
+          guidanceMessage = '左側有障礙物，請靠右行走';
+        } else if (this.obstacleRight) {
+          guidanceMessage = '右側有障礙物，請靠左行走';
+        } else {
+          guidanceMessage = '安全通道暢通，請繼續前進';
+        }
+
+        if (guidanceMessage) {
+          this.updateGuidance(guidanceMessage);
+          this.lastGuidanceTime = now;
+        }
+      }
+
+      updateGuidance(message) {
+        const guidance = document.getElementById('navigationGuidance');
+        guidance.textContent = message;
+        
+        if (voiceEnabled) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(message);
+          utterance.lang = 'zh-TW';
+          utterance.rate = 0.9;
+          window.speechSynthesis.speak(utterance);
+        }
+      }
+    }
+
+    /**********************
+     * 6) 狀態變數
      **********************/
     let model = null;
     let isDetecting = false;
@@ -995,64 +1279,118 @@
     let gpsNavigator = new GPSNavigator();
     let environmentHistory = [];
     let groundDetector = new GroundObstacleDetector();
+    let safetyNavigator = new SafetyCorridorNavigator();
 
     /**********************
-     * 5) 智能環境判斷系統
+     * 5) 智能環境判斷系統 - 改進版
      **********************/
     class EnvironmentAnalyzer {
       constructor() {
-        this.indoorScore = 0;
-        this.outdoorScore = 0;
         this.lastEnvironment = 'auto';
-        this.confidenceThreshold = 3;
+        this.confidenceThreshold = 5; // 提高閾值減少頻繁切換
+        this.environmentScores = {};
+        this.keyItemsDetected = {};
+        this.lastSwitchTime = 0;
+        this.switchCooldown = 10000; // 10秒冷卻時間
+        
+        // 初始化環境分數
+        Object.keys(environmentModules).forEach(env => {
+          if (env !== 'auto') {
+            this.environmentScores[env] = 0;
+            this.keyItemsDetected[env] = new Set();
+          }
+        });
       }
 
       analyze(predictions) {
-        let indoorPoints = 0;
-        let outdoorPoints = 0;
+        const now = Date.now();
         
+        // 檢查冷卻時間
+        if (now - this.lastSwitchTime < this.switchCooldown) {
+          return this.lastEnvironment;
+        }
+
+        // 重置分數
+        Object.keys(this.environmentScores).forEach(env => {
+          this.environmentScores[env] = 0;
+        });
+
+        // 定義關鍵代表性物品（高權重）
+        const keyItems = {
+          'bedroom': ['bed', 'dresser', 'mirror', 'lamp'],
+          'kitchen': ['oven', 'microwave', 'refrigerator', 'sink', 'knife'],
+          'bathroom': ['toilet', 'sink', 'mirror', 'shower'],
+          'hospital': ['bed', 'wheelchair', 'crutches', 'medical equipment'],
+          'supermarket': ['shopping cart', 'shelf', 'refrigerator', 'cash register'],
+          'office': ['desk', 'chair', 'laptop', 'printer', 'monitor'],
+          'outdoor': ['car', 'bus', 'traffic light', 'stop sign', 'tree'],
+          'indoor': ['chair', 'couch', 'tv', 'table', 'lamp']
+        };
+
+        // 分析檢測到的物品
         predictions.forEach(pred => {
           if (pred.score < SCORE_THRESHOLD) return;
           
-          // 檢查每個環境模組中的物體
+          // 檢查每個環境模組
           Object.keys(environmentModules).forEach(env => {
             if (env === 'auto') return;
             
             if (environmentModules[env].objects[pred.class]) {
-              if (env === 'outdoor') {
-                outdoorPoints += pred.score * 2;
-              } else {
-                indoorPoints += pred.score * 2;
+              let score = pred.score * 2;
+              
+              // 如果是關鍵代表性物品，給予更高權重
+              if (keyItems[env] && keyItems[env].includes(pred.class)) {
+                score *= 3; // 關鍵物品權重更高
+                this.keyItemsDetected[env].add(pred.class);
               }
+              
+              this.environmentScores[env] += score;
             }
           });
         });
 
         // 記錄環境分數
-        environmentHistory.push({ indoor: indoorPoints, outdoor: outdoorPoints });
-        if (environmentHistory.length > 10) {
+        environmentHistory.push({ ...this.environmentScores });
+        if (environmentHistory.length > 15) { // 增加歷史長度
           environmentHistory.shift();
         }
 
         // 計算平均分數
-        const avgIndoor = environmentHistory.reduce((sum, item) => sum + item.indoor, 0) / environmentHistory.length;
-        const avgOutdoor = environmentHistory.reduce((sum, item) => sum + item.outdoor, 0) / environmentHistory.length;
+        const avgScores = {};
+        Object.keys(this.environmentScores).forEach(env => {
+          avgScores[env] = environmentHistory.reduce((sum, item) => sum + item[env], 0) / environmentHistory.length;
+        });
 
+        // 找出最高分的環境
         let detectedEnvironment = 'auto';
+        let maxScore = 0;
         
-        if (avgIndoor > avgOutdoor + this.confidenceThreshold) {
-          detectedEnvironment = 'indoor';
-        } else if (avgOutdoor > avgIndoor + this.confidenceThreshold) {
-          detectedEnvironment = 'outdoor';
-        }
+        Object.keys(avgScores).forEach(env => {
+          if (avgScores[env] > maxScore) {
+            maxScore = avgScores[env];
+            detectedEnvironment = env;
+          }
+        });
 
-        // 如果環境改變，更新顯示
-        if (detectedEnvironment !== this.lastEnvironment && environmentHistory.length >= 5) {
+        // 檢查關鍵物品條件
+        const hasKeyItems = Object.keys(this.keyItemsDetected).some(env => 
+          this.keyItemsDetected[env].size >= 2 // 至少檢測到2個關鍵物品
+        );
+
+        // 只有當分數足夠高且有關鍵物品時才切換
+        if (maxScore > this.confidenceThreshold && hasKeyItems && 
+            detectedEnvironment !== this.lastEnvironment) {
           this.lastEnvironment = detectedEnvironment;
+          this.lastSwitchTime = now;
           updateEnvironmentDisplay(detectedEnvironment);
+          
+          // 重置關鍵物品記錄
+          Object.keys(this.keyItemsDetected).forEach(env => {
+            this.keyItemsDetected[env].clear();
+          });
         }
 
-        return detectedEnvironment;
+        return this.lastEnvironment;
       }
     }
 
@@ -1065,16 +1403,21 @@
       let displayName = '自動';
       let indicatorClass = 'auto-indicator';
       
-      if (environment === 'indoor') {
-        displayName = '室內';
-        indicatorClass = 'indoor-indicator';
-      } else if (environment === 'outdoor') {
-        displayName = '室外';
-        indicatorClass = 'outdoor-indicator';
+      if (environment !== 'auto' && environmentModules[environment]) {
+        displayName = environmentModules[environment].name;
+        
+        // 根據環境類型設置指示器顏色
+        if (environment === 'outdoor') {
+          indicatorClass = 'outdoor-indicator';
+        } else if (['bedroom', 'kitchen', 'bathroom', 'office', 'indoor'].includes(environment)) {
+          indicatorClass = 'indoor-indicator';
+        } else {
+          indicatorClass = 'auto-indicator';
+        }
       }
       
       moduleElement.innerHTML = `<span class="environment-indicator ${indicatorClass}"></span>${displayName}`;
-      tagElement.textContent = displayName + '模式';
+      tagElement.textContent = displayName;
       
       if (environment !== 'auto') {
         updateVoice(`檢測到${displayName}環境，已自動切換模式`);
@@ -1128,9 +1471,34 @@
       document.getElementById('btnVoice').addEventListener('click', toggleVoice);
       document.getElementById('btnMode').addEventListener('click', toggleMode);
       document.getElementById('btnSetHome').addEventListener('click', () => gpsNavigator.setHomePosition());
-      document.getElementById('btnReturnHome').addEventListener('click', () => gpsNavigator.startReturnHome());
+      document.getElementById('btnReturnHome').addEventListener('click', toggleSafetyCorridor);
       document.getElementById('btnLoadModule').addEventListener('click', loadEnvironmentModule);
       document.getElementById('btnEmergency').addEventListener('click', emergencyAlert);
+    }
+
+    function toggleSafetyCorridor() {
+      const button = document.getElementById('btnReturnHome');
+      
+      if (safetyNavigator.isActive) {
+        // 停止安全通道導航
+        safetyNavigator.stop();
+        button.textContent = '安全通道導航';
+        button.classList.remove('gps-active');
+        updateVoice('安全通道導航已關閉');
+      } else {
+        // 啟動安全通道導航
+        if (!gpsNavigator.homePosition) {
+          updateVoice('請先設定家的位置');
+          return;
+        }
+        
+        safetyNavigator.start();
+        button.textContent = '停止導航';
+        button.classList.add('gps-active');
+        
+        // 同時啟動GPS返航
+        gpsNavigator.startReturnHome();
+      }
     }
 
     async function setupCamera() {
@@ -1185,6 +1553,14 @@
       }
       updateVoice('檢測已停止');
       gpsNavigator.stopReturnHome();
+      
+      // 停止安全通道導航
+      if (safetyNavigator.isActive) {
+        safetyNavigator.stop();
+        const button = document.getElementById('btnReturnHome');
+        button.textContent = '安全通道導航';
+        button.classList.remove('gps-active');
+      }
     }
 
     async function loop(video, ts = 0) {
@@ -1200,6 +1576,10 @@
           
           // 處理檢測結果（包含地面障礙物檢測）
           processPredictions(predictions, video.videoWidth, video.videoHeight, detectedEnvironment);
+          
+          // 更新安全通道導航系統
+          safetyNavigator.updateObstacles(predictions, video.videoWidth, video.videoHeight);
+          
           draw(predictions, video.videoWidth, video.videoHeight);
 
           frames++; 
