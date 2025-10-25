@@ -104,6 +104,7 @@
       aspect-ratio: 16/9;
       background: #000;
       border-radius: 12px;
+      overflow: hidden;
     }
     
     .camera video, .camera canvas {
@@ -118,6 +119,22 @@
     
     .camera video {
       transform: scaleX(-1);
+      background: #000;
+    }
+    
+    .camera-preview {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 16px;
+      z-index: 5;
     }
     
     .panel {
@@ -337,24 +354,6 @@
       user-select: none;
     }
 
-    /* 模型載入進度 */
-    .progress-container {
-      width: 100%;
-      height: 6px;
-      background: var(--glass-strong);
-      border-radius: 3px;
-      margin: 10px 0;
-      overflow: hidden;
-    }
-    
-    .progress-bar {
-      height: 100%;
-      background: var(--good);
-      border-radius: 3px;
-      transition: width 0.3s ease;
-      width: 0%;
-    }
-
     /* 檢測框樣式 */
     .detection-box {
       position: absolute;
@@ -378,13 +377,16 @@
       z-index: 11;
     }
     
-    .confidence-bar {
+    .camera-info {
       position: absolute;
-      bottom: -5px;
-      left: 0;
-      height: 3px;
-      background: #00ff00;
-      border-radius: 2px;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      z-index: 10;
     }
   </style>
 </head>
@@ -396,44 +398,43 @@
     </header>
 
     <section class="card camera">
+      <div id="cameraPreview" class="camera-preview">
+        點擊「開啟相機」開始使用
+      </div>
       <video id="video" autoplay playsinline muted></video>
       <canvas id="canvas"></canvas>
+      <div id="cameraInfo" class="camera-info"></div>
       <div id="detectionContainer"></div>
     </section>
 
     <section class="card panel">
-      <div id="voiceAlert" class="voice-alert">系統初始化中…</div>
+      <div id="voiceAlert" class="voice-alert">系統準備中…</div>
       
-      <!-- 模型載入進度 -->
-      <div id="progressContainer" class="progress-container">
-        <div id="progressBar" class="progress-bar"></div>
-      </div>
-      
-      <!-- 主要控制按鈕 -->
+      <!-- 相機控制按鈕 -->
       <div class="controls">
-        <button id="btnStart" class="btn primary">開始檢測</button>
+        <button id="btnCamera" class="btn primary">開啟相機</button>
+        <button id="btnStart" class="btn primary" disabled>開始檢測</button>
         <button id="btnVoice" class="btn secondary">語音關閉</button>
-        <button id="btnMirror" class="btn secondary">關閉鏡像</button>
         <button id="btnStop" class="btn danger">停止</button>
       </div>
       
       <!-- 檢測控制 -->
       <div class="controls">
+        <button id="btnMirror" class="btn secondary">關閉鏡像</button>
         <button id="btnDebug" class="btn secondary">顯示檢測框</button>
-        <button id="btnTestModel" class="btn primary">測試模型</button>
-        <button id="btnLoadModule" class="btn secondary">切換環境</button>
-        <button id="btnEmergency" class="btn danger">緊急求助</button>
+        <button id="btnSwitchCamera" class="btn secondary">切換鏡頭</button>
+        <button id="btnLoadModule" class="btn primary">切換環境</button>
       </div>
 
       <!-- 狀態資訊 -->
       <div class="status">
         <div class="status-item">
           <div class="k">系統狀態</div>
-          <div class="v" id="status">載入模型中</div>
+          <div class="v" id="status">準備中</div>
         </div>
         <div class="status-item">
-          <div class="k">模型狀態</div>
-          <div class="v" id="modelStatus">載入中</div>
+          <div class="k">相機狀態</div>
+          <div class="v" id="cameraStatus">未開啟</div>
         </div>
         <div class="status-item">
           <div class="k">障礙物數</div>
@@ -471,7 +472,7 @@
       </h3>
       <div id="detectionList" class="list">
         <div class="chip" style="text-align:center; color:var(--muted);">
-          等待模型載入…
+          等待開啟相機…
         </div>
       </div>
       <footer>
@@ -483,17 +484,10 @@
 
   <script>
     /**********************
-     * 1) 參數區 - 使用可靠的模型來源
+     * 1) 參數區
      **********************/
-    // 多個模型來源，按可靠性排序
     const MODEL_SOURCES = [
-      // 主要：使用公開的 CDN 模型（最可靠）
       'https://cdn.jsdelivr.net/gh/ultralytics/assets@main/yolov8n.onnx',
-      // 備用1：RoboFlow 的模型
-      'https://models.roboflow.com/object-detection/yolov8n/1/model.onnx',
-      // 備用2：你的 GitHub 模型（如果上面都不行）
-      'https://raw.githubusercontent.com/wangsc2631/wangsc2631.github.io/main/yolov8n.onnx',
-      // 最後：本地模型
       'yolov8n.onnx'
     ];
 
@@ -501,7 +495,6 @@
     let SCORE_THRESHOLD = 0.25;
     const IOU_THR = 0.45;
     const TARGET_FPS = 10;
-    const INTERVAL = 1000 / TARGET_FPS;
 
     // COCO80 類別
     const coco80 = [
@@ -515,7 +508,6 @@
       'toaster','sink','refrigerator','book','clock','vase','scissors','teddy bear','hair drier','toothbrush'
     ];
 
-    // 環境模組
     const environmentModules = {
       outdoor: {
         name: '戶外導航',
@@ -551,205 +543,186 @@
     let isMirrored = true;
     let showDetectionBoxes = true;
     let currentEnvironment = 'outdoor';
+    let currentStream = null;
+    let usingFrontCamera = false;
 
     /**********************
-     * 3) 模型載入 - 完全修復版本
+     * 3) 模型載入
      **********************/
     async function initModel() {
       try {
-        updateVoice('正在初始化 ONNX Runtime...');
-        updateStatus('初始化中');
+        updateVoice('正在載入 AI 模型…');
+        updateStatus('載入模型中');
         
-        // 設置 ONNX Runtime 環境
         ort.env.wasm.numThreads = 1;
-        ort.env.wasm.proxy = false;
-        
-        // 顯示進度條
-        const progressContainer = document.getElementById('progressContainer');
-        const progressBar = document.getElementById('progressBar');
-        progressContainer.style.display = 'block';
-        
-        console.log('開始載入模型，可用來源:', MODEL_SOURCES);
         
         let modelLoaded = false;
-        let lastError = null;
-        
-        // 嘗試所有模型來源
         for (let i = 0; i < MODEL_SOURCES.length; i++) {
-          const modelUrl = MODEL_SOURCES[i];
           try {
-            updateVoice(`嘗試載入模型來源 ${i + 1}/${MODEL_SOURCES.length}`);
-            updateModelStatus(`嘗試來源 ${i + 1}`);
-            progressBar.style.width = `${(i / MODEL_SOURCES.length) * 100}%`;
-            
-            console.log(`嘗試載入模型: ${modelUrl}`);
-            
-            // 添加緩存破壞參數
-            const cacheBuster = `?t=${Date.now()}&v=2`;
-            const finalUrl = modelUrl + cacheBuster;
-            
-            // 模型載入選項
-            const options = {
-              executionProviders: ['wasm'],
-              graphOptimizationLevel: 'all',
-              enableProfiling: false
-            };
-            
-            session = await ort.InferenceSession.create(finalUrl, options);
-            
+            const cacheBuster = `?t=${Date.now()}`;
+            session = await ort.InferenceSession.create(MODEL_SOURCES[i] + cacheBuster, {
+              executionProviders: ['wasm']
+            });
             modelLoaded = true;
-            progressBar.style.width = '100%';
-            progressBar.style.background = 'var(--good)';
-            
-            console.log('✅ 模型載入成功！來源:', modelUrl);
-            console.log('模型輸入:', session.inputNames);
-            console.log('模型輸出:', session.outputNames);
-            
-            updateVoice('AI 模型載入成功！');
-            updateModelStatus('載入成功');
             break;
-            
           } catch (error) {
-            console.error(`❌ 模型來源 ${i + 1} 失敗:`, error.message);
-            lastError = error;
             continue;
           }
         }
         
-        progressContainer.style.display = 'none';
+        if (!modelLoaded) throw new Error('模型載入失敗');
         
-        if (!modelLoaded) {
-          throw new Error(`所有模型來源都失敗。最後錯誤: ${lastError?.message}`);
-        }
-        
-        // 初始化事件監聽
         initEventListeners();
         updateStatus('準備就緒');
-        updateVoice('系統準備完成，請點擊開始檢測');
-        
-        // 測試模型推理
-        await testModelInference();
+        updateVoice('AI 模型載入成功！請先開啟相機');
         
       } catch (error) {
-        console.error('模型載入最終錯誤:', error);
-        handleModelLoadError(error);
-      }
-    }
-
-    // 處理模型載入錯誤
-    function handleModelLoadError(error) {
-      updateVoice('模型載入失敗，請檢查網路連接');
-      updateStatus('載入失敗');
-      updateModelStatus('失敗');
-      
-      const progressContainer = document.getElementById('progressContainer');
-      progressContainer.style.display = 'none';
-      
-      // 顯示詳細錯誤信息
-      let errorDetails = '模型載入失敗。可能原因:\n';
-      
-      if (error.message.includes('Failed to fetch')) {
-        errorDetails += '1. 網路連接問題\n';
-        errorDetails += '2. 模型URL不可訪問\n';
-        errorDetails += '3. CORS 跨域限制\n';
-      } else if (error.message.includes('CORS')) {
-        errorDetails += '跨域訪問被阻止，請使用 HTTPS\n';
-      } else if (error.message.includes('404')) {
-        errorDetails += '模型文件未找到\n';
-      } else {
-        errorDetails += error.message;
-      }
-      
-      errorDetails += '\n建議:\n';
-      errorDetails += '1. 檢查網路連接\n';
-      errorDetails += '2. 刷新頁面重試\n';
-      errorDetails += '3. 使用 Chrome 瀏覽器\n';
-      
-      console.error(errorDetails);
-    }
-
-    // 測試模型推理
-    async function testModelInference() {
-      if (!session) {
-        console.log('❌ 模型未載入，無法測試');
-        return;
-      }
-      
-      try {
-        console.log('開始模型推理測試...');
-        
-        // 創建測試張量
-        const testData = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE).fill(0.5);
-        const testTensor = new ort.Tensor('float32', testData, [1, 3, INPUT_SIZE, INPUT_SIZE]);
-        const feeds = { [session.inputNames[0]]: testTensor };
-        
-        // 執行推理
-        const results = await session.run(feeds);
-        const output = results[session.outputNames[0]];
-        
-        console.log('✅ 模型推理測試成功');
-        console.log('輸出形狀:', output.dims);
-        console.log('輸出數據長度:', output.data.length);
-        
-        updateModelStatus('測試通過');
-        
-      } catch (error) {
-        console.error('❌ 模型推理測試失敗:', error);
-        updateModelStatus('測試失敗');
+        console.error('模型載入錯誤:', error);
+        updateVoice('模型載入失敗');
       }
     }
 
     function initEventListeners() {
+      document.getElementById('btnCamera').addEventListener('click', setupCamera);
       document.getElementById('btnStart').addEventListener('click', startDetection);
       document.getElementById('btnStop').addEventListener('click', stopDetection);
       document.getElementById('btnVoice').addEventListener('click', toggleVoice);
       document.getElementById('btnMirror').addEventListener('click', toggleMirror);
       document.getElementById('btnDebug').addEventListener('click', toggleDetectionBoxes);
-      document.getElementById('btnTestModel').addEventListener('click', () => testModelInference());
+      document.getElementById('btnSwitchCamera').addEventListener('click', switchCamera);
       document.getElementById('btnLoadModule').addEventListener('click', loadEnvironmentModule);
     }
 
-    function updateModelStatus(status) {
-      document.getElementById('modelStatus').textContent = status;
-    }
-
     /**********************
-     * 4) 攝像頭控制
+     * 4) 攝像頭控制 - 完全修復版本
      **********************/
     async function setupCamera() {
-      const video = document.getElementById('video');
-      
-      // 停止之前的 stream
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach(track => track.stop());
-      }
-      
       try {
+        updateVoice('正在請求相機權限…');
+        updateCameraStatus('請求權限中');
+        
+        // 停止之前的 stream
+        if (currentStream) {
+          currentStream.getTracks().forEach(track => track.stop());
+        }
+        
+        const video = document.getElementById('video');
+        const preview = document.getElementById('cameraPreview');
+        
+        // 嘗試多種相機配置
         const constraints = {
-          video: { 
-            facingMode: 'environment',
-            width: { ideal: 640 },
-            height: { ideal: 480 }
-          }, 
-          audio: false 
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 },
+            facingMode: usingFrontCamera ? 'user' : 'environment'
+          },
+          audio: false
         };
         
+        console.log('嘗試相機配置:', constraints);
+        
+        // 請求相機權限
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        currentStream = stream;
         video.srcObject = stream;
         
-        await new Promise((resolve) => {
-          video.onloadedmetadata = () => { resolve(video); };
+        // 等待視頻準備好
+        await new Promise((resolve, reject) => {
+          video.onloadedmetadata = () => {
+            console.log('✅ 相機準備完成:', video.videoWidth, 'x', video.videoHeight);
+            resolve(video);
+          };
+          video.onerror = reject;
+          
+          // 超時處理
+          setTimeout(() => reject(new Error('相機加載超時')), 10000);
         });
         
+        // 開始播放視頻
         await video.play();
+        
+        // 隱藏預覽畫面
+        preview.style.display = 'none';
+        
+        // 更新鏡像效果
         updateMirrorEffect();
+        
+        // 更新相機信息
+        updateCameraInfo();
+        
+        // 啟用開始檢測按鈕
+        document.getElementById('btnStart').disabled = false;
+        
+        updateCameraStatus('已開啟');
+        updateVoice('相機開啟成功！現在可以開始檢測');
+        
+        console.log('🎥 相機成功開啟');
         return video;
         
       } catch (error) {
-        console.error('攝像頭錯誤:', error);
-        updateVoice('無法訪問攝像頭，請確認權限');
+        console.error('❌ 相機錯誤:', error);
+        handleCameraError(error);
         return null;
       }
+    }
+
+    function handleCameraError(error) {
+      const preview = document.getElementById('cameraPreview');
+      let errorMessage = '無法開啟相機：';
+      
+      switch(error.name) {
+        case 'NotAllowedError':
+          errorMessage += '請允許相機權限，然後刷新頁面';
+          break;
+        case 'NotFoundError':
+          errorMessage += '未找到相機設備';
+          break;
+        case 'NotSupportedError':
+          errorMessage += '瀏覽器不支持相機功能';
+          break;
+        case 'OverconstrainedError':
+          errorMessage += '無法滿足相機配置要求';
+          break;
+        default:
+          errorMessage += error.message;
+      }
+      
+      preview.innerHTML = `
+        <div style="text-align: center;">
+          <div style="font-size: 48px; margin-bottom: 10px;">📷</div>
+          <div>${errorMessage}</div>
+          <button onclick="retryCamera()" style="margin-top: 10px; padding: 8px 16px; background: var(--good); color: white; border: none; border-radius: 8px;">
+            重試
+          </button>
+        </div>
+      `;
+      
+      updateCameraStatus('開啟失敗');
+      updateVoice('相機開啟失敗，請檢查權限');
+    }
+
+    function retryCamera() {
+      setupCamera();
+    }
+
+    async function switchCamera() {
+      usingFrontCamera = !usingFrontCamera;
+      updateVoice(usingFrontCamera ? '切換到前置鏡頭' : '切換到後置鏡頭');
+      await setupCamera();
+    }
+
+    function updateCameraInfo() {
+      const video = document.getElementById('video');
+      const info = document.getElementById('cameraInfo');
+      
+      if (video.videoWidth && video.videoHeight) {
+        info.textContent = `${video.videoWidth}×${video.videoHeight} ${usingFrontCamera ? '前置' : '後置'}`;
+      }
+    }
+
+    function updateCameraStatus(status) {
+      document.getElementById('cameraStatus').textContent = status;
     }
 
     function toggleMirror() {
@@ -761,7 +734,8 @@
 
     function updateMirrorEffect() {
       const video = document.getElementById('video');
-      video.style.transform = isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+      // 只有前置鏡頭才需要鏡像
+      video.style.transform = (isMirrored && usingFrontCamera) ? 'scaleX(-1)' : 'scaleX(1)';
     }
 
     /**********************
@@ -780,7 +754,6 @@
       const container = document.getElementById('detectionContainer');
       const [x, y, w, h] = prediction.bbox;
       
-      // 計算在影片中的實際位置
       const scaleX = videoWidth / INPUT_SIZE;
       const scaleY = videoHeight / INPUT_SIZE;
       
@@ -789,7 +762,6 @@
       const actualW = w * scaleX;
       const actualH = h * scaleY;
       
-      // 創建檢測框
       const box = document.createElement('div');
       box.className = 'detection-box';
       box.style.left = actualX + 'px';
@@ -797,25 +769,22 @@
       box.style.width = actualW + 'px';
       box.style.height = actualH + 'px';
       
-      // 根據危險等級設置顏色
       const module = environmentModules[currentEnvironment];
       const objConfig = module.objects[prediction.class];
-      let color = '#22c55e'; // 預設綠色
+      let color = '#22c55e';
       
       if (objConfig) {
         switch(objConfig.danger) {
           case 'high': color = '#ef4444'; break;
           case 'medium': color = '#f59e0b'; break;
-          default: color = '#22c55e';
         }
       } else {
-        color = '#6b7280'; // 灰色表示過濾掉的物體
+        color = '#6b7280';
       }
       
       box.style.borderColor = color;
       box.style.background = color.replace(')', ', 0.1)').replace('rgb', 'rgba');
       
-      // 創建標籤
       const label = document.createElement('div');
       label.className = 'detection-label';
       label.style.left = actualX + 'px';
@@ -825,13 +794,6 @@
       const confidencePercent = (prediction.score * 100).toFixed(0);
       label.textContent = `${objConfig ? objConfig.name : prediction.class} ${confidencePercent}%`;
       
-      // 置信度條
-      const confidenceBar = document.createElement('div');
-      confidenceBar.className = 'confidence-bar';
-      confidenceBar.style.width = (actualW * prediction.score) + 'px';
-      confidenceBar.style.background = color;
-      
-      box.appendChild(confidenceBar);
       container.appendChild(box);
       container.appendChild(label);
     }
@@ -860,28 +822,28 @@
         return;
       }
       
-      const video = await setupCamera(); 
-      if (!video) return;
+      const video = document.getElementById('video');
+      if (!video.srcObject) {
+        updateVoice('請先開啟相機');
+        return;
+      }
       
       isDetecting = true; 
       updateStatus('檢測中'); 
       updateVoice('開始障礙物檢測');
       
-      requestAnimationFrame((ts) => loop(video, ts));
+      // 開始檢測循環
+      detectLoop(video);
     }
 
     function stopDetection() {
       isDetecting = false; 
       updateStatus('已停止');
-      const video = document.getElementById('video');
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach(track => track.stop());
-      }
       clearDetectionBoxes();
       updateVoice('檢測已停止');
     }
 
-    async function loop(video, ts = 0) {
+    async function detectLoop(video) {
       if (!isDetecting) return;
       
       try {
@@ -890,10 +852,11 @@
         updateDetectionBoxes(predictions, video.videoWidth, video.videoHeight);
         updateStats(predictions);
       } catch (error) {
-        console.error('檢測循環錯誤:', error);
+        console.error('檢測錯誤:', error);
       }
       
-      requestAnimationFrame((n) => loop(video, n));
+      // 使用 setTimeout 控制檢測頻率，避免過度消耗資源
+      setTimeout(() => detectLoop(video), 1000 / TARGET_FPS);
     }
 
     /**********************
@@ -1007,7 +970,7 @@
       const className = coco80[classId];
       const pixelArea = width * height;
       const referenceSizes = {
-        'person': 15000, 'car': 80000, 'chair': 12000, 'bottle': 3000
+        'person': 15000, 'car': 80000, 'chair': 12000
       };
       const refSize = referenceSizes[className] || 20000;
       const distance = Math.sqrt(refSize / pixelArea) * 2;
@@ -1047,7 +1010,6 @@
     function processPredictions(predictions, frameW) {
       const module = environmentModules[currentEnvironment];
       
-      // 過濾相關物體並排除容易誤判的類別
       const relevantPredictions = predictions.filter(p => {
         const isRelevant = module.objects[p.class];
         const isFilteredOut = module.filterOut.includes(p.class);
@@ -1114,7 +1076,6 @@
     }
 
     function updateStats(predictions) {
-      // 更新最高置信度
       const maxConfidence = predictions.length > 0 ? 
         Math.max(...predictions.map(p => p.score)) : 0;
       document.getElementById('maxConfidence').textContent = 
