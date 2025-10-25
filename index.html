@@ -102,7 +102,6 @@
       height: 100%;
       object-fit: cover;
       border-radius: 12px;
-      transform: scaleX(-1);
     }
     
     .camera-preview {
@@ -139,6 +138,11 @@
       transition: all 0.2s ease;
       min-height: 54px;
       user-select: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
     }
     
     button:disabled {
@@ -413,6 +417,23 @@
     .tab-content.active {
       display: block;
     }
+    
+    .camera-controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .camera-switch {
+      flex: 1;
+      padding: 10px;
+      background: var(--glass-strong);
+      border: none;
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -458,10 +479,22 @@
       <!-- 控制面板 -->
       <div class="card">
         <div class="controls">
-          <button id="btnCamera" class="btn-primary">開啟相機</button>
-          <button id="btnStart" class="btn-primary" disabled>開始檢測</button>
-          <button id="btnTest" class="btn-secondary" disabled>測試功能</button>
-          <button id="btnStop" class="btn-danger" disabled>停止</button>
+          <button id="btnCamera" class="btn-primary">
+            <span>📷</span>
+            <span>開啟相機</span>
+          </button>
+          <button id="btnStart" class="btn-primary" disabled>
+            <span>🔍</span>
+            <span>開始檢測</span>
+          </button>
+          <button id="btnTest" class="btn-secondary" disabled>
+            <span>🧪</span>
+            <span>測試功能</span>
+          </button>
+          <button id="btnStop" class="btn-danger" disabled>
+            <span>⏹️</span>
+            <span>停止</span>
+          </button>
         </div>
 
         <div class="status-grid">
@@ -519,6 +552,28 @@
 
     <!-- 物品識別模式內容 -->
     <div id="recognitionTab" class="tab-content">
+      <!-- 相機畫面 -->
+      <div class="card">
+        <div class="camera-container">
+          <div id="recognitionCameraPreview" class="camera-preview">
+            <div>
+              <div style="font-size:48px; margin-bottom:10px;">📷</div>
+              <div>點擊「開啟相機」開始物品識別</div>
+              <div style="font-size:12px; margin-top:10px; color:var(--muted);">
+                可識別1500+種日常物品
+              </div>
+            </div>
+          </div>
+          <video id="recognitionVideo" autoplay playsinline muted></video>
+        </div>
+        <div class="camera-controls">
+          <button class="camera-switch" onclick="switchRecognitionCamera()">
+            <span>🔄</span>
+            <span>切換鏡頭</span>
+          </button>
+        </div>
+      </div>
+
       <!-- 主要控制按鈕 -->
       <div class="card">
         <div class="controls">
@@ -796,6 +851,10 @@
     let detectionInterval = null;
     let lastDetectionTime = 0;
 
+    // 物品識別系統狀態變數
+    let recognitionStream = null;
+    let recognitionCameraFacingMode = 'environment';
+
     // 智能助手類
     class SmartAssistant {
       constructor() {
@@ -871,7 +930,7 @@
           return;
         }
 
-        const video = await this.setupCamera();
+        const video = await this.setupRecognitionCamera();
         if (!video) return;
 
         this.isRecognizing = true;
@@ -905,7 +964,7 @@
           return;
         }
 
-        const video = await this.setupCamera();
+        const video = await this.setupRecognitionCamera();
         if (!video) return;
 
         this.continuousMode = true;
@@ -1012,7 +1071,7 @@
 
       // 設定家的位置
       async setHomeLocation() {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve, reject) {
           if (!navigator.geolocation) {
             reject('您的裝置不支援定位功能');
             return;
@@ -1158,20 +1217,36 @@
         document.getElementById('navigationPanel').style.display = 'none';
       }
 
-      // 設置相機
-      async setupCamera() {
-        const video = document.getElementById('video');
+      // 設置物品識別相機
+      async setupRecognitionCamera() {
+        const video = document.getElementById('recognitionVideo');
         try {
+          // 停止之前的串流
+          if (recognitionStream) {
+            recognitionStream.getTracks().forEach(track => track.stop());
+          }
+          
           const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment' }
+            video: { 
+              facingMode: recognitionCameraFacingMode,
+              width: { ideal: 640 },
+              height: { ideal: 480 }
+            }
           });
+          
+          recognitionStream = stream;
           video.srcObject = stream;
-          document.getElementById('cameraOverlay').textContent = '鏡頭就緒';
+          document.getElementById('recognitionCameraPreview').style.display = 'none';
+          
           return new Promise((resolve) => {
-            video.onloadedmetadata = () => { resolve(video); };
+            video.onloadedmetadata = () => { 
+              video.play();
+              resolve(video); 
+            };
           });
         } catch (error) {
           updateVoice('無法開啟相機');
+          console.error('相機開啟失敗:', error);
           return null;
         }
       }
@@ -1453,6 +1528,30 @@
     function clearDetectionDisplay() {
       const list = document.getElementById('detectionList');
       list.innerHTML = '<div class="detection-item" style="text-align:center; color:var(--muted);">檢測已停止</div>';
+    }
+
+    // 切換物品識別相機
+    function switchRecognitionCamera() {
+      recognitionCameraFacingMode = recognitionCameraFacingMode === 'environment' ? 'user' : 'environment';
+      updateVoice(`切換到${recognitionCameraFacingMode === 'environment' ? '後置' : '前置'}鏡頭`);
+      
+      // 重新開啟相機
+      if (recognitionStream) {
+        recognitionStream.getTracks().forEach(track => track.stop());
+        recognitionStream = null;
+      }
+      
+      document.getElementById('recognitionCameraPreview').style.display = 'flex';
+      document.getElementById('recognitionCameraPreview').innerHTML = `
+        <div>
+          <div style="font-size:48px; margin-bottom:10px;">🔄</div>
+          <div>正在切換鏡頭...</div>
+        </div>
+      `;
+      
+      setTimeout(() => {
+        assistant.setupRecognitionCamera();
+      }, 500);
     }
 
     // 工具函數
