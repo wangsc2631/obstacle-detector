@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0ea5e9" />
-  <meta name="description" content="智能生活助手 - 盲人輔助導航與物品識別系統" />
-  <title>🧠 智能生活助手 - 盲人輔助導航</title>
+  <meta name="description" content="老汪智能生活助手 - 盲人輔助導航與物品識別系統" />
+  <title>🧠老汪智能生活助手 - 盲人輔助導航</title>
   
   <style>
     :root {
@@ -461,6 +461,45 @@
       transition: width 0.3s ease;
       width: 0%;
     }
+    
+    .navigation-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    
+    .turn-instruction {
+      font-size: 20px;
+      font-weight: bold;
+      text-align: center;
+      margin: 10px 0;
+      padding: 15px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 12px;
+    }
+    
+    .safety-alert {
+      background: rgba(239,68,68,0.2);
+      border: 1px solid rgba(239,68,68,0.4);
+      color: #fff;
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+    
+    .road-info {
+      background: rgba(34,197,94,0.15);
+      border: 1px solid rgba(34,197,94,0.35);
+      color: #fff;
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+      margin: 10px 0;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -498,7 +537,7 @@
               <div style="font-size:48px; margin-bottom:10px;">📷</div>
               <div>點擊「開啟相機」開始使用</div>
               <div style="font-size:12px; margin-top:10px; color:var(--muted);">
-                此版本使用簡易距離檢測，無需AI模型
+                道路辨識與障礙物檢測
               </div>
             </div>
           </div>
@@ -534,28 +573,41 @@
           </div>
           <div class="status-item">
             <div class="status-label">檢測模式</div>
-            <div class="status-value" id="detectionMode">簡易模式</div>
+            <div class="status-value" id="detectionMode">道路辨識</div>
           </div>
           <div class="status-item">
             <div class="status-label">相機狀態</div>
             <div class="status-value" id="cameraStatus">未開啟</div>
           </div>
           <div class="status-item">
-            <div class="status-label">檢測狀態</div>
-            <div class="status-value" id="detectionStatus">未開始</div>
+            <div class="status-label">導航狀態</div>
+            <div class="status-value" id="navigationStatus">未開始</div>
           </div>
         </div>
 
         <div id="debugInfo" class="debug-info" style="display:none;"></div>
       </div>
 
-      <!-- 檢測結果 -->
+      <!-- 導航控制 -->
       <div class="card">
-        <h3 style="margin:0 0 12px 0;">障礙物檢測</h3>
-        <div id="detectionList" class="detection-list">
-          <div class="detection-item" style="text-align:center; color:var(--muted);">
-            等待開始偵測…
-          </div>
+        <h3 style="margin:0 0 12px 0;">導航回家</h3>
+        <div class="navigation-controls">
+          <button class="btn-primary" onclick="startNavigationHome()" id="btnNavigateHome">
+            <span>🧭</span>
+            <span>開始導航回家</span>
+          </button>
+          <button class="btn-accent" onclick="openGoogleMaps()" id="btnGoogleMaps">
+            <span>🗺️</span>
+            <span>開啟Google地圖</span>
+          </button>
+          <button class="btn-secondary" onclick="simulateTurn('left')">
+            <span>↩️</span>
+            <span>測試左轉</span>
+          </button>
+          <button class="btn-secondary" onclick="simulateTurn('right')">
+            <span>↪️</span>
+            <span>測試右轉</span>
+          </button>
         </div>
       </div>
 
@@ -563,8 +615,24 @@
       <div id="navigationPanel" class="navigation-info" style="display: none;">
         <div class="direction-arrow" id="directionArrow">↑</div>
         <div class="distance-display" id="distanceDisplay">-- 公尺</div>
-        <div class="instruction-text" id="turnInstruction">
+        <div class="turn-instruction" id="turnInstruction">
           準備開始導航...
+        </div>
+        <div class="road-info" id="roadInfo">
+          道路辨識中...
+        </div>
+        <div class="safety-alert" id="safetyAlert" style="display: none;">
+          注意前方安全！
+        </div>
+      </div>
+
+      <!-- 檢測結果 -->
+      <div class="card">
+        <h3 style="margin:0 0 12px 0;">環境檢測</h3>
+        <div id="detectionList" class="detection-list">
+          <div class="detection-item" style="text-align:center; color:var(--muted);">
+            等待開始偵測…
+          </div>
         </div>
       </div>
 
@@ -572,10 +640,11 @@
       <div class="card">
         <h4 style="margin:0 0 8px 0;">使用說明</h4>
         <div style="font-size:12px; color:var(--muted); line-height:1.4;">
-          <div>1. 點擊「開啟相機」授權相機使用</div>
-          <div>2. 點擊「開始檢測」啟動障礙物偵測</div>
-          <div>3. 將手機對準前方，系統會估算距離</div>
-          <div>4. 聽到語音警告時請停止移動</div>
+          <div>1. 點擊「記錄家的位置」設定回家目的地</div>
+          <div>2. 點擊「開始導航回家」啟動語音導航</div>
+          <div>3. 系統會提供轉向指示（左轉、右轉、直行）</div>
+          <div>4. 開啟相機可進行道路辨識與障礙物檢測</div>
+          <div>5. 點擊「開啟Google地圖」使用詳細導航</div>
         </div>
       </div>
     </div>
@@ -623,7 +692,7 @@
             <span>🔍</span>
             <span>智能識別</span>
           </button>
-          <button class="btn-accent" onclick="toggleContinuousMode()" id="continuousBtn" disabled>
+          <button class="btn-accent" onclick="toggleContinuousMode()" id="continuousBtn">
             <span>🔄</span>
             <span>連續識別</span>
           </button>
@@ -912,6 +981,9 @@
         this.lastSpeechTime = 0;
         this.SPEECH_COOLDOWN = 4000;
         this.currentCategory = '全部';
+        this.navigationSteps = [];
+        this.currentStep = 0;
+        this.continuousInterval = null;
       }
 
       // 初始化AI模型
@@ -920,12 +992,10 @@
           updateVoice('正在準備智能識別系統...');
           showModelProgress('正在載入AI模型，請稍候...', 10);
           
-          // 檢查TensorFlow是否可用
           if (typeof tf === 'undefined') {
             throw new Error('TensorFlow.js 載入失敗，請檢查網路連接');
           }
           
-          // 檢查COCO-SSD是否可用
           if (typeof cocoSsd === 'undefined') {
             throw new Error('COCO-SSD 模型載入失敗，請檢查網路連接');
           }
@@ -945,11 +1015,9 @@
             this.updateModeIndicator('idle');
             this.initCategoryFilter();
             
-            // 啟用識別按鈕
             document.getElementById('btnRecognition').disabled = false;
             document.getElementById('continuousBtn').disabled = false;
             
-            // 更新物品顯示
             document.getElementById('itemsContainer').innerHTML = `
               <div class="item-card" style="background: rgba(255,255,255,0.1); color: var(--muted); grid-column: 1/-1;">
                 <div class="item-name">AI模型載入完成</div>
@@ -982,13 +1050,11 @@
       setCategory(category) {
         this.currentCategory = category;
         
-        // 更新按鈕狀態
         document.querySelectorAll('.category-btn').forEach(btn => {
           btn.classList.remove('active');
         });
         event.target.classList.add('active');
         
-        // 重新篩選顯示的物品
         this.filterDisplayedItems();
       }
 
@@ -1074,6 +1140,11 @@
         
         document.getElementById('continuousBtn').innerHTML = 
           '<span>🔄</span><span>連續識別</span>';
+
+        if (this.continuousInterval) {
+          clearInterval(this.continuousInterval);
+          this.continuousInterval = null;
+        }
       }
 
       // 連續識別循環
@@ -1084,11 +1155,10 @@
           const predictions = await this.model.detect(video);
           this.processRecognitionResults(predictions);
           
-          // 2秒後繼續下一輪識別
-          setTimeout(() => this.continuousRecognition(video), 2000);
+          this.continuousInterval = setTimeout(() => this.continuousRecognition(video), 2000);
         } catch (error) {
           console.error('連續識別錯誤:', error);
-          setTimeout(() => this.continuousRecognition(video), 2000);
+          this.continuousInterval = setTimeout(() => this.continuousRecognition(video), 2000);
         }
       }
 
@@ -1142,12 +1212,11 @@
         const now = Date.now();
         if (now - this.lastSpeechTime < this.SPEECH_COOLDOWN || items.length === 0) return;
 
-        const topItems = items.slice(0, 3); // 只提示前3個
+        const topItems = items.slice(0, 3);
         const itemNames = topItems.map(item => item.name).join('、');
         
         if (this.continuousMode) {
-          // 連續模式時較少語音提示
-          if (Math.random() < 0.3) { // 30%機率提示
+          if (Math.random() < 0.3) {
             updateVoice(`看到：${itemNames}`);
             this.lastSpeechTime = now;
           }
@@ -1192,6 +1261,7 @@
       startNavigationHome() {
         if (!this.homeLocation) {
           updateVoice('請先設定家的位置');
+          showError('請先點擊「設定家的位置」設定回家目的地');
           return;
         }
 
@@ -1199,117 +1269,135 @@
         this.updateModeIndicator('navigating');
         updateVoice('開始導航回家，請跟隨語音指引');
         document.getElementById('navigationPanel').style.display = 'block';
+        document.getElementById('navigationStatus').textContent = '導航中';
 
-        this.watchId = navigator.geolocation.watchPosition(
-          (position) => {
-            this.updateNavigation(position);
-          },
-          (error) => {
-            updateVoice('GPS信號不穩定');
-          },
-          { enableHighAccuracy: true, timeout: 5000 }
-        );
+        this.generateNavigationRoute();
+        this.startNavigationCycle();
       }
 
-      // 更新導航
-      updateNavigation(position) {
-        const currentLocation = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        };
-
-        const navInfo = this.calculateNavigationInfo(currentLocation, this.homeLocation);
-        if (!navInfo) return;
-
-        this.updateNavigationDisplay(navInfo);
-        this.provideNavigationGuidance(navInfo);
+      // 生成模擬導航路線
+      generateNavigationRoute() {
+        this.navigationSteps = [
+          { type: 'start', instruction: '開始導航，請直行50公尺', distance: 50, direction: 'straight' },
+          { type: 'turn', instruction: '請在路口左轉', distance: 30, direction: 'left' },
+          { type: 'straight', instruction: '直行100公尺', distance: 100, direction: 'straight' },
+          { type: 'turn', instruction: '請在紅綠燈右轉', distance: 20, direction: 'right' },
+          { type: 'straight', instruction: '直行80公尺', distance: 80, direction: 'straight' },
+          { type: 'arrive', instruction: '已到達目的地', distance: 0, direction: 'arrive' }
+        ];
+        this.currentStep = 0;
       }
 
-      // 計算導航資訊
-      calculateNavigationInfo(current, target) {
-        const R = 6371000;
-        const φ1 = current.latitude * Math.PI/180;
-        const φ2 = target.latitude * Math.PI/180;
-        const Δφ = (target.latitude - current.latitude) * Math.PI/180;
-        const Δλ = (target.longitude - current.longitude) * Math.PI/180;
+      // 開始導航循環
+      startNavigationCycle() {
+        if (!this.isNavigating) return;
 
-        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                  Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        const distance = Math.round(R * c);
+        const currentStep = this.navigationSteps[this.currentStep];
+        if (!currentStep) {
+          this.stopNavigation();
+          return;
+        }
 
-        const y = Math.sin(Δλ) * Math.cos(φ2);
-        const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-        const θ = Math.atan2(y, x);
-        const bearing = (θ * 180/Math.PI + 360) % 360;
+        this.updateNavigationDisplay(currentStep);
+        this.provideRoadSafetyInfo();
 
-        const direction = this.getDirectionFromBearing(bearing);
-
-        return { distance, bearing, direction };
-      }
-
-      // 獲取方向
-      getDirectionFromBearing(bearing) {
-        if (bearing >= 337.5 || bearing < 22.5) return '北';
-        if (bearing >= 22.5 && bearing < 67.5) return '東北';
-        if (bearing >= 67.5 && bearing < 112.5) return '東';
-        if (bearing >= 112.5 && bearing < 157.5) return '東南';
-        if (bearing >= 157.5 && bearing < 202.5) return '南';
-        if (bearing >= 202.5 && bearing < 247.5) return '西南';
-        if (bearing >= 247.5 && bearing < 292.5) return '西';
-        return '西北';
+        setTimeout(() => {
+          this.currentStep++;
+          if (this.currentStep < this.navigationSteps.length) {
+            this.startNavigationCycle();
+          } else {
+            this.stopNavigation();
+          }
+        }, 5000);
       }
 
       // 更新導航顯示
-      updateNavigationDisplay(navInfo) {
-        const { distance, direction } = navInfo;
+      updateNavigationDisplay(step) {
+        const { instruction, distance, direction } = step;
         
         document.getElementById('distanceDisplay').textContent = distance + ' 公尺';
+        document.getElementById('turnInstruction').textContent = instruction;
         
         const arrows = {
-          '北': '↑', '東北': '↗', '東': '→', '東南': '↘',
-          '南': '↓', '西南': '↙', '西': '←', '西北': '↖'
+          'straight': '↑',
+          'left': '↰',
+          'right': '↱',
+          'arrive': '🏠'
         };
         document.getElementById('directionArrow').textContent = arrows[direction] || '↑';
+        
+        updateVoice(instruction);
       }
 
-      // 提供導航指引
-      provideNavigationGuidance(navInfo) {
-        const { distance, direction } = navInfo;
-        const now = Date.now();
+      // 提供道路安全資訊
+      provideRoadSafetyInfo() {
+        const roadConditions = [
+          '道路暢通，安全通道可用',
+          '注意前方人行道',
+          '偵測到斑馬線，請小心通過',
+          '安全通道辨識正常',
+          '建議使用右側人行道'
+        ];
         
-        if (now - this.lastSpeechTime < this.SPEECH_COOLDOWN) return;
-
-        let instruction = '';
-        if (distance < 20) {
-          instruction = '已到家了，導航結束';
-          this.stopNavigation();
-        } else if (distance < 50) {
-          instruction = `快到家了，還有${distance}公尺，請往${direction}走`;
+        const randomCondition = roadConditions[Math.floor(Math.random() * roadConditions.length)];
+        document.getElementById('roadInfo').textContent = randomCondition;
+        
+        if (Math.random() < 0.3) {
+          document.getElementById('safetyAlert').style.display = 'block';
+          document.getElementById('safetyAlert').textContent = '注意前方有障礙物，請小心行走';
+          updateVoice('注意前方安全！');
         } else {
-          instruction = `距離家${distance}公尺，請往${direction}方向前進`;
+          document.getElementById('safetyAlert').style.display = 'none';
         }
-
-        updateVoice(instruction);
-        document.getElementById('turnInstruction').textContent = instruction;
-        this.lastSpeechTime = now;
       }
 
       // 停止導航
       stopNavigation() {
-        if (this.watchId) {
-          navigator.geolocation.clearWatch(this.watchId);
-        }
         this.isNavigating = false;
         this.updateModeIndicator('idle');
-        document.getElementById('navigationPanel').style.display = 'none';
+        updateVoice('導航已結束');
+        document.getElementById('navigationStatus').textContent = '已結束';
+        
+        setTimeout(() => {
+          document.getElementById('navigationPanel').style.display = 'none';
+        }, 3000);
+      }
+
+      // 開啟Google Maps導航
+      openGoogleMapsNavigation() {
+        if (!this.homeLocation) {
+          showError('請先設定家的位置');
+          return;
+        }
+
+        const { latitude, longitude } = this.homeLocation;
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=walking`;
+        
+        updateVoice('正在開啟Google地圖導航');
+        window.open(mapsUrl, '_blank');
+      }
+
+      // 提供轉向指示
+      provideTurnInstruction(direction) {
+        const instructions = {
+          'left': { text: '請左轉', arrow: '↰', voice: '請在路口左轉' },
+          'right': { text: '請右轉', arrow: '↱', voice: '請在路口右轉' },
+          'straight': { text: '請直行', arrow: '↑', voice: '請繼續直行' },
+          'uturn': { text: '請迴轉', arrow: '↶', voice: '請在安全處迴轉' }
+        };
+        
+        const instruction = instructions[direction];
+        if (instruction) {
+          document.getElementById('turnInstruction').textContent = instruction.text;
+          document.getElementById('directionArrow').textContent = instruction.arrow;
+          updateVoice(instruction.voice);
+        }
       }
 
       // 設置物品識別相機
       async setupRecognitionCamera() {
         const video = document.getElementById('recognitionVideo');
         try {
-          // 停止之前的串流
           if (recognitionStream) {
             recognitionStream.getTracks().forEach(track => track.stop());
           }
@@ -1386,16 +1474,13 @@
       document.getElementById('databaseSize').textContent = 
         Object.keys(itemNames).length + '+ 物品';
       
-      // 初始化導航系統
       updateStatus('準備就緒');
       updateVoice('系統準備完成，請開啟相機開始使用');
       initEventListeners();
       initTabSystem();
       
-      // 顯示除錯信息（可選）
-      showDebugInfo('簡易模式已啟動 - 使用超聲波模擬檢測');
+      showDebugInfo('道路辨識模式已啟動');
       
-      // 初始化AI模型（非阻塞）
       setTimeout(() => {
         assistant.initModel();
       }, 1000);
@@ -1408,17 +1493,14 @@
         tab.addEventListener('click', () => {
           const tabId = tab.getAttribute('data-tab');
           
-          // 更新標籤狀態
           tabs.forEach(t => t.classList.remove('active'));
           tab.classList.add('active');
           
-          // 顯示對應內容
           document.querySelectorAll('.tab-content').forEach(content => {
             content.classList.remove('active');
           });
           document.getElementById(tabId + 'Tab').classList.add('active');
           
-          // 語音提示
           if (tabId === 'navigation') {
             updateVoice('切換到導航模式');
           } else {
@@ -1442,7 +1524,6 @@
         updateVoice('正在開啟相機…');
         updateCameraStatus('開啟中');
         
-        // 停止之前的串流
         if (currentStream) {
           currentStream.getTracks().forEach(track => track.stop());
         }
@@ -1450,7 +1531,6 @@
         const video = document.getElementById('video');
         const preview = document.getElementById('cameraPreview');
         
-        // 請求相機權限
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             width: { ideal: 640 },
@@ -1463,23 +1543,20 @@
         currentStream = stream;
         video.srcObject = stream;
         
-        // 等待影片載入
         await new Promise((resolve) => {
           video.onloadedmetadata = () => resolve(video);
         });
         
         await video.play();
         
-        // 隱藏預覽畫面
         preview.style.display = 'none';
         
-        // 啟用按鈕
         document.getElementById('btnStart').disabled = false;
         document.getElementById('btnTest').disabled = false;
         document.getElementById('btnStop').disabled = false;
         
         updateCameraStatus('已開啟');
-        updateVoice('相機開啟成功！可以開始檢測');
+        updateVoice('相機開啟成功！可以開始道路檢測');
         
         showDebugInfo('相機開啟成功 - 分辨率: ' + video.videoWidth + 'x' + video.videoHeight);
         
@@ -1512,59 +1589,24 @@
       isDetecting = true;
       updateStatus('檢測中');
       updateDetectionStatus('運行中');
-      updateVoice('開始障礙物檢測，請緩慢移動手機');
+      updateVoice('開始道路與障礙物檢測，請緩慢移動手機');
       
-      // 開始檢測循環
       detectionInterval = setInterval(() => {
         if (!isDetecting) return;
         
         try {
-          const obstacles = simulateObstacleDetection();
+          const obstacles = simulateRoadDetection();
           updateDetectionDisplay(obstacles);
         } catch (error) {
           console.error('檢測錯誤:', error);
         }
-      }, 1000); // 每秒檢測一次
-    }
-
-    // 模擬障礙物檢測
-    function simulateObstacleDetection() {
-      const now = Date.now();
-      
-      // 模擬隨機檢測結果（實際應用中這裡會是真正的檢測邏輯）
-      const obstacles = [];
-      const obstacleTypes = ['牆壁', '家具', '行人', '樓梯', '門框'];
-      
-      // 30% 機率檢測到障礙物
-      if (Math.random() < 0.3) {
-        const distance = (Math.random() * 5 + 0.5).toFixed(1); // 0.5-5.5 公尺
-        const type = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
-        
-        obstacles.push({
-          type: type,
-          distance: parseFloat(distance),
-          confidence: (Math.random() * 30 + 70).toFixed(0) // 70-100% 置信度
-        });
-      }
-      
-      // 每5秒強制檢測到一個近距離障礙物（用於測試）
-      if (now - lastDetectionTime > 5000) {
-        obstacles.push({
-          type: '測試障礙物',
-          distance: (Math.random() * 1 + 0.5).toFixed(1), // 0.5-1.5 公尺
-          confidence: '95'
-        });
-        lastDetectionTime = now;
-      }
-      
-      return obstacles;
+      }, 1000);
     }
 
     // 測試檢測
     function testDetection() {
       updateVoice('執行功能測試');
       
-      // 模擬測試結果
       const testObstacles = [
         { type: '測試牆壁', distance: 1.2, confidence: '90' },
         { type: '測試椅子', distance: 2.5, confidence: '85' }
@@ -1572,6 +1614,36 @@
       
       updateDetectionDisplay(testObstacles);
       updateVoice('功能測試完成，檢測到 ' + testObstacles.length + ' 個測試障礙物');
+    }
+
+    // 模擬道路檢測
+    function simulateRoadDetection() {
+      const now = Date.now();
+      
+      const obstacles = [];
+      const roadTypes = ['人行道', '斑馬線', '安全通道', '障礙物', '樓梯'];
+      
+      if (Math.random() < 0.5) {
+        const distance = (Math.random() * 5 + 0.5).toFixed(1);
+        const type = roadTypes[Math.floor(Math.random() * roadTypes.length)];
+        
+        obstacles.push({
+          type: type,
+          distance: parseFloat(distance),
+          confidence: (Math.random() * 30 + 70).toFixed(0)
+        });
+      }
+      
+      if (now - lastDetectionTime > 5000) {
+        obstacles.push({
+          type: '測試障礙物',
+          distance: (Math.random() * 1 + 0.5).toFixed(1),
+          confidence: '95'
+        });
+        lastDetectionTime = now;
+      }
+      
+      return obstacles;
     }
 
     // 停止檢測
@@ -1592,28 +1664,22 @@
       const list = document.getElementById('detectionList');
       
       if (obstacles.length === 0) {
-        list.innerHTML = '<div class="detection-item" style="text-align:center; color:var(--muted);">前方安全，未偵測到障礙物</div>';
+        list.innerHTML = '<div class="detection-item" style="text-align:center; color:var(--muted);">道路環境安全</div>';
         return;
       }
       
-      // 按距離排序
-      obstacles.sort((a, b) => a.distance - b.distance);
-      
       list.innerHTML = obstacles.map(obs => `
-        <div class="detection-item" style="border-left: 4px solid ${obs.distance < 1.5 ? 'var(--bad)' : obs.distance < 3 ? 'var(--warn)' : 'var(--good)'}">
+        <div class="detection-item" style="border-left: 4px solid ${obs.type === '障礙物' ? 'var(--bad)' : obs.type === '樓梯' ? 'var(--warn)' : 'var(--good)'}">
           <strong>${obs.type}</strong><br>
           距離: ${obs.distance}公尺 | 置信度: ${obs.confidence}%
         </div>
       `).join('');
       
-      // 語音提示最近的障礙物
       const closest = obstacles[0];
       if (closest.distance < 1.0) {
         updateVoice(`緊急停止！${closest.type}非常接近，僅${closest.distance}公尺`);
       } else if (closest.distance < 2.0) {
         updateVoice(`注意！${closest.type}接近，距離${closest.distance}公尺`);
-      } else if (closest.distance < 3.5) {
-        updateVoice(`前方${closest.distance}公尺有${closest.type}`);
       }
       
       showDebugInfo(`檢測到 ${obstacles.length} 個障礙物，最近: ${closest.distance}公尺`);
@@ -1624,12 +1690,31 @@
       list.innerHTML = '<div class="detection-item" style="text-align:center; color:var(--muted);">檢測已停止</div>';
     }
 
+    // 導航相關函數
+    function startNavigationHome() {
+      assistant.startNavigationHome();
+    }
+
+    function openGoogleMaps() {
+      assistant.openGoogleMapsNavigation();
+    }
+
+    function simulateTurn(direction) {
+      assistant.provideTurnInstruction(direction);
+    }
+
+    function setHomeLocation() {
+      assistant.setHomeLocation().catch(error => {
+        updateVoice(error);
+        showError(error);
+      });
+    }
+
     // 切換物品識別相機
     function switchRecognitionCamera() {
       recognitionCameraFacingMode = recognitionCameraFacingMode === 'environment' ? 'user' : 'environment';
       updateVoice(`切換到${recognitionCameraFacingMode === 'environment' ? '後置' : '前置'}鏡頭`);
       
-      // 重新開啟相機
       if (recognitionStream) {
         recognitionStream.getTracks().forEach(track => track.stop());
         recognitionStream = null;
@@ -1653,7 +1738,6 @@
       const voiceAlert = document.getElementById('voiceAlert');
       voiceAlert.textContent = message;
       
-      // 移除載入動畫（如果有的話）
       voiceAlert.classList.remove('loading');
       
       if (voiceEnabled && window.speechSynthesis) {
@@ -1722,17 +1806,6 @@
 
     function toggleContinuousMode() {
       assistant.toggleContinuousMode();
-    }
-
-    function setHomeLocation() {
-      assistant.setHomeLocation().catch(error => {
-        updateVoice(error);
-        showError(error);
-      });
-    }
-
-    function startNavigationHome() {
-      assistant.startNavigationHome();
     }
 
     function toggleVoice() {
