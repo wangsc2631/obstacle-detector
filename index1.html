@@ -93,7 +93,7 @@
     }
     
     @media (min-width: 768px) {
-      header .tips {
+      .tips {
         display: block;
       }
     }
@@ -120,6 +120,10 @@
     .camera video {
       transform: scaleX(-1);
       background: #000;
+    }
+    
+    .camera canvas {
+      z-index: 2;
     }
     
     .camera-preview {
@@ -388,6 +392,16 @@
       font-size: 12px;
       z-index: 10;
     }
+    
+    .debug-info {
+      background: rgba(0,0,0,0.8);
+      color: #00ff00;
+      padding: 8px;
+      border-radius: 5px;
+      font-size: 12px;
+      margin-top: 8px;
+      font-family: monospace;
+    }
   </style>
 </head>
 <body class="no-select">
@@ -423,7 +437,7 @@
         <button id="btnMirror" class="btn secondary">關閉鏡像</button>
         <button id="btnDebug" class="btn secondary">顯示檢測框</button>
         <button id="btnSwitchCamera" class="btn secondary">切換鏡頭</button>
-        <button id="btnLoadModule" class="btn primary">切換環境</button>
+        <button id="btnTestDetection" class="btn primary">測試檢測</button>
       </div>
 
       <!-- 狀態資訊 -->
@@ -437,8 +451,8 @@
           <div class="v" id="cameraStatus">未開啟</div>
         </div>
         <div class="status-item">
-          <div class="k">障礙物數</div>
-          <div class="v" id="obstacleCount">0</div>
+          <div class="k">檢測狀態</div>
+          <div class="v" id="detectionStatus">未開始</div>
         </div>
         <div class="status-item">
           <div class="k">最近距離</div>
@@ -464,6 +478,9 @@
           <div class="v" id="voiceStatus">開啟</div>
         </div>
       </div>
+
+      <!-- 調試信息 -->
+      <div id="debugInfo" class="debug-info"></div>
     </section>
 
     <aside class="card panel">
@@ -545,6 +562,7 @@
     let currentEnvironment = 'outdoor';
     let currentStream = null;
     let usingFrontCamera = false;
+    let detectionInterval = null;
 
     /**********************
      * 3) 模型載入
@@ -590,11 +608,11 @@
       document.getElementById('btnMirror').addEventListener('click', toggleMirror);
       document.getElementById('btnDebug').addEventListener('click', toggleDetectionBoxes);
       document.getElementById('btnSwitchCamera').addEventListener('click', switchCamera);
-      document.getElementById('btnLoadModule').addEventListener('click', loadEnvironmentModule);
+      document.getElementById('btnTestDetection').addEventListener('click', testSingleDetection);
     }
 
     /**********************
-     * 4) 攝像頭控制 - 完全修復版本
+     * 4) 攝像頭控制
      **********************/
     async function setupCamera() {
       try {
@@ -609,12 +627,11 @@
         const video = document.getElementById('video');
         const preview = document.getElementById('cameraPreview');
         
-        // 嘗試多種相機配置
+        // 簡單的相機配置
         const constraints = {
           video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30 },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
             facingMode: usingFrontCamera ? 'user' : 'environment'
           },
           audio: false
@@ -634,9 +651,6 @@
             resolve(video);
           };
           video.onerror = reject;
-          
-          // 超時處理
-          setTimeout(() => reject(new Error('相機加載超時')), 10000);
         });
         
         // 開始播放視頻
@@ -653,6 +667,7 @@
         
         // 啟用開始檢測按鈕
         document.getElementById('btnStart').disabled = false;
+        document.getElementById('btnTestDetection').disabled = false;
         
         updateCameraStatus('已開啟');
         updateVoice('相機開啟成功！現在可以開始檢測');
@@ -677,12 +692,6 @@
           break;
         case 'NotFoundError':
           errorMessage += '未找到相機設備';
-          break;
-        case 'NotSupportedError':
-          errorMessage += '瀏覽器不支持相機功能';
-          break;
-        case 'OverconstrainedError':
-          errorMessage += '無法滿足相機配置要求';
           break;
         default:
           errorMessage += error.message;
@@ -739,7 +748,231 @@
     }
 
     /**********************
-     * 5) 檢測框視覺化
+     * 5) 檢測功能 - 修復版本
+     **********************/
+    async function startDetection() {
+      if (!session) {
+        updateVoice('模型尚未載入完成');
+        return;
+      }
+      
+      const video = document.getElementById('video');
+      if (!video.srcObject) {
+        updateVoice('請先開啟相機');
+        return;
+      }
+      
+      isDetecting = true;
+      updateStatus('檢測中');
+      updateDetectionStatus('運行中');
+      updateVoice('開始障礙物檢測');
+      
+      // 使用 setInterval 而不是 requestAnimationFrame，避免衝突
+      detectionInterval = setInterval(async () => {
+        if (!isDetecting) return;
+        
+        try {
+          const { predictions, frameW } = await runOnce(video);
+          updateDebugInfo(`檢測到 ${predictions.length} 個物體`);
+          processPredictions(predictions, frameW);
+          updateDetectionBoxes(predictions, video.videoWidth, video.videoHeight);
+          updateStats(predictions);
+        } catch (error) {
+          console.error('檢測錯誤:', error);
+          updateDebugInfo(`檢測錯誤: ${error.message}`);
+        }
+      }, 1000 / TARGET_FPS);
+    }
+
+    function stopDetection() {
+      isDetecting = false;
+      if (detectionInterval) {
+        clearInterval(detectionInterval);
+        detectionInterval = null;
+      }
+      updateStatus('已停止');
+      updateDetectionStatus('已停止');
+      clearDetectionBoxes();
+      updateVoice('檢測已停止');
+    }
+
+    // 單次測試檢測
+    async function testSingleDetection() {
+      if (!session) {
+        updateVoice('模型尚未載入完成');
+        return;
+      }
+      
+      const video = document.getElementById('video');
+      if (!video.srcObject) {
+        updateVoice('請先開啟相機');
+        return;
+      }
+      
+      updateVoice('執行單次檢測測試');
+      
+      try {
+        const { predictions, frameW } = await runOnce(video);
+        updateDebugInfo(`測試檢測: ${predictions.length} 個物體`);
+        
+        if (predictions.length > 0) {
+          const objects = predictions.map(p => p.class).join(', ');
+          updateVoice(`測試成功！檢測到: ${objects}`);
+        } else {
+          updateVoice('測試完成，未檢測到物體');
+        }
+        
+        processPredictions(predictions, frameW);
+        updateDetectionBoxes(predictions, video.videoWidth, video.videoHeight);
+        updateStats(predictions);
+        
+      } catch (error) {
+        console.error('測試檢測錯誤:', error);
+        updateVoice('檢測測試失敗');
+      }
+    }
+
+    /**********************
+     * 6) YOLO 推理
+     **********************/
+    async function runOnce(video) {
+      try {
+        const frame = captureFrame(video);
+        const { predictions, frameW } = await inference(frame);
+        return { predictions, frameW };
+      } catch (error) {
+        console.error('推理錯誤:', error);
+        return { predictions: [], frameW: 640 };
+      }
+    }
+
+    function captureFrame(video) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const { videoWidth: w, videoHeight: h } = video;
+      
+      // 使用較小的尺寸提高性能
+      canvas.width = INPUT_SIZE;
+      canvas.height = INPUT_SIZE;
+      
+      // 直接繪製，不進行複雜計算
+      ctx.drawImage(video, 0, 0, INPUT_SIZE, INPUT_SIZE);
+      
+      return ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
+    }
+
+    async function inference(imageData) {
+      if (!session) {
+        throw new Error('模型未載入');
+      }
+      
+      const [inferenceTensor, frameW] = preprocess(imageData);
+      const feeds = { [session.inputNames[0]]: inferenceTensor };
+      const results = await session.run(feeds);
+      const predictions = postprocess(results, frameW);
+      return { predictions, frameW };
+    }
+
+    function preprocess(imageData, modelWidth = INPUT_SIZE, modelHeight = INPUT_SIZE) {
+      const { data, width, height } = imageData;
+      const input = new Float32Array(3 * modelWidth * modelHeight);
+      
+      // 簡化的預處理，只進行歸一化
+      for (let i = 0; i < data.length; i += 4) {
+        const pixelIndex = i / 4;
+        const r = data[i] / 255.0;
+        const g = data[i + 1] / 255.0;
+        const b = data[i + 2] / 255.0;
+        
+        input[pixelIndex] = r;
+        input[modelWidth * modelHeight + pixelIndex] = g;
+        input[2 * modelWidth * modelHeight + pixelIndex] = b;
+      }
+      
+      const tensor = new ort.Tensor('float32', input, [1, 3, modelWidth, modelHeight]);
+      return [tensor, width];
+    }
+
+    function postprocess(results, frameW) {
+      const output = results[session.outputNames[0]];
+      const predictions = [];
+      const outputData = output.data;
+      const outputDims = output.dims;
+      
+      // YOLOv8 輸出格式: [1, 84, 8400]
+      for (let i = 0; i < outputDims[2]; i++) {
+        const offset = i * outputDims[1];
+        const scores = outputData.slice(offset + 4, offset + outputDims[1]);
+        const maxScore = Math.max(...scores);
+        
+        if (maxScore < SCORE_THRESHOLD) continue;
+        
+        const classId = scores.indexOf(maxScore);
+        if (classId >= coco80.length) continue;
+        
+        const bbox = outputData.slice(offset, offset + 4);
+        let [x, y, w, h] = bbox;
+        
+        // 轉換為像素坐標
+        x = x * frameW;
+        y = y * frameW;
+        w = w * frameW;
+        h = h * frameW;
+        
+        // 估算距離
+        const distance = estimateDistance(w, h, classId);
+        
+        predictions.push({
+          class: coco80[classId],
+          score: maxScore,
+          bbox: [x, y, w, h],
+          distance: distance
+        });
+      }
+      
+      return nonMaxSuppression(predictions, IOU_THR);
+    }
+
+    function estimateDistance(width, height, classId) {
+      const className = coco80[classId];
+      const pixelArea = width * height;
+      const referenceSizes = {
+        'person': 15000, 'car': 80000, 'chair': 12000
+      };
+      const refSize = referenceSizes[className] || 20000;
+      const distance = Math.sqrt(refSize / pixelArea) * 2;
+      return Math.min(distance, 20);
+    }
+
+    function nonMaxSuppression(predictions, iouThr) {
+      predictions.sort((a, b) => b.score - a.score);
+      const selected = [];
+      while (predictions.length > 0) {
+        const current = predictions[0];
+        selected.push(current);
+        predictions = predictions.filter(pred => {
+          const iou = calculateIOU(current.bbox, pred.bbox);
+          return iou < iouThr;
+        });
+      }
+      return selected;
+    }
+
+    function calculateIOU(box1, box2) {
+      const [x1, y1, w1, h1] = box1;
+      const [x2, y2, w2, h2] = box2;
+      const xi1 = Math.max(x1, x2);
+      const yi1 = Math.max(y1, y2);
+      const xi2 = Math.min(x1 + w1, x2 + w2);
+      const yi2 = Math.min(y1 + h1, y2 + h2);
+      const interArea = Math.max(0, xi2 - xi1) * Math.max(0, yi2 - yi1);
+      const box1Area = w1 * h1;
+      const box2Area = w2 * h2;
+      return interArea / (box1Area + box2Area - interArea);
+    }
+
+    /**********************
+     * 7) 視覺化和處理
      **********************/
     function toggleDetectionBoxes() {
       showDetectionBoxes = !showDetectionBoxes;
@@ -813,200 +1046,6 @@
       });
     }
 
-    /**********************
-     * 6) 主檢測循環
-     **********************/
-    async function startDetection() {
-      if (!session) {
-        updateVoice('模型尚未載入完成');
-        return;
-      }
-      
-      const video = document.getElementById('video');
-      if (!video.srcObject) {
-        updateVoice('請先開啟相機');
-        return;
-      }
-      
-      isDetecting = true; 
-      updateStatus('檢測中'); 
-      updateVoice('開始障礙物檢測');
-      
-      // 開始檢測循環
-      detectLoop(video);
-    }
-
-    function stopDetection() {
-      isDetecting = false; 
-      updateStatus('已停止');
-      clearDetectionBoxes();
-      updateVoice('檢測已停止');
-    }
-
-    async function detectLoop(video) {
-      if (!isDetecting) return;
-      
-      try {
-        const { predictions, frameW } = await runOnce(video);
-        processPredictions(predictions, frameW);
-        updateDetectionBoxes(predictions, video.videoWidth, video.videoHeight);
-        updateStats(predictions);
-      } catch (error) {
-        console.error('檢測錯誤:', error);
-      }
-      
-      // 使用 setTimeout 控制檢測頻率，避免過度消耗資源
-      setTimeout(() => detectLoop(video), 1000 / TARGET_FPS);
-    }
-
-    /**********************
-     * 7) YOLO 推理
-     **********************/
-    async function runOnce(video) {
-      try {
-        const frame = captureFrame(video);
-        const { predictions, frameW } = await inference(frame);
-        return { predictions, frameW };
-      } catch (error) {
-        console.error('推理錯誤:', error);
-        return { predictions: [], frameW: 640 };
-      }
-    }
-
-    function captureFrame(video) {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const { videoWidth: w, videoHeight: h } = video;
-      
-      canvas.width = INPUT_SIZE;
-      canvas.height = INPUT_SIZE;
-      
-      const scale = Math.min(INPUT_SIZE / w, INPUT_SIZE / h);
-      const scaledW = w * scale;
-      const scaledH = h * scale;
-      const xOffset = (INPUT_SIZE - scaledW) / 2;
-      const yOffset = (INPUT_SIZE - scaledH) / 2;
-      
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
-      ctx.drawImage(video, xOffset, yOffset, scaledW, scaledH);
-      
-      return ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
-    }
-
-    async function inference(imageData) {
-      if (!session) {
-        throw new Error('模型未載入');
-      }
-      
-      const [inferenceTensor, frameW] = preprocess(imageData);
-      const feeds = { [session.inputNames[0]]: inferenceTensor };
-      const results = await session.run(feeds);
-      const predictions = postprocess(results, frameW);
-      return { predictions, frameW };
-    }
-
-    function preprocess(imageData, modelWidth = INPUT_SIZE, modelHeight = INPUT_SIZE) {
-      const { data, width, height } = imageData;
-      const input = new Float32Array(3 * modelWidth * modelHeight);
-      const means = [0.485, 0.456, 0.406];
-      const stds = [0.229, 0.224, 0.225];
-      
-      for (let c = 0; c < 3; c++) {
-        for (let h = 0; h < modelHeight; h++) {
-          for (let w = 0; w < modelWidth; w++) {
-            const srcH = Math.floor(h * height / modelHeight);
-            const srcW = Math.floor(w * width / modelWidth);
-            const srcIndex = (srcH * width + srcW) * 4;
-            const pixel = data[srcIndex + c];
-            const normalized = (pixel / 255.0 - means[c]) / stds[c];
-            input[c * modelWidth * modelHeight + h * modelWidth + w] = normalized;
-          }
-        }
-      }
-      
-      const tensor = new ort.Tensor('float32', input, [1, 3, modelWidth, modelHeight]);
-      return [tensor, width];
-    }
-
-    function postprocess(results, frameW) {
-      const output = results[session.outputNames[0]];
-      const predictions = [];
-      const outputData = output.data;
-      const outputDims = output.dims;
-      
-      for (let i = 0; i < outputDims[2]; i++) {
-        const offset = i * outputDims[1];
-        const scores = outputData.slice(offset + 4, offset + outputDims[1]);
-        const maxScore = Math.max(...scores);
-        
-        if (maxScore < SCORE_THRESHOLD) continue;
-        
-        const classId = scores.indexOf(maxScore);
-        if (classId >= coco80.length) continue;
-        
-        const bbox = outputData.slice(offset, offset + 4);
-        let [x, y, w, h] = bbox;
-        
-        x = (x - w / 2) * frameW;
-        y = (y - h / 2) * frameW;
-        w = w * frameW;
-        h = h * frameW;
-        
-        const distance = estimateDistance(w, h, classId);
-        
-        predictions.push({
-          class: coco80[classId],
-          score: maxScore,
-          bbox: [x, y, w, h],
-          distance: distance
-        });
-      }
-      
-      return nonMaxSuppression(predictions, IOU_THR);
-    }
-
-    function estimateDistance(width, height, classId) {
-      const className = coco80[classId];
-      const pixelArea = width * height;
-      const referenceSizes = {
-        'person': 15000, 'car': 80000, 'chair': 12000
-      };
-      const refSize = referenceSizes[className] || 20000;
-      const distance = Math.sqrt(refSize / pixelArea) * 2;
-      return Math.min(distance, 20);
-    }
-
-    function nonMaxSuppression(predictions, iouThr) {
-      predictions.sort((a, b) => b.score - a.score);
-      const selected = [];
-      while (predictions.length > 0) {
-        const current = predictions[0];
-        selected.push(current);
-        predictions = predictions.filter(pred => {
-          const iou = calculateIOU(current.bbox, pred.bbox);
-          return iou < iouThr;
-        });
-      }
-      return selected;
-    }
-
-    function calculateIOU(box1, box2) {
-      const [x1, y1, w1, h1] = box1;
-      const [x2, y2, w2, h2] = box2;
-      const xi1 = Math.max(x1, x2);
-      const yi1 = Math.max(y1, y2);
-      const xi2 = Math.min(x1 + w1, x2 + w2);
-      const yi2 = Math.min(y1 + h1, y2 + h2);
-      const interArea = Math.max(0, xi2 - xi1) * Math.max(0, yi2 - yi1);
-      const box1Area = w1 * h1;
-      const box2Area = w2 * h2;
-      return interArea / (box1Area + box2Area - interArea);
-    }
-
-    /**********************
-     * 8) 處理和顯示結果
-     **********************/
     function processPredictions(predictions, frameW) {
       const module = environmentModules[currentEnvironment];
       
@@ -1083,7 +1122,7 @@
     }
 
     /**********************
-     * 9) 工具函數
+     * 8) 工具函數
      **********************/
     function updateVoice(message) {
       const voiceAlert = document.getElementById('voiceAlert');
@@ -1102,6 +1141,16 @@
       document.getElementById('status').textContent = status;
     }
 
+    function updateDetectionStatus(status) {
+      document.getElementById('detectionStatus').textContent = status;
+    }
+
+    function updateDebugInfo(message) {
+      const debugElement = document.getElementById('debugInfo');
+      debugElement.textContent = `調試: ${message}`;
+      console.log(message);
+    }
+
     function toggleVoice() {
       voiceEnabled = !voiceEnabled;
       const status = document.getElementById('voiceStatus');
@@ -1118,16 +1167,8 @@
       }
     }
 
-    function loadEnvironmentModule() {
-      currentEnvironment = currentEnvironment === 'outdoor' ? 'indoor' : 'outdoor';
-      const module = environmentModules[currentEnvironment];
-      document.getElementById('currentModule').textContent = module.name;
-      document.getElementById('activeModuleTag').textContent = module.name;
-      updateVoice(`切換到${module.name}`);
-    }
-
     /**********************
-     * 10) 初始化
+     * 9) 初始化
      **********************/
     window.addEventListener('DOMContentLoaded', () => {
       updateStatus('初始化中');
