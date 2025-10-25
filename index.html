@@ -290,26 +290,6 @@
       border: 2px solid var(--bad);
     }
     
-    /* 障碍物避让可视化 */
-    .obstacle-map {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 10;
-    }
-    
-    .obstacle-point {
-      position: absolute;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--bad);
-      transform: translate(-50%, -50%);
-    }
-    
     @keyframes pulse {
       0% {
         opacity: 1;
@@ -377,7 +357,6 @@
     <section class="card camera">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="canvas"></canvas>
-      <div id="obstacleMap" class="obstacle-map"></div>
     </section>
 
     <section class="card panel">
@@ -397,7 +376,6 @@
         <button id="btnDebug" class="btn secondary">調試模式</button>
         <button id="btnTest" class="btn primary">測試檢測</button>
         <button id="btnObstacleAvoidance" class="btn secondary">避障功能</button>
-        <button id="btnModelTest" class="btn secondary">模型測試</button>
       </div>
       
       <!-- 導航控制按鈕 -->
@@ -473,7 +451,7 @@
     // 備用模型 URL
     const BACKUP_MODEL_URL = 'https://models.roboflow.com/object-detection/yolov8n/1/model.onnx';
     // 本地模型 URL（如果已下载模型文件）
-    const LOCAL_MODEL_URL = './yolov8n.onnx';
+    const LOCAL_MODEL_URL = '/yolov8n.onnx';
     
     const INPUT_SIZE = 640;
     const SCORE_THR_BASE = 0.35;
@@ -824,8 +802,6 @@
     let lastSaid = {cls: null, at: 0};
     let currentEnvironment = 'outdoor';
     let gpsNavigator = new GPSNavigator();
-    let obstacleAvoidanceEnabled = false; // 避障功能开关
-    let obstacleMap = []; // 障碍物地图
 
     /**********************
      * 5) 初始化 / 相機
@@ -925,12 +901,6 @@
       if (testBtn) {
         testBtn.addEventListener('click', testMode);
       }
-      
-      // 添加模型测试按钮（如果存在）
-      const modelTestBtn = document.getElementById('btnModelTest');
-      if (modelTestBtn) {
-        modelTestBtn.addEventListener('click', testModelInference);
-      }
     }
     
     // 添加摄像头预览测试函数
@@ -1011,72 +981,6 @@
           if (predictions.length > 0) {
             const objNames = predictions.map(p => p.class).join(', ');
             updateVoice(`第 ${i + 1} 次檢測到: ${objNames}`);
-          } else {
-            updateVoice(`第 ${i + 1} 次未檢測到物體`);
-    // 添加模型测试函数
-    async function testModelInference() {
-      if (!session) {
-        updateVoice('模型尚未載入完成');
-        console.log('模型尚未載入完成');
-        return;
-      }
-      
-      updateVoice('開始模型測試');
-      console.log('模型輸入名稱:', session.inputNames);
-      console.log('模型輸出名稱:', session.outputNames);
-      
-      // 创建一个测试张量（全零张量）
-      const testTensor = new ort.Tensor('float32', new Float32Array(3 * 640 * 640).fill(0), [1, 3, 640, 640]);
-      const feeds = { [session.inputNames[0]]: testTensor };
-      
-      try {
-        updateVoice('執行模型推理測試');
-        console.log('執行模型推理測試...');
-        const results = await session.run(feeds);
-        console.log('推理結果:', results);
-        console.log('輸出張量形狀:', results[session.outputNames[0]].dims);
-        updateVoice('模型推理測試完成，檢查控制台日誌');
-      } catch (error) {
-        console.error('模型推理測試失敗:', error);
-        updateVoice('模型推理測試失敗，檢查控制台日誌');
-      }
-    }
-
-    // 添加测试函数，用于测试
-    async function testDetection() {
-      if (!session) {
-        updateVoice('模型尚未載入完成');
-        console.log('模型尚未載入完成');
-        return;
-      }
-      
-      const video = document.getElementById('video');
-      if (!video.srcObject) {
-        updateVoice('請先啟動攝像頭');
-        console.log('請先啟動攝像頭');
-        return;
-      }
-      
-      updateVoice('開始測試模式');
-      console.log('開始測試模式');
-      
-      // 设置调试模式
-      debugMode = true;
-      document.getElementById('btnDebug').textContent = '調試關閉';
-      
-      // 设置测试次数
-      const testCount = 10;
-      for (let i = 0; i < testCount; i++) {
-        try {
-          const { predictions, frameW } = await runOnce(video);
-          console.log(`第 ${i + 1} 次檢測結果:`, predictions);
-          
-          // 处理预测结果
-          processPredictions(predictions, frameW);
-          draw(predictions);
-          
-          if (predictions.length > 0) {
-            updateVoice(`第 ${i + 1} 次檢測到 ${predictions.length} 個物體`);
           } else {
             updateVoice(`第 ${i + 1} 次未檢測到物體`);
           }
@@ -1545,9 +1449,7 @@
       
       // 避障分析和可视化
       if (obstacleAvoidanceEnabled) {
-        const video = document.getElementById('video');
-        visualizeObstacles(relevantPredictions, video.videoWidth, video.videoHeight);
-        provideObstacleAvoidanceGuidance(relevantPredictions);
+        visualizeObstacles(relevantPredictions);
       }
       
       // 更新偵測列表
@@ -1782,105 +1684,89 @@
       }
     }
 
-    // 障碍物避让建议函数
-    function provideObstacleAvoidanceGuidance(predictions) {
-      if (predictions.length === 0) return;
+    // 障碍物可视化函数
+    function visualizeObstacles(predictions) {
+      const obstacleMapElement = document.getElementById('obstacleMap');
+      obstacleMapElement.innerHTML = ''; // 清空之前的障碍物点
       
-      // 按距离排序，优先处理最近的障碍物
-      predictions.sort((a, b) => a.distance - b.distance);
-      const closestObstacle = predictions[0];
+      const video = document.getElementById('video');
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
       
-      // 获取障碍物的中文名称
-      const module = environmentModules[currentEnvironment];
-      const objConfig = module.objects[closestObstacle.class];
-      const obstacleName = objConfig ? objConfig.name : closestObstacle.class;
+      if (!videoWidth || !videoHeight) return;
       
-      // 根据距离提供避让建议
-      if (closestObstacle.distance < 1.5) {
-        updateVoice(`緊急避讓！${obstacleName}距離僅${closestObstacle.distance.toFixed(1)}米，請立即停止並尋找安全路線`);
-      } else if (closestObstacle.distance < 3) {
-        updateVoice(`注意避讓！${obstacleName}距離${closestObstacle.distance.toFixed(1)}米，建議減速並準備避讓`);
-      }
-    }
-
-    // 分析障碍物并提供避障建议
-    function analyzeObstaclesForAvoidance(predictions, frameW, frameH) {
-      if (!obstacleAvoidanceEnabled || predictions.length === 0) return;
-      
-      // 清空之前的障碍物地图
-      obstacleMap = [];
-      
-      // 分析每个检测到的障碍物
       predictions.forEach(pred => {
         const [x, y, w, h] = pred.bbox;
         const centerX = x + w/2;
         const centerY = y + h/2;
         
-        // 根据障碍物在画面中的位置判断方向
-        const horizontalPosition = centerX / frameW; // 0 = 最左, 1 = 最右
-        const verticalPosition = centerY / frameH;   // 0 = 最上, 1 = 最下
+        // 创建障碍物点元素
+        const point = document.createElement('div');
+        point.className = 'obstacle-point';
+        point.style.left = `${(centerX / videoWidth) * 100}%`;
+        point.style.top = `${(centerY / videoHeight) * 100}%`;
         
-        // 根据距离判断紧急程度
-        const isClose = pred.distance < 3;  // 3米内为近距离
-        const isVeryClose = pred.distance < 1.5; // 1.5米内为非常近
+        // 根据距离设置颜色和大小
+        if (pred.distance < 2) {
+          point.style.backgroundColor = 'var(--bad)'; // 红色，非常近
+          point.style.width = '15px';
+          point.style.height = '15px';
+        } else if (pred.distance < 5) {
+          point.style.backgroundColor = 'var(--warn)'; // 黄色，较近
+          point.style.width = '12px';
+          point.style.height = '12px';
+        } else {
+          point.style.backgroundColor = 'var(--good)'; // 绿色，较远
+          point.style.width = '10px';
+          point.style.height = '10px';
+        }
         
-        obstacleMap.push({
-          class: pred.class,
-          distance: pred.distance,
-          horizontalPosition: horizontalPosition,
-          verticalPosition: verticalPosition,
-          isClose: isClose,
-          isVeryClose: isVeryClose,
-          centerX: centerX,
-          centerY: centerY,
-          width: w,
-          height: h
-        });
+        obstacleMapElement.appendChild(point);
       });
-      
-      // 提供避障建议
-      provideAvoidanceGuidance();
     }
-    
-    // 提供避障指导
-    function provideAvoidanceGuidance() {
-      if (obstacleMap.length === 0) return;
+
+    /**********************
+     * 9) 初始化應用
+     **********************/
+    window.addEventListener('DOMContentLoaded', () => {
+      // 設置初始狀態
+      updateStatus('初始化中');
+      updateVoice('盲人輔助導航系統啟動中...');
       
-      // 按距离排序，优先处理最近的障碍物
-      obstacleMap.sort((a, b) => a.distance - b.distance);
-      const closestObstacle = obstacleMap[0];
+      // 初始化模型
+      initModel();
       
-      // 获取障碍物的中文名称
-      const module = environmentModules[currentEnvironment];
-      const objConfig = module.objects[closestObstacle.class];
-      const obstacleName = objConfig ? objConfig.name : closestObstacle.class;
-      
-      // 根据障碍物位置提供指导
-      let guidance = "";
-      
-      if (closestObstacle.isVeryClose) {
-        // 非常近的障碍物，需要立即避让
-        if (closestObstacle.horizontalPosition < 0.3) {
-          guidance = `緊急！左側有${obstacleName}，距離僅${closestObstacle.distance.toFixed(1)}米，請向右轉`;
-        } else if (closestObstacle.horizontalPosition > 0.7) {
-          guidance = `緊急！右側有${obstacleName}，距離僅${closestObstacle.distance.toFixed(1)}米，請向左轉`;
-        } else {
-          guidance = `緊急！前方有${obstacleName}，距離僅${closestObstacle.distance.toFixed(1)}米，請停止前進並尋找其他路線`;
+      // 設置相機預覽（不開始檢測）
+      setupCamera().then(video => {
+        if (video) {
+          updateStatus('準備就緒');
+          updateVoice('系統準備完成，請點擊開始檢測');
         }
-      } else if (closestObstacle.isClose) {
-        // 较近的障碍物，建议避让
-        if (closestObstacle.horizontalPosition < 0.4) {
-          guidance = `注意！左側有${obstacleName}，距離${closestObstacle.distance.toFixed(1)}米，建議稍向右轉`;
-        } else if (closestObstacle.horizontalPosition > 0.6) {
-          guidance = `注意！右側有${obstacleName}，距離${closestObstacle.distance.toFixed(1)}米，建議稍向左轉`;
-        } else {
-          guidance = `前方有${obstacleName}，距離${closestObstacle.distance.toFixed(1)}米，建議減速並準備避讓`;
+      });
+    });
+
+    // 防止頁面休眠
+    let wakeLock = null;
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          console.log('Wake Lock 已啟用');
         }
-      } else {
-        // 较远的障碍物，提前提醒
-        if (closestObstacle.horizontalPosition < 0.4) {
-          guidance = `左側遠處有${obstacleName}，距離${closestObstacle.distance.toFixed(1)}米，請注意行進路線`;
-        } else if (closestObstacle.horizontalPosition > 0.6) {
-          guidance = `右側遠處有${obstacleName}，距離${closestObstacle.distance.toFixed(1)}米，請注意行進路線`;
-        } else {
-          guidance = `前方遠
+      } catch (err) {
+        console.log('Wake Lock 失敗:', err.message);
+      }
+    }
+
+    // 當頁面可見時重新請求 Wake Lock
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState === 'visible' && isDetecting) {
+        await requestWakeLock();
+      }
+    });
+
+    // 啟動時請求 Wake Lock
+    requestWakeLock();
+  </script>
+</body>
+</html>
