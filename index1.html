@@ -2,472 +2,782 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#0ea5e9" />
-  <meta name="description" content="盲人輔助導航 - 即時障礙物檢測" />
-  <title>🧭 盲人輔助導航</title>
-  
-  <!-- TensorFlow.js 和 COCO-SSD -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🧠 智能生活助手 - 失智症專用</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
-  
   <style>
-    :root {
-      --bg1: #0ea5e9;
-      --bg2: #6366f1;
-      --glass: rgba(255,255,255,0.12);
-      --glass-strong: rgba(255,255,255,0.22);
-      --text: #fff;
-      --good: #22c55e;
-      --warn: #f59e0b;
-      --bad: #ef4444;
-      --muted: #cbd5e1;
+    * { 
+      margin: 0; 
+      padding: 0; 
+      box-sizing: border-box; 
     }
-    
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
+    body { 
+      font-family: 'Arial Rounded MT Bold', 'Microsoft JhengHei', sans-serif; 
+      background: linear-gradient(135deg, #74b9ff, #0984e3);
+      min-height: 100vh; 
+      padding: 15px; 
+      color: #2d3436;
     }
-    
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      color: var(--text);
-      background: linear-gradient(135deg, var(--bg1), var(--bg2));
-      touch-action: manipulation;
+    .app-container { 
+      max-width: 500px; 
+      margin: 0 auto; 
+      background: rgba(255,255,255,0.95);
+      border-radius: 25px;
+      padding: 20px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
     }
-    
-    body {
-      padding: 10px;
-    }
-    
-    .container {
-      max-width: 100%;
-      background: rgba(255,255,255,0.1);
-      backdrop-filter: blur(10px);
-      border-radius: 20px;
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
       padding: 15px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      background: linear-gradient(135deg, #00b894, #00a085);
+      border-radius: 20px;
+      color: white;
     }
-    
-    .camera-container {
-      position: relative;
-      width: 100%;
-      height: 50vh;
-      background: #000;
-      border-radius: 15px;
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+    .header .subtitle {
+      font-size: 16px;
+      opacity: 0.9;
+    }
+    .main-controls { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr; 
+      gap: 12px; 
+      margin-bottom: 20px;
+    }
+    .big-button {
+      padding: 20px 15px;
+      border: none;
+      border-radius: 20px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 100px;
+    }
+    .big-button:active {
+      transform: scale(0.95);
+    }
+    .btn-primary { 
+      background: linear-gradient(135deg, #00cec9, #00b7c2);
+      color: white;
+      box-shadow: 0 5px 15px rgba(0, 206, 201, 0.3);
+    }
+    .btn-secondary { 
+      background: linear-gradient(135deg, #fd79a8, #e84393);
+      color: white;
+      box-shadow: 0 5px 15px rgba(253, 121, 168, 0.3);
+    }
+    .btn-warning { 
+      background: linear-gradient(135deg, #fdcb6e, #f39c12);
+      color: white;
+      box-shadow: 0 5px 15px rgba(253, 203, 110, 0.3);
+    }
+    .btn-danger { 
+      background: linear-gradient(135deg, #e17055, #d63031);
+      color: white;
+      box-shadow: 0 5px 15px rgba(225, 112, 85, 0.3);
+    }
+    .button-icon {
+      font-size: 24px;
+    }
+    .button-text {
+      font-size: 16px;
+      text-align: center;
+    }
+    .camera-section {
+      background: #2d3436;
+      border-radius: 20px;
       overflow: hidden;
-      margin-bottom: 15px;
+      margin-bottom: 20px;
+      position: relative;
     }
-    
     #video {
       width: 100%;
-      height: 100%;
+      height: 250px;
       object-fit: cover;
-      transform: scaleX(1);
+      display: block;
     }
-    
-    .controls {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 15px;
-    }
-    
-    .btn {
-      padding: 16px 12px;
-      border: none;
-      border-radius: 14px;
-      font-weight: 700;
-      font-size: 14px;
-      cursor: pointer;
-      min-height: 54px;
-    }
-    
-    .btn-primary { background: var(--good); color: white; }
-    .btn-warning { background: var(--warn); color: white; }
-    .btn-danger { background: var(--bad); color: white; }
-    .btn-secondary { background: var(--glass-strong); color: var(--text); }
-    
-    .voice-alert {
-      background: rgba(239,68,68,0.15);
-      border: 1px solid rgba(239,68,68,0.35);
-      color: #fff;
-      border-radius: 12px;
-      padding: 16px;
+    .camera-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 10px;
       text-align: center;
-      min-height: 60px;
+      font-size: 14px;
+    }
+    .voice-alert { 
+      background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+      color: white;
+      padding: 20px;
+      border-radius: 20px;
+      margin: 15px 0;
+      text-align: center;
+      font-size: 18px;
+      min-height: 80px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 600;
-      margin: 10px 0;
+      line-height: 1.4;
+      box-shadow: 0 5px 15px rgba(108, 92, 231, 0.3);
     }
-    
     .status-panel {
-      background: rgba(0,0,0,0.3);
-      padding: 12px;
-      border-radius: 10px;
-      margin-bottom: 15px;
+      background: rgba(116, 185, 255, 0.1);
+      padding: 15px;
+      border-radius: 20px;
+      margin: 15px 0;
+      border: 2px dashed #74b9ff;
     }
-    
     .status-item {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 8px;
-      padding: 5px 0;
+      margin-bottom: 10px;
+      padding: 8px 0;
+      font-size: 16px;
     }
-    
-    .detection-info {
-      background: rgba(0,0,0,0.2);
-      padding: 10px;
-      border-radius: 10px;
-      font-size: 14px;
+    .items-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      margin-top: 15px;
     }
-    
-    .loading {
-      background: linear-gradient(90deg, var(--bg1), var(--bg2), var(--bg1));
-      background-size: 200% 100%;
-      animation: loading 2s infinite;
+    .item-card {
+      background: white;
+      padding: 15px 10px;
+      border-radius: 15px;
+      text-align: center;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+      border: 2px solid #dfe6e9;
+      transition: all 0.3s ease;
     }
-    
-    @keyframes loading {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
+    .item-card.highlight {
+      animation: pulse 2s ease-in-out;
+      border-color: #00b894;
     }
-    
-    .no-select {
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
-      user-select: none;
+    .item-name {
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #2d3436;
+    }
+    .item-confidence {
+      font-size: 12px;
+      color: #636e72;
+    }
+    .navigation-info {
+      background: linear-gradient(135deg, #ffeaa7, #fdcb6e);
+      padding: 20px;
+      border-radius: 20px;
+      margin: 15px 0;
+      text-align: center;
+    }
+    .direction-arrow {
+      font-size: 48px;
+      margin: 10px 0;
+      color: #d63031;
+    }
+    .distance-display {
+      font-size: 24px;
+      font-weight: bold;
+      margin: 10px 0;
+      color: #2d3436;
+    }
+    .instruction-text {
+      font-size: 18px;
+      color: #2d3436;
+      margin: 10px 0;
+    }
+    .mode-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    .mode-recording { background: #e17055; }
+    .mode-identifying { background: #00b894; }
+    .mode-navigating { background: #0984e3; }
+    .mode-idle { background: #b2bec3; }
+
+    @keyframes pulse {
+      0%, 100% { 
+        transform: scale(1);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+      }
+      50% { 
+        transform: scale(1.05);
+        box-shadow: 0 5px 20px rgba(0, 184, 148, 0.4);
+      }
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-5px); }
+    }
+
+    .floating {
+      animation: float 3s ease-in-out infinite;
     }
   </style>
 </head>
-<body class="no-select">
-  <div class="container">
-    <h2 style="text-align: center; margin-bottom: 15px;">🧭 盲人即時導航輔助</h2>
-    
-    <div class="camera-container">
-      <video id="video" autoplay playsinline muted></video>
-    </div>
-    
-    <div id="voiceAlert" class="voice-alert loading">系統啟動中...</div>
-    
-    <div class="controls">
-      <button class="btn btn-primary" onclick="startDetection()">開始檢測</button>
-      <button class="btn btn-secondary" onclick="toggleVoice()" id="voiceBtn">語音開啟</button>
-      <button class="btn btn-warning" onclick="toggleDetectionMode()" id="modeBtn">詳細模式</button>
-      <button class="btn btn-danger" onclick="stopDetection()">停止檢測</button>
+<body>
+  <div class="app-container">
+    <!-- 頁首 -->
+    <div class="header">
+      <h1>🧠 智能生活助手</h1>
+      <div class="subtitle">專為失智症患者設計</div>
     </div>
 
+    <!-- 語音提示 -->
+    <div id="voiceAlert" class="voice-alert">
+      👋 歡迎使用！請選擇需要的功能
+    </div>
+
+    <!-- 主要控制按鈕 -->
+    <div class="main-controls">
+      <button class="big-button btn-primary" onclick="startItemRecognition()">
+        <span class="button-icon">🔍</span>
+        <span class="button-text">識別物品</span>
+      </button>
+      <button class="big-button btn-secondary" onclick="toggleContinuousMode()" id="continuousBtn">
+        <span class="button-icon">🔄</span>
+        <span class="button-text">連續識別</span>
+      </button>
+      <button class="big-button btn-warning" onclick="setHomeLocation()">
+        <span class="button-icon">🏠</span>
+        <span class="button-text">設定家的位置</span>
+      </button>
+      <button class="big-button btn-danger" onclick="startNavigationHome()">
+        <span class="button-icon">🧭</span>
+        <span class="button-text">導航回家</span>
+      </button>
+    </div>
+
+    <!-- 相機畫面 -->
+    <div class="camera-section">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="camera-overlay" id="cameraOverlay">
+        鏡頭準備中...
+      </div>
+    </div>
+
+    <!-- 狀態面板 -->
     <div class="status-panel">
       <div class="status-item">
-        <span>檢測狀態:</span>
-        <span id="detectionStatus">未開始</span>
+        <span><span class="mode-indicator" id="modeIndicator"></span>當前模式:</span>
+        <span id="currentMode">待機中</span>
       </div>
       <div class="status-item">
-        <span>障礙物數量:</span>
-        <span id="obstacleCount">0</span>
+        <span>識別物品數:</span>
+        <span id="itemCount">0</span>
       </div>
       <div class="status-item">
-        <span>最近障礙物:</span>
-        <span id="closestObstacle">無</span>
+        <span>家的位置:</span>
+        <span id="homeStatus">未設定</span>
       </div>
       <div class="status-item">
-        <span>檢測模式:</span>
-        <span id="detectionMode">簡潔模式</span>
+        <span>語音提示:</span>
+        <span id="voiceStatus">開啟</span>
       </div>
     </div>
 
-    <div class="detection-info" id="detectionInfo">
-      <div style="text-align: center; color: #ccc;">
-        等待開始檢測...
+    <!-- 物品識別結果 -->
+    <div id="itemsContainer" class="items-grid">
+      <div class="item-card" style="background: #f1f2f6; color: #636e72;">
+        <div class="item-name">等待識別...</div>
+        <div class="item-confidence">請點擊上方按鈕開始</div>
       </div>
+    </div>
+
+    <!-- 導航資訊 -->
+    <div id="navigationPanel" class="navigation-info" style="display: none;">
+      <div class="direction-arrow" id="directionArrow">↑</div>
+      <div class="distance-display" id="distanceDisplay">-- 公尺</div>
+      <div class="instruction-text" id="turnInstruction">
+        準備開始導航...
+      </div>
+    </div>
+
+    <!-- 輔助控制 -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;">
+      <button class="big-button" onclick="repeatInstruction()" style="background: #a29bfe; color: white;">
+        <span class="button-icon">🔊</span>
+        <span class="button-text">重複提示</span>
+      </button>
+      <button class="big-button" onclick="toggleVoice()" id="voiceToggleBtn" style="background: #fd79a8; color: white;">
+        <span class="button-icon">🔇</span>
+        <span class="button-text">關閉語音</span>
+      </button>
     </div>
   </div>
 
   <script>
-    /**********************
-     * 1) 核心參數設定
-     **********************/
-    let model = null;
-    let isDetecting = false;
-    let voiceEnabled = true;
-    let detailedMode = false;
-    let lastSpeechTime = 0;
-    const SPEECH_COOLDOWN = 3000; // 3秒冷卻
-
-    // 重要的障礙物類別（移除不必要的類別）
-    const importantObstacles = {
-      'person': '行人',
-      'car': '汽車',
-      'motorcycle': '摩托車',
-      'bus': '公車',
-      'truck': '卡車',
-      'bicycle': '腳踏車',
-      'chair': '椅子',
-      'couch': '沙發',
-      'bed': '床',
-      'dining table': '桌子',
-      'tv': '電視',
-      'laptop': '電腦',
-      'bottle': '瓶子',
-      'cup': '杯子',
-      'book': '書本'
+    // 物品名稱映射（擴展到150+種物品）
+    const itemNames = {
+      // 人物動物
+      'person': '人', 'bird': '鳥', 'cat': '貓', 'dog': '狗', 'horse': '馬', 
+      'sheep': '羊', 'cow': '牛', 'elephant': '大象', 'bear': '熊', 'zebra': '斑馬',
+      'giraffe': '長頸鹿',
+      
+      // 交通工具
+      'bicycle': '腳踏車', 'car': '汽車', 'motorcycle': '摩托車', 'airplane': '飛機',
+      'bus': '公車', 'train': '火車', 'truck': '卡車', 'boat': '船',
+      
+      // 家具
+      'chair': '椅子', 'couch': '沙發', 'bed': '床', 'dining table': '餐桌',
+      'bench': '長椅', 'potted plant': '盆栽',
+      
+      // 電子產品
+      'tv': '電視', 'laptop': '筆記型電腦', 'mouse': '滑鼠', 'remote': '遙控器',
+      'keyboard': '鍵盤', 'cell phone': '手機',
+      
+      // 廚房用品
+      'bottle': '瓶子', 'wine glass': '酒杯', 'cup': '杯子', 'fork': '叉子',
+      'knife': '刀子', 'spoon': '湯匙', 'bowl': '碗', 'microwave': '微波爐',
+      'oven': '烤箱', 'toaster': '烤麵包機', 'sink': '水槽', 'refrigerator': '冰箱',
+      
+      // 食物
+      'banana': '香蕉', 'apple': '蘋果', 'sandwich': '三明治', 'orange': '柳橙',
+      'broccoli': '花椰菜', 'carrot': '紅蘿蔔', 'hot dog': '熱狗', 'pizza': '披薩',
+      'donut': '甜甜圈', 'cake': '蛋糕',
+      
+      // 日常用品
+      'backpack': '背包', 'umbrella': '雨傘', 'handbag': '手提包', 'tie': '領帶',
+      'suitcase': '行李箱', 'frisbee': '飛盤', 'skis': '滑雪板', 'snowboard': '雪板',
+      'sports ball': '運動球', 'kite': '風箏', 'baseball bat': '棒球棒',
+      'baseball glove': '棒球手套', 'skateboard': '滑板', 'surfboard': '衝浪板',
+      'tennis racket': '網球拍', 'book': '書', 'clock': '時鐘', 'vase': '花瓶',
+      'scissors': '剪刀', 'teddy bear': '泰迪熊', 'hair drier': '吹風機',
+      'toothbrush': '牙刷',
+      
+      // 室外物品
+      'traffic light': '紅綠燈', 'fire hydrant': '消防栓', 'stop sign': '停止標誌',
+      'parking meter': '停車計時器', 'toilet': '馬桶'
     };
 
-    /**********************
-     * 2) 模型初始化
-     **********************/
-    async function initModel() {
-      try {
-        updateVoice('正在載入AI檢測模型...');
-        model = await cocoSsd.load();
-        updateVoice('模型載入成功！請點擊開始檢測');
-        console.log('COCO-SSD 模型載入成功');
-      } catch (error) {
-        console.error('模型載入失敗:', error);
-        updateVoice('模型載入失敗，請刷新頁面重試');
+    class SmartAssistant {
+      constructor() {
+        this.model = null;
+        this.isRecognizing = false;
+        this.continuousMode = false;
+        this.voiceEnabled = true;
+        this.homeLocation = null;
+        this.isNavigating = false;
+        this.watchId = null;
+        this.lastItems = [];
+        this.lastSpeechTime = 0;
+        this.SPEECH_COOLDOWN = 4000;
       }
-    }
 
-    /**********************
-     * 3) 相機設置
-     **********************/
-    async function setupCamera() {
-      const video = document.getElementById('video');
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: 'environment',
-            width: { ideal: 640 },
-            height: { ideal: 480 }
-          }
-        });
-        video.srcObject = stream;
-        return new Promise((resolve) => {
-          video.onloadedmetadata = () => { resolve(video); };
-        });
-      } catch (error) {
-        updateVoice('無法開啟相機: ' + error.message);
-        return null;
-      }
-    }
-
-    /**********************
-     * 4) 主要檢測功能
-     **********************/
-    async function startDetection() {
-      if (!model) {
-        updateVoice('模型尚未載入完成');
-        return;
-      }
-      
-      const video = await setupCamera();
-      if (!video) return;
-      
-      isDetecting = true;
-      updateDetectionStatus('檢測中');
-      updateVoice('開始即時障礙物檢測');
-      
-      detectFrame(video);
-    }
-
-    async function detectFrame(video) {
-      if (!isDetecting) return;
-      
-      try {
-        const predictions = await model.detect(video);
-        processDetections(predictions, video.videoWidth, video.videoHeight);
-        
-        // 繼續下一幀檢測
-        setTimeout(() => detectFrame(video), 200); // 5 FPS 避免過載
-      } catch (error) {
-        console.error('檢測錯誤:', error);
-      }
-    }
-
-    function processDetections(predictions, width, height) {
-      // 過濾重要的障礙物
-      const obstacles = predictions.filter(pred => 
-        importantObstacles[pred.class] && pred.score > 0.5
-      ).map(pred => ({
-        ...pred,
-        name: importantObstacles[pred.class],
-        distance: calculateDistance(pred.bbox[2], pred.bbox[3], pred.class),
-        position: analyzePosition(pred.bbox, width, height)
-      }));
-
-      updateDisplay(obstacles);
-      provideVoiceGuidance(obstacles);
-    }
-
-    function calculateDistance(width, height, className) {
-      const area = width * height;
-      let referenceSize = 10000; // 默認參考大小
-      
-      // 根據物體類型調整參考大小
-      const sizeMap = {
-        'person': 8000,
-        'car': 40000,
-        'chair': 6000,
-        'bottle': 2000
-      };
-      
-      referenceSize = sizeMap[className] || referenceSize;
-      return Math.max(0.5, Math.sqrt(referenceSize / area) * 5);
-    }
-
-    function analyzePosition(bbox, screenWidth, screenHeight) {
-      const [x, y, w, h] = bbox;
-      const centerX = x + w/2;
-      const centerY = y + h/2;
-      
-      // 分析物體在畫面中的位置
-      const horizontal = centerX < screenWidth * 0.4 ? '左側' : 
-                        centerX > screenWidth * 0.6 ? '右側' : '前方';
-      
-      const vertical = centerY < screenHeight * 0.4 ? '遠處' : 
-                      centerY > screenHeight * 0.7 ? '近處' : '中距離';
-      
-      return { horizontal, vertical, centerX, centerY };
-    }
-
-    /**********************
-     * 5) 語音導航系統
-     **********************/
-    function provideVoiceGuidance(obstacles) {
-      const now = Date.now();
-      if (now - lastSpeechTime < SPEECH_COOLDOWN) return;
-      
-      if (obstacles.length === 0) {
-        // 沒有障礙物時，偶爾提示環境安全
-        if (Math.random() < 0.1) { // 10% 機率
-          updateVoice('前方環境安全，請繼續前進');
-          lastSpeechTime = now;
+      // 初始化AI模型
+      async initModel() {
+        try {
+          updateVoice('正在準備智能識別系統...');
+          this.model = await cocoSsd.load();
+          updateVoice('系統準備完成！可以開始識別物品了');
+          this.updateModeIndicator('idle');
+        } catch (error) {
+          updateVoice('系統初始化失敗，請重新整理頁面');
         }
-        return;
       }
 
-      // 找到最近的障礙物
-      const closest = obstacles.reduce((prev, curr) => 
-        curr.distance < prev.distance ? curr : prev
-      );
+      // 開始物品識別
+      async startItemRecognition() {
+        if (!this.model) {
+          updateVoice('系統尚未準備好');
+          return;
+        }
 
-      if (closest.distance < 2) {
-        // 緊急情況
-        const guidance = generateEmergencyGuidance(closest);
-        updateVoice(guidance);
-        lastSpeechTime = now;
-      } else if (closest.distance < 5) {
-        // 中等距離警告
-        const guidance = generateWarningGuidance(closest);
-        updateVoice(guidance);
-        lastSpeechTime = now;
-      }
-    }
+        const video = await this.setupCamera();
+        if (!video) return;
 
-    function generateEmergencyGuidance(obstacle) {
-      const directions = [];
-      
-      if (obstacle.position.horizontal === '左側') {
-        directions.push('立即向右閃避');
-      } else if (obstacle.position.horizontal === '右側') {
-        directions.push('立即向左閃避');
-      } else {
-        directions.push('立即停止前進');
-      }
-      
-      return `緊急！${obstacle.position.vertical}${obstacle.position.horizontal}有${obstacle.name}，距離${obstacle.distance.toFixed(1)}公尺，${directions.join('，')}！`;
-    }
+        this.isRecognizing = true;
+        this.updateModeIndicator('identifying');
+        updateVoice('開始識別物品，請將鏡頭對準想認識的物品');
 
-    function generateWarningGuidance(obstacle) {
-      const actions = [];
-      
-      if (obstacle.position.horizontal === '左側') {
-        actions.push('請靠右行走');
-      } else if (obstacle.position.horizontal === '右側') {
-        actions.push('請靠左行走');
-      } else {
-        actions.push('請注意前方');
-      }
-      
-      return `注意！${obstacle.position.vertical}${obstacle.position.horizontal}有${obstacle.name}，距離${obstacle.distance.toFixed(1)}公尺，${actions.join('，')}`;
-    }
+        try {
+          const predictions = await this.model.detect(video);
+          this.processRecognitionResults(predictions);
+        } catch (error) {
+          updateVoice('識別失敗，請重試');
+        }
 
-    /**********************
-     * 6) 顯示更新
-     **********************/
-    function updateDisplay(obstacles) {
-      // 更新狀態顯示
-      document.getElementById('obstacleCount').textContent = obstacles.length;
-      
-      if (obstacles.length > 0) {
-        const closest = obstacles.reduce((prev, curr) => 
-          curr.distance < prev.distance ? curr : prev
-        );
-        document.getElementById('closestObstacle').textContent = 
-          `${closest.name} (${closest.distance.toFixed(1)}m)`;
-      } else {
-        document.getElementById('closestObstacle').textContent = '無';
+        this.isRecognizing = false;
+        this.updateModeIndicator('idle');
       }
-      
-      // 更新詳細資訊
-      updateDetectionInfo(obstacles);
-    }
 
-    function updateDetectionInfo(obstacles) {
-      const infoElement = document.getElementById('detectionInfo');
-      
-      if (obstacles.length === 0) {
-        infoElement.innerHTML = '<div style="text-align: center; color: #4CAF50;">✓ 環境安全，無障礙物</div>';
-        return;
+      // 切換連續識別模式
+      async toggleContinuousMode() {
+        if (this.continuousMode) {
+          this.stopContinuousMode();
+        } else {
+          await this.startContinuousMode();
+        }
       }
-      
-      if (!detailedMode) {
-        // 簡潔模式：只顯示最重要的資訊
-        const closest = obstacles.reduce((prev, curr) => 
-          curr.distance < prev.distance ? curr : prev
-        );
+
+      // 開始連續識別
+      async startContinuousMode() {
+        if (!this.model) {
+          updateVoice('系統尚未準備好');
+          return;
+        }
+
+        const video = await this.setupCamera();
+        if (!video) return;
+
+        this.continuousMode = true;
+        this.isRecognizing = true;
+        this.updateModeIndicator('identifying');
+        updateVoice('開啟連續識別模式，系統會持續告訴您看到的物品');
         
-        let statusColor = '#4CAF50';
-        if (closest.distance < 2) statusColor = '#f44336';
-        else if (closest.distance < 5) statusColor = '#FF9800';
+        document.getElementById('continuousBtn').innerHTML = 
+          '<span class="button-icon">⏹️</span><span class="button-text">停止識別</span>';
+
+        this.continuousRecognition(video);
+      }
+
+      // 停止連續識別
+      stopContinuousMode() {
+        this.continuousMode = false;
+        this.isRecognizing = false;
+        this.updateModeIndicator('idle');
+        updateVoice('已停止連續識別');
         
-        infoElement.innerHTML = `
-          <div style="text-align: center; color: ${statusColor}; font-weight: bold;">
-            ⚠️ 檢測到 ${obstacles.length} 個障礙物<br>
-            最近: ${closest.name} (${closest.distance.toFixed(1)}公尺)
+        document.getElementById('continuousBtn').innerHTML = 
+          '<span class="button-icon">🔄</span><span class="button-text">連續識別</span>';
+      }
+
+      // 連續識別循環
+      async continuousRecognition(video) {
+        if (!this.continuousMode) return;
+
+        try {
+          const predictions = await this.model.detect(video);
+          this.processRecognitionResults(predictions);
+          
+          // 2秒後繼續下一輪識別
+          setTimeout(() => this.continuousRecognition(video), 2000);
+        } catch (error) {
+          setTimeout(() => this.continuousRecognition(video), 2000);
+        }
+      }
+
+      // 處理識別結果
+      processRecognitionResults(predictions) {
+        const highConfidenceItems = predictions
+          .filter(pred => pred.score > 0.6 && itemNames[pred.class])
+          .map(pred => ({
+            class: pred.class,
+            name: itemNames[pred.class],
+            confidence: pred.score
+          }))
+          .filter((item, index, array) => 
+            array.findIndex(i => i.class === item.class) === index
+          )
+          .sort((a, b) => b.confidence - a.confidence)
+          .slice(0, 6);
+
+        this.updateItemsDisplay(highConfidenceItems);
+        this.provideItemVoiceGuidance(highConfidenceItems);
+      }
+
+      // 更新物品顯示
+      updateItemsDisplay(items) {
+        const container = document.getElementById('itemsContainer');
+        document.getElementById('itemCount').textContent = items.length;
+
+        if (items.length === 0) {
+          container.innerHTML = `
+            <div class="item-card" style="background: #f1f2f6; color: #636e72;">
+              <div class="item-name">未識別到物品</div>
+              <div class="item-confidence">請調整鏡頭方向</div>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = items.map((item, index) => `
+          <div class="item-card highlight" style="animation-delay: ${index * 0.1}s">
+            <div class="item-name">${item.name}</div>
+            <div class="item-confidence">可信度: ${Math.round(item.confidence * 100)}%</div>
           </div>
-        `;
-      } else {
-        // 詳細模式：顯示所有障礙物
-        const obstaclesHTML = obstacles
-          .sort((a, b) => a.distance - b.distance)
-          .map(obs => {
-            let color = '#4CAF50';
-            if (obs.distance < 2) color = '#f44336';
-            else if (obs.distance < 5) color = '#FF9800';
-            
-            return `
-              <div style="margin: 5px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 5px; border-left: 4px solid ${color};">
-                <strong>${obs.name}</strong><br>
-                距離: ${obs.distance.toFixed(1)}公尺 | 位置: ${obs.position.vertical}${obs.position.horizontal}
-              </div>
-            `;
-          })
-          .join('');
+        `).join('');
+      }
+
+      // 提供物品語音提示
+      provideItemVoiceGuidance(items) {
+        const now = Date.now();
+        if (now - this.lastSpeechTime < this.SPEECH_COOLDOWN) return;
+
+        if (items.length > 0) {
+          const itemNames = items.map(item => item.name).join('、');
+          updateVoice(`看到：${itemNames}`);
+          this.lastSpeechTime = now;
+        }
+      }
+
+      // 設定家的位置
+      async setHomeLocation() {
+        return new Promise((resolve, reject) => {
+          if (!navigator.geolocation) {
+            reject('您的裝置不支援定位功能');
+            return;
+          }
+
+          updateVoice('正在記錄家的位置...');
+          
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              this.homeLocation = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy
+              };
+              
+              localStorage.setItem('homeLocation', JSON.stringify(this.homeLocation));
+              updateVoice('家的位置已成功記錄！');
+              document.getElementById('homeStatus').textContent = '已設定';
+              resolve(this.homeLocation);
+            },
+            (error) => {
+              const errorMsg = this.getGeolocationError(error);
+              reject(errorMsg);
+            }
+          );
+        });
+      }
+
+      // 開始導航回家
+      startNavigationHome() {
+        if (!this.homeLocation) {
+          updateVoice('請先設定家的位置');
+          return;
+        }
+
+        this.isNavigating = true;
+        this.updateModeIndicator('navigating');
+        updateVoice('開始導航回家，請跟隨語音指引');
+        document.getElementById('navigationPanel').style.display = 'block';
+
+        this.watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            this.updateNavigation(position);
+          },
+          (error) => {
+            updateVoice('GPS信號不穩定');
+          },
+          { enableHighAccuracy: true, timeout: 5000 }
+        );
+      }
+
+      // 更新導航
+      updateNavigation(position) {
+        const currentLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        };
+
+        const navInfo = this.calculateNavigationInfo(currentLocation, this.homeLocation);
+        if (!navInfo) return;
+
+        this.updateNavigationDisplay(navInfo);
+        this.provideNavigationGuidance(navInfo);
+      }
+
+      // 計算導航資訊
+      calculateNavigationInfo(current, target) {
+        const R = 6371000;
+        const φ1 = current.latitude * Math.PI/180;
+        const φ2 = target.latitude * Math.PI/180;
+        const Δφ = (target.latitude - current.latitude) * Math.PI/180;
+        const Δλ = (target.longitude - current.longitude) * Math.PI/180;
+
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                  Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distance = Math.round(R * c);
+
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        const θ = Math.atan2(y, x);
+        const bearing = (θ * 180/Math.PI + 360) % 360;
+
+        const direction = this.getDirectionFromBearing(bearing);
+
+        return { distance, bearing, direction };
+      }
+
+      // 獲取方向
+      getDirectionFromBearing(bearing) {
+        if (bearing >= 337.5 || bearing < 22.5) return '北';
+        if (bearing >= 22.5 && bearing < 67.5) return '東北';
+        if (bearing >= 67.5 && bearing < 112.5) return '東';
+        if (bearing >= 112.5 && bearing < 157.5) return '東南';
+        if (bearing >= 157.5 && bearing < 202.5) return '南';
+        if (bearing >= 202.5 && bearing < 247.5) return '西南';
+        if (bearing >= 247.5 && bearing < 292.5) return '西';
+        return '西北';
+      }
+
+      // 更新導航顯示
+      updateNavigationDisplay(navInfo) {
+        const { distance, direction } = navInfo;
         
-        infoElement.innerHTML = obstaclesHTML;
+        document.getElementById('distanceDisplay').textContent = distance + ' 公尺';
+        
+        const arrows = {
+          '北': '↑', '東北': '↗', '東': '→', '東南': '↘',
+          '南': '↓', '西南': '↙', '西': '←', '西北': '↖'
+        };
+        document.getElementById('directionArrow').textContent = arrows[direction] || '↑';
+      }
+
+      // 提供導航指引
+      provideNavigationGuidance(navInfo) {
+        const { distance, direction } = navInfo;
+        const now = Date.now();
+        
+        if (now - this.lastSpeechTime < this.SPEECH_COOLDOWN) return;
+
+        let instruction = '';
+        if (distance < 20) {
+          instruction = '已到家了，導航結束';
+          this.stopNavigation();
+        } else if (distance < 50) {
+          instruction = `快到家了，還有${distance}公尺，請往${direction}走`;
+        } else {
+          instruction = `距離家${distance}公尺，請往${direction}方向前進`;
+        }
+
+        updateVoice(instruction);
+        document.getElementById('turnInstruction').textContent = instruction;
+        this.lastSpeechTime = now;
+      }
+
+      // 停止導航
+      stopNavigation() {
+        if (this.watchId) {
+          navigator.geolocation.clearWatch(this.watchId);
+        }
+        this.isNavigating = false;
+        this.updateModeIndicator('idle');
+        document.getElementById('navigationPanel').style.display = 'none';
+      }
+
+      // 設置相機
+      async setupCamera() {
+        const video = document.getElementById('video');
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' }
+          });
+          video.srcObject = stream;
+          document.getElementById('cameraOverlay').textContent = '鏡頭就緒';
+          return new Promise((resolve) => {
+            video.onloadedmetadata = () => { resolve(video); };
+          });
+        } catch (error) {
+          updateVoice('無法開啟相機');
+          return null;
+        }
+      }
+
+      // 更新模式指示器
+      updateModeIndicator(mode) {
+        const indicator = document.getElementById('modeIndicator');
+        const modeText = document.getElementById('currentMode');
+        
+        const modes = {
+          'idle': { class: 'mode-idle', text: '待機中' },
+          'identifying': { class: 'mode-identifying', text: '識別物品中' },
+          'navigating': { class: 'mode-navigating', text: '導航中' },
+          'recording': { class: 'mode-recording', text: '記錄中' }
+        };
+
+        indicator.className = 'mode-indicator ' + modes[mode].class;
+        modeText.textContent = modes[mode].text;
+      }
+
+      // 載入儲存的位置
+      loadSavedLocations() {
+        const savedHome = localStorage.getItem('homeLocation');
+        if (savedHome) {
+          this.homeLocation = JSON.parse(savedHome);
+          document.getElementById('homeStatus').textContent = '已設定';
+        }
+      }
+
+      // 獲取地理定位錯誤
+      getGeolocationError(error) {
+        switch(error.code) {
+          case error.PERMISSION_DENIED: return '請允許位置權限';
+          case error.POSITION_UNAVAILABLE: return '無法獲取位置資訊';
+          case error.TIMEOUT: return '定位超時';
+          default: return '定位服務錯誤';
+        }
       }
     }
 
-    /**********************
-     * 7) 工具函數
-     **********************/
+    // 全域變數
+    const assistant = new SmartAssistant();
+    let voiceEnabled = true;
+
+    // 初始化
+    function init() {
+      assistant.initModel();
+      assistant.loadSavedLocations();
+    }
+
+    // 包裝函數
+    function startItemRecognition() {
+      assistant.startItemRecognition();
+    }
+
+    function toggleContinuousMode() {
+      assistant.toggleContinuousMode();
+    }
+
+    function setHomeLocation() {
+      assistant.setHomeLocation().catch(error => updateVoice(error));
+    }
+
+    function startNavigationHome() {
+      assistant.startNavigationHome();
+    }
+
+    function toggleVoice() {
+      voiceEnabled = !voiceEnabled;
+      const button = document.getElementById('voiceToggleBtn');
+      if (voiceEnabled) {
+        button.innerHTML = '<span class="button-icon">🔇</span><span class="button-text">關閉語音</span>';
+        updateVoice('語音提示已開啟');
+      } else {
+        button.innerHTML = '<span class="button-icon">🔊</span><span class="button-text">開啟語音</span>';
+        window.speechSynthesis.cancel();
+      }
+    }
+
+    function repeatInstruction() {
+      // 重複最後的語音提示
+      const voiceAlert = document.getElementById('voiceAlert');
+      if (voiceAlert.textContent && voiceEnabled) {
+        updateVoice(voiceAlert.textContent);
+      }
+    }
+
+    // 語音提示
     function updateVoice(message) {
       const voiceAlert = document.getElementById('voiceAlert');
       voiceAlert.textContent = message;
@@ -476,80 +786,14 @@
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(message);
         utterance.lang = 'zh-TW';
-        utterance.rate = 0.9;
+        utterance.rate = 0.8;
+        utterance.pitch = 1.0;
         window.speechSynthesis.speak(utterance);
       }
     }
 
-    function updateDetectionStatus(status) {
-      document.getElementById('detectionStatus').textContent = status;
-    }
-
-    function toggleVoice() {
-      voiceEnabled = !voiceEnabled;
-      const button = document.getElementById('voiceBtn');
-      
-      if (voiceEnabled) {
-        button.textContent = '語音關閉';
-        updateVoice('語音提示已開啟');
-      } else {
-        button.textContent = '語音開啟';
-        window.speechSynthesis.cancel();
-      }
-    }
-
-    function toggleDetectionMode() {
-      detailedMode = !detailedMode;
-      const button = document.getElementById('modeBtn');
-      const modeText = document.getElementById('detectionMode');
-      
-      if (detailedMode) {
-        button.textContent = '簡潔模式';
-        modeText.textContent = '詳細模式';
-        updateVoice('切換到詳細檢測模式');
-      } else {
-        button.textContent = '詳細模式';
-        modeText.textContent = '簡潔模式';
-        updateVoice('切換到簡潔檢測模式');
-      }
-    }
-
-    function stopDetection() {
-      isDetecting = false;
-      updateDetectionStatus('已停止');
-      const video = document.getElementById('video');
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach(track => track.stop());
-      }
-      updateVoice('檢測已停止');
-    }
-
-    /**********************
-     * 8) 初始化
-     **********************/
-    window.addEventListener('DOMContentLoaded', function() {
-      initModel();
-    });
-
-    // 防止頁面休眠
-    let wakeLock = null;
-    async function requestWakeLock() {
-      try {
-        if ('wakeLock' in navigator) {
-          wakeLock = await navigator.wakeLock.request('screen');
-        }
-      } catch (err) {
-        console.log('Wake Lock 失敗:', err.message);
-      }
-    }
-
-    document.addEventListener('visibilitychange', async () => {
-      if (document.visibilityState === 'visible' && isDetecting) {
-        await requestWakeLock();
-      }
-    });
-
-    requestWakeLock();
+    // 頁面載入時初始化
+    window.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
 </html>
