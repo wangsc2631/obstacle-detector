@@ -764,40 +764,10 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
-  
+  <script src="https://unpkg.com/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://unpkg.com/@tensorflow-models/coco-ssd@2.1.0/dist/coco-ssd.min.js"></script>
+  <script src="itemDatabase.js"></script>
   <script>
-    // 擴展物品資料庫 - 1500+種物品
-    const itemDatabase = {
-      // 1. 人物動物類 (80+)
-      '人物動物': {
-        'person': '人', 'baby': '嬰兒', 'child': '小孩', 'adult': '成人', 'elderly': '老人',
-        'bird': '鳥', 'cat': '貓', 'dog': '狗', 'horse': '馬', 'cow': '牛',
-        'sheep': '羊', 'goat': '山羊', 'pig': '豬', 'chicken': '雞', 'duck': '鴨',
-        'rabbit': '兔子', 'hamster': '倉鼠', 'guinea pig': '天竺鼠', 'turtle': '烏龜',
-        'fish': '魚', 'goldfish': '金魚', 'shark': '鯊魚', 'dolphin': '海豚',
-        'whale': '鯨魚', 'elephant': '大象', 'lion': '獅子', 'tiger': '老虎',
-        'bear': '熊', 'panda': '熊貓', 'monkey': '猴子', 'giraffe': '長頸鹿',
-        'zebra': '斑馬', 'kangaroo': '袋鼠', 'penguin': '企鵝', 'owl': '貓頭鷹',
-        'eagle': '老鷹', 'parrot': '鸚鵡', 'sparrow': '麻雀', 'pigeon': '鴿子',
-        'butterfly': '蝴蝶', 'bee': '蜜蜂', 'ant': '螞蟻', 'spider': '蜘蛛',
-        'snake': '蛇', 'lizard': '蜥蜴', 'frog': '青蛙', 'crocodile': '鱷魚'
-      },
-      // ... (其他分類保持不變)
-    };
-
-    // 建立完整的物品映射
-    const itemNames = {};
-    const itemCategories = {};
-    Object.keys(itemDatabase).forEach(category => {
-      Object.keys(itemDatabase[category]).forEach(key => {
-        itemNames[key] = itemDatabase[category][key];
-        itemCategories[key] = category;
-      });
-    });
-
-    console.log(`載入完成: ${Object.keys(itemNames).length} 種物品`);
 
     // 導航系統狀態變數
     let isDetecting = false;
@@ -824,9 +794,15 @@
         this.lastSpeechTime = 0;
         this.SPEECH_COOLDOWN = 4000;
         this.currentCategory = '全部';
-        this.navigationSteps = [];
-        this.currentStep = 0;
         this.continuousInterval = null;
+        
+        // 新增導航相關屬性
+        this.currentLocation = null;
+        this.lastLocation = null;
+        this.heading = null;
+        this.agpsEnabled = false;
+        this.locationHistory = [];
+        this.arrivalThreshold = 20; // 20公尺內視為到達
       }
 
       // 初始化AI模型
@@ -1079,28 +1055,36 @@
 
           updateVoice('正在記錄家的位置...');
           
+          // 使用高精度定位
           navigator.geolocation.getCurrentPosition(
             (position) => {
               this.homeLocation = {
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude,
-                accuracy: position.coords.accuracy
+                accuracy: position.coords.accuracy,
+                address: '家的位置'
               };
               
               localStorage.setItem('homeLocation', JSON.stringify(this.homeLocation));
-              updateVoice('家的位置已成功記錄！');
+              updateVoice('家的位置已成功記錄！精度：' + Math.round(position.coords.accuracy) + '公尺');
               document.getElementById('homeStatus').textContent = '已設定';
               resolve(this.homeLocation);
             },
             (error) => {
               const errorMsg = this.getGeolocationError(error);
               reject(errorMsg);
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 15000,
+              maximumAge: 0
             }
           );
         });
       }
 
-      // 開始導航回家
+
+      // 開始真實導航回家 - 替換原有的模擬導航
       startNavigationHome() {
         if (!this.homeLocation) {
           updateVoice('請先設定家的位置');
@@ -1110,48 +1094,90 @@
 
         this.isNavigating = true;
         this.updateModeIndicator('navigating');
-        updateVoice('開始導航回家，請跟隨語音指引');
+        updateVoice('開始真實導航回家，正在計算路線...');
         document.getElementById('navigationPanel').style.display = 'block';
         document.getElementById('navigationStatus').textContent = '導航中';
 
-        this.generateNavigationRoute();
-        this.startNavigationCycle();
+        // 開始真實位置追蹤
+        this.startRealTimeTracking();
       }
 
-      // 生成模擬導航路線
-      generateNavigationRoute() {
-        this.navigationSteps = [
-          { type: 'start', instruction: '開始導航，請直行50公尺', distance: 50, direction: 'straight' },
-          { type: 'turn', instruction: '請在路口左轉', distance: 30, direction: 'left' },
-          { type: 'straight', instruction: '直行100公尺', distance: 100, direction: 'straight' },
-          { type: 'turn', instruction: '請在紅綠燈右轉', distance: 20, direction: 'right' },
-          { type: 'straight', instruction: '直行80公尺', distance: 80, direction: 'straight' },
-          { type: 'arrive', instruction: '已到達目的地', distance: 0, direction: 'arrive' }
-        ];
-        this.currentStep = 0;
-      }
-
-      // 開始導航循環
-      startNavigationCycle() {
-        if (!this.isNavigating) return;
-
-        const currentStep = this.navigationSteps[this.currentStep];
-        if (!currentStep) {
-          this.stopNavigation();
+      // 開始實時位置追蹤
+      startRealTimeTracking() {
+        if (!navigator.geolocation) {
+          updateVoice('您的裝置不支援GPS定位');
           return;
         }
 
-        this.updateNavigationDisplay(currentStep);
-        this.provideRoadSafetyInfo();
-
-        setTimeout(() => {
-          this.currentStep++;
-          if (this.currentStep < this.navigationSteps.length) {
-            this.startNavigationCycle();
-          } else {
-            this.stopNavigation();
+        this.watchId = navigator.geolocation.watchPosition(
+          (position) => this.updateRealTimeNavigation(position),
+          (error) => this.handleNavigationError(error),
+          {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 3000
           }
-        }, 5000);
+        );
+      }
+
+      // 實時導航更新
+      updateRealTimeNavigation(position) {
+        this.lastLocation = this.currentLocation;
+        
+        this.currentLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          altitude: position.coords.altitude,
+          heading: position.coords.heading,
+          speed: position.coords.speed,
+          timestamp: position.timestamp
+        };
+
+        // 記錄位置歷史
+        this.locationHistory.push({...this.currentLocation});
+        if (this.locationHistory.length > 10) {
+          this.locationHistory.shift();
+        }
+
+        // 計算導航資訊
+        const distance = this.calculateDistance(this.currentLocation, this.homeLocation);
+        const bearing = this.calculateBearing(this.currentLocation, this.homeLocation);
+        
+        // 更新顯示
+        this.updateRealNavigationDisplay(distance, bearing);
+        
+        // 提供語音指引
+        this.provideRealTimeGuidance(distance, bearing);
+      }
+
+      // 計算兩點間距離 (公尺)
+      calculateDistance(point1, point2) {
+        const R = 6371000; // 地球半徑(公尺)
+        const lat1 = point1.latitude * Math.PI / 180;
+        const lat2 = point2.latitude * Math.PI / 180;
+        const deltaLat = (point2.latitude - point1.latitude) * Math.PI / 180;
+        const deltaLon = (point2.longitude - point1.longitude) * Math.PI / 180;
+
+        const a = Math.sin(deltaLat/2) * Math.sin(deltaLat/2) +
+                  Math.cos(lat1) * Math.cos(lat2) *
+                  Math.sin(deltaLon/2) * Math.sin(deltaLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        
+        return R * c;
+      }
+
+      // 計算方位角
+      calculateBearing(point1, point2) {
+        const lat1 = point1.latitude * Math.PI / 180;
+        const lat2 = point2.latitude * Math.PI / 180;
+        const deltaLon = (point2.longitude - point1.longitude) * Math.PI / 180;
+
+        const y = Math.sin(deltaLon) * Math.cos(lat2);
+        const x = Math.cos(lat1) * Math.sin(lat2) -
+                  Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLon);
+        
+        return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
       }
 
       // 更新導航顯示
@@ -1198,6 +1224,13 @@
       stopNavigation() {
         this.isNavigating = false;
         this.updateModeIndicator('idle');
+        
+        // 停止位置追蹤
+        if (this.watchId) {
+          navigator.geolocation.clearWatch(this.watchId);
+          this.watchId = null;
+        }
+        
         updateVoice('導航已結束');
         document.getElementById('navigationStatus').textContent = '已結束';
         
@@ -1220,20 +1253,164 @@
         window.open(mapsUrl, '_blank');
       }
 
-      // 提供轉向指示
-      provideTurnInstruction(direction) {
-        const instructions = {
-          'left': { text: '請左轉', arrow: '↰', voice: '請在路口左轉' },
-          'right': { text: '請右轉', arrow: '↱', voice: '請在路口右轉' },
-          'straight': { text: '請直行', arrow: '↑', voice: '請繼續直行' },
-          'uturn': { text: '請迴轉', arrow: '↶', voice: '請在安全處迴轉' }
-        };
+
+      // 初始化 AGPS 輔助定位
+      async initAGPS() {
+        try {
+          updateVoice('正在初始化定位系統...');
+          
+          if (!navigator.geolocation) {
+            throw new Error('您的裝置不支援定位功能');
+          }
+
+          // 預先請求一次高精度位置來觸發AGPS
+          await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              (position) => {
+                this.currentLocation = {
+                  latitude: position.coords.latitude,
+                  longitude: position.coords.longitude,
+                  accuracy: position.coords.accuracy,
+                  altitude: position.coords.altitude,
+                  heading: position.coords.heading,
+                  speed: position.coords.speed,
+                  timestamp: position.timestamp
+                };
+                this.agpsEnabled = true;
+                updateVoice('AGPS定位系統準備完成');
+                resolve(position);
+              },
+              reject,
+              {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+              }
+            );
+          });
+          
+          return true;
+        } catch (error) {
+          console.log('AGPS初始化失敗，使用普通GPS模式:', error);
+          this.agpsEnabled = false;
+          updateVoice('使用標準GPS定位模式');
+          return false;
+        }
+      }
+
+      // 更新實時導航顯示
+      updateRealNavigationDisplay(distance, bearing) {
+        // 更新距離顯示
+        const displayDistance = distance < 1000 ? 
+          Math.round(distance) + ' 公尺' : 
+          (distance / 1000).toFixed(1) + ' 公里';
         
-        const instruction = instructions[direction];
-        if (instruction) {
-          document.getElementById('turnInstruction').textContent = instruction.text;
-          document.getElementById('directionArrow').textContent = instruction.arrow;
-          updateVoice(instruction.voice);
+        document.getElementById('distanceDisplay').textContent = displayDistance;
+        
+        // 根據方位角顯示方向
+        const directionInfo = this.getDirectionFromBearing(bearing);
+        document.getElementById('directionArrow').textContent = directionInfo.arrow;
+        document.getElementById('turnInstruction').textContent = directionInfo.instruction;
+        
+        // 更新道路資訊
+        this.updateRoadInfo();
+        
+        // 更新導航狀態顯示
+        document.getElementById('navigationStatus').textContent = 
+          `導航中 | 精度: ${this.currentLocation ? Math.round(this.currentLocation.accuracy) : '--'}m`;
+        
+        // 檢查是否到達目的地
+        if (distance <= this.arrivalThreshold) {
+          this.arriveAtDestination();
+        }
+      }
+
+      // 根據方位角獲取方向資訊
+      getDirectionFromBearing(bearing) {
+        if (bearing >= 337.5 || bearing < 22.5) 
+          return { arrow: '↑', instruction: '請向北直行' };
+        if (bearing >= 22.5 && bearing < 67.5) 
+          return { arrow: '↗', instruction: '請向東北方向前進' };
+        if (bearing >= 67.5 && bearing < 112.5) 
+          return { arrow: '→', instruction: '請向東直行' };
+        if (bearing >= 112.5 && bearing < 157.5) 
+          return { arrow: '↘', instruction: '請向東南方向前進' };
+        if (bearing >= 157.5 && bearing < 202.5) 
+          return { arrow: '↓', instruction: '請向南直行' };
+        if (bearing >= 202.5 && bearing < 247.5) 
+          return { arrow: '↙', instruction: '請向西南方向前進' };
+        if (bearing >= 247.5 && bearing < 292.5) 
+          return { arrow: '←', instruction: '請向西直行' };
+        return { arrow: '↖', instruction: '請向西北方向前進' };
+      }
+
+      // 更新道路資訊
+      updateRoadInfo() {
+        const accuracy = this.currentLocation ? this.currentLocation.accuracy : null;
+        
+        if (accuracy && accuracy > 50) {
+          document.getElementById('roadInfo').textContent = 
+            `定位精度較低：${Math.round(accuracy)}公尺，建議在開闊地使用`;
+          document.getElementById('roadInfo').style.background = 'rgba(245,158,11,0.15)';
+          document.getElementById('roadInfo').style.borderColor = 'rgba(245,158,11,0.35)';
+        } else {
+          document.getElementById('roadInfo').textContent = 
+            `定位正常，精度：${accuracy ? Math.round(accuracy) : '--'}公尺`;
+          document.getElementById('roadInfo').style.background = 'rgba(34,197,94,0.15)';
+          document.getElementById('roadInfo').style.borderColor = 'rgba(34,197,94,0.35)';
+        }
+      }
+
+      // 實時語音指引
+      provideRealTimeGuidance(distance, bearing) {
+        const now = Date.now();
+        if (now - this.lastSpeechTime < this.SPEECH_COOLDOWN) return;
+        
+        let guidance = '';
+        
+        if (distance <= this.arrivalThreshold) {
+          guidance = '已到達目的地附近';
+        } else if (distance < 50) {
+          guidance = `即將到達，還有${Math.round(distance)}公尺`;
+        } else if (distance < 200) {
+          const direction = this.getDirectionFromBearing(bearing);
+          guidance = `${direction.instruction}，距離${Math.round(distance)}公尺`;
+        } else {
+          // 每30秒播報一次進度
+          if (now - this.lastSpeechTime > 30000) {
+            guidance = `距離目的地還有${Math.round(distance)}公尺`;
+          }
+        }
+        
+        if (guidance) {
+          updateVoice(guidance);
+          this.lastSpeechTime = now;
+        }
+      }
+
+      // 到達目的地
+      arriveAtDestination() {
+        updateVoice('已到達目的地！導航結束');
+        document.getElementById('turnInstruction').textContent = '已到達目的地';
+        document.getElementById('directionArrow').textContent = '🏠';
+        document.getElementById('distanceDisplay').textContent = '0 公尺';
+        document.getElementById('roadInfo').textContent = '導航完成，已到達目的地';
+        
+        setTimeout(() => {
+          this.stopNavigation();
+        }, 5000);
+      }
+
+      // 處理導航錯誤
+      handleNavigationError(error) {
+        const errorMsg = this.getGeolocationError(error);
+        console.error('導航錯誤:', error);
+        
+        updateVoice('導航錯誤：' + errorMsg);
+        showError('導航錯誤：' + errorMsg);
+        
+        if (error.code === error.PERMISSION_DENIED) {
+          this.stopNavigation();
         }
       }
 
@@ -1313,19 +1490,29 @@
 
     // 初始化
     function init() {
+      // 確保物品資料庫已載入
+      if (typeof itemNames === 'undefined' || Object.keys(itemNames).length === 0) {
+        console.error('物品資料庫未正確載入');
+        updateVoice('系統初始化失敗，請重新整理頁面');
+        return;
+      }
+      
       assistant.loadSavedLocations();
       document.getElementById('databaseSize').textContent = 
         Object.keys(itemNames).length + '+ 物品';
       
       updateStatus('準備就緒');
-      updateVoice('系統準備完成，請開啟相機開始使用');
+      updateVoice('系統準備完成，正在初始化定位系統...');
       initEventListeners();
       initTabSystem();
       
       showDebugInfo('道路辨識模式已啟動');
       
+      // 初始化AGPS
       setTimeout(() => {
-        assistant.initModel();
+        assistant.initAGPS().then(() => {
+          assistant.initModel();
+        });
       }, 1000);
     }
 
@@ -1421,29 +1608,14 @@
       }
     }
 
-    // 開始檢測
+    // Start detection
     function startDetection() {
-      const video = document.getElementById('video');
-      if (!video.srcObject) {
-        updateVoice('請先開啟相機');
-        return;
-      }
-      
-      isDetecting = true;
-      updateStatus('檢測中');
+      updateVoice('實時道路檢測已啟動');
+      updateStatus('實時檢測中');
       updateDetectionStatus('運行中');
-      updateVoice('開始道路與障礙物檢測，請緩慢移動手機');
       
-      detectionInterval = setInterval(() => {
-        if (!isDetecting) return;
-        
-        try {
-          const obstacles = simulateRoadDetection();
-          updateDetectionDisplay(obstacles);
-        } catch (error) {
-          console.error('檢測錯誤:', error);
-        }
-      }, 1000);
+      // Start real-time detection from camera
+      startRealTimeCameraDetection();
     }
 
     // 測試檢測
@@ -1459,35 +1631,6 @@
       updateVoice('功能測試完成，檢測到 ' + testObstacles.length + ' 個測試障礙物');
     }
 
-    // 模擬道路檢測
-    function simulateRoadDetection() {
-      const now = Date.now();
-      
-      const obstacles = [];
-      const roadTypes = ['人行道', '斑馬線', '安全通道', '障礙物', '樓梯'];
-      
-      if (Math.random() < 0.5) {
-        const distance = (Math.random() * 5 + 0.5).toFixed(1);
-        const type = roadTypes[Math.floor(Math.random() * roadTypes.length)];
-        
-        obstacles.push({
-          type: type,
-          distance: parseFloat(distance),
-          confidence: (Math.random() * 30 + 70).toFixed(0)
-        });
-      }
-      
-      if (now - lastDetectionTime > 5000) {
-        obstacles.push({
-          type: '測試障礙物',
-          distance: (Math.random() * 1 + 0.5).toFixed(1),
-          confidence: '95'
-        });
-        lastDetectionTime = now;
-      }
-      
-      return obstacles;
-    }
 
     // 停止檢測
     function stopDetection() {
@@ -1504,28 +1647,11 @@
 
     // 更新檢測顯示
     function updateDetectionDisplay(obstacles) {
+      // No obstacles detected
       const list = document.getElementById('detectionList');
+      list.innerHTML = '<div class="detection-item" style="text-align:center; color:var(--muted);">道路環境安全</div>';
       
-      if (obstacles.length === 0) {
-        list.innerHTML = '<div class="detection-item" style="text-align:center; color:var(--muted);">道路環境安全</div>';
-        return;
-      }
-      
-      list.innerHTML = obstacles.map(obs => `
-        <div class="detection-item" style="border-left: 4px solid ${obs.type === '障礙物' ? 'var(--bad)' : obs.type === '樓梯' ? 'var(--warn)' : 'var(--good)'}">
-          <strong>${obs.type}</strong><br>
-          距離: ${obs.distance}公尺 | 置信度: ${obs.confidence}%
-        </div>
-      `).join('');
-      
-      const closest = obstacles[0];
-      if (closest.distance < 1.0) {
-        updateVoice(`緊急停止！${closest.type}非常接近，僅${closest.distance}公尺`);
-      } else if (closest.distance < 2.0) {
-        updateVoice(`注意！${closest.type}接近，距離${closest.distance}公尺`);
-      }
-      
-      showDebugInfo(`檢測到 ${obstacles.length} 個障礙物，最近: ${closest.distance}公尺`);
+      showDebugInfo('未檢測到障礙物');
     }
 
     function clearDetectionDisplay() {
@@ -1542,9 +1668,6 @@
       assistant.openGoogleMapsNavigation();
     }
 
-    function simulateTurn(direction) {
-      assistant.provideTurnInstruction(direction);
-    }
 
     function setHomeLocation() {
       assistant.setHomeLocation().catch(error => {
@@ -1606,7 +1729,11 @@
     }
 
     function updateDetectionStatus(status) {
-      document.getElementById('detectionStatus').textContent = status;
+      // 確保元素存在
+      const element = document.getElementById('detectionStatus');
+      if (element) {
+        element.textContent = status;
+      }
     }
 
     function showDebugInfo(message) {
