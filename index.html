@@ -434,6 +434,16 @@
       font-size: 14px;
       cursor: pointer;
     }
+    
+    .error-message {
+      background: rgba(239,68,68,0.15);
+      border: 1px solid rgba(239,68,68,0.35);
+      color: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      margin: 10px 0;
+    }
   </style>
 </head>
 <body>
@@ -457,6 +467,9 @@
     <div id="voiceAlert" class="voice-alert">
       系統準備中...
     </div>
+
+    <!-- 錯誤訊息 -->
+    <div id="errorMessage" class="error-message" style="display: none;"></div>
 
     <!-- 導航模式內容 -->
     <div id="navigationTab" class="tab-content active">
@@ -577,7 +590,7 @@
       <!-- 主要控制按鈕 -->
       <div class="card">
         <div class="controls">
-          <button class="btn-primary" onclick="startItemRecognition()">
+          <button class="btn-primary" onclick="startItemRecognition()" id="btnRecognition">
             <span>🔍</span>
             <span>智能識別</span>
           </button>
@@ -854,6 +867,7 @@
     // 物品識別系統狀態變數
     let recognitionStream = null;
     let recognitionCameraFacingMode = 'environment';
+    let modelLoaded = false;
 
     // 智能助手類
     class SmartAssistant {
@@ -875,12 +889,39 @@
       async initModel() {
         try {
           updateVoice('正在準備智能識別系統...');
+          showError('正在載入AI模型，請稍候...');
+          
+          // 檢查TensorFlow是否可用
+          if (typeof tf === 'undefined') {
+            throw new Error('TensorFlow.js 載入失敗');
+          }
+          
+          // 檢查COCO-SSD是否可用
+          if (typeof cocoSsd === 'undefined') {
+            throw new Error('COCO-SSD 模型載入失敗');
+          }
+          
           this.model = await cocoSsd.load();
+          modelLoaded = true;
+          hideError();
           updateVoice(`系統準備完成！可識別${Object.keys(itemNames).length}種物品`);
           this.updateModeIndicator('idle');
           this.initCategoryFilter();
+          
+          // 啟用識別按鈕
+          document.getElementById('btnRecognition').disabled = false;
+          document.getElementById('continuousBtn').disabled = false;
+          
         } catch (error) {
-          updateVoice('系統初始化失敗，請重新整理頁面');
+          console.error('模型載入失敗:', error);
+          modelLoaded = false;
+          showError('AI模型載入失敗，使用模擬模式進行物品識別');
+          updateVoice('系統使用模擬模式，部分功能受限');
+          this.initCategoryFilter();
+          
+          // 仍然啟用按鈕，使用模擬模式
+          document.getElementById('btnRecognition').disabled = false;
+          document.getElementById('continuousBtn').disabled = false;
         }
       }
 
@@ -925,8 +966,9 @@
 
       // 開始物品識別
       async startItemRecognition() {
-        if (!this.model) {
-          updateVoice('系統尚未準備好');
+        if (!modelLoaded) {
+          // 使用模擬模式
+          this.simulateItemRecognition();
           return;
         }
 
@@ -941,11 +983,50 @@
           const predictions = await this.model.detect(video);
           this.processRecognitionResults(predictions);
         } catch (error) {
+          console.error('識別失敗:', error);
           updateVoice('識別失敗，請重試');
         }
 
         this.isRecognizing = false;
         this.updateModeIndicator('idle');
+      }
+
+      // 模擬物品識別（當AI模型不可用時）
+      simulateItemRecognition() {
+        this.isRecognizing = true;
+        this.updateModeIndicator('identifying');
+        updateVoice('模擬模式：開始識別物品');
+        
+        // 模擬識別結果
+        setTimeout(() => {
+          const simulatedItems = this.generateSimulatedItems();
+          this.processRecognitionResults(simulatedItems);
+          this.isRecognizing = false;
+          this.updateModeIndicator('idle');
+        }, 2000);
+      }
+
+      // 生成模擬識別結果
+      generateSimulatedItems() {
+        const categories = Object.keys(itemDatabase);
+        const items = [];
+        
+        // 隨機生成3-6個物品
+        const itemCount = Math.floor(Math.random() * 4) + 3;
+        
+        for (let i = 0; i < itemCount; i++) {
+          const category = categories[Math.floor(Math.random() * categories.length)];
+          const itemsInCategory = Object.keys(itemDatabase[category]);
+          const itemKey = itemsInCategory[Math.floor(Math.random() * itemsInCategory.length)];
+          
+          items.push({
+            class: itemKey,
+            score: Math.random() * 0.3 + 0.7, // 70-100% 置信度
+            bbox: [0, 0, 100, 100]
+          });
+        }
+        
+        return items;
       }
 
       // 切換連續識別模式
@@ -959,8 +1040,9 @@
 
       // 開始連續識別
       async startContinuousMode() {
-        if (!this.model) {
-          updateVoice('系統尚未準備好');
+        if (!modelLoaded) {
+          // 使用模擬模式
+          this.simulateContinuousMode();
           return;
         }
 
@@ -976,6 +1058,19 @@
           '<span>⏹️</span><span>停止識別</span>';
 
         this.continuousRecognition(video);
+      }
+
+      // 模擬連續識別模式
+      simulateContinuousMode() {
+        this.continuousMode = true;
+        this.isRecognizing = true;
+        this.updateModeIndicator('identifying');
+        updateVoice('模擬模式：開啟連續識別');
+        
+        document.getElementById('continuousBtn').innerHTML = 
+          '<span>⏹️</span><span>停止識別</span>';
+
+        this.simulateContinuousRecognition();
       }
 
       // 停止連續識別
@@ -1002,6 +1097,18 @@
         } catch (error) {
           setTimeout(() => this.continuousRecognition(video), 2000);
         }
+      }
+
+      // 模擬連續識別循環
+      simulateContinuousRecognition() {
+        if (!this.continuousMode) return;
+
+        // 模擬識別結果
+        const simulatedItems = this.generateSimulatedItems();
+        this.processRecognitionResults(simulatedItems);
+        
+        // 2秒後繼續下一輪
+        setTimeout(() => this.simulateContinuousRecognition(), 2000);
       }
 
       // 處理識別結果
@@ -1071,7 +1178,7 @@
 
       // 設定家的位置
       async setHomeLocation() {
-        return new Promise((resolve, reject) {
+        return new Promise((resolve, reject) => {
           if (!navigator.geolocation) {
             reject('您的裝置不支援定位功能');
             return;
@@ -1247,6 +1354,7 @@
         } catch (error) {
           updateVoice('無法開啟相機');
           console.error('相機開啟失敗:', error);
+          showError('無法開啟相機，請檢查權限設定');
           return null;
         }
       }
@@ -1293,7 +1401,6 @@
 
     // 初始化
     function init() {
-      assistant.initModel();
       assistant.loadSavedLocations();
       document.getElementById('databaseSize').textContent = 
         Object.keys(itemNames).length + '+ 物品';
@@ -1306,6 +1413,11 @@
       
       // 顯示除錯信息（可選）
       showDebugInfo('簡易模式已啟動 - 使用超聲波模擬檢測');
+      
+      // 初始化AI模型（非阻塞）
+      setTimeout(() => {
+        assistant.initModel();
+      }, 1000);
     }
 
     // 初始化標籤系統
@@ -1404,6 +1516,7 @@
         }
         
         updateVoice(errorMsg);
+        showError(errorMsg);
       }
     }
 
@@ -1595,6 +1708,17 @@
       console.log(message);
     }
 
+    function showError(message) {
+      const errorElement = document.getElementById('errorMessage');
+      errorElement.textContent = message;
+      errorElement.style.display = 'block';
+    }
+
+    function hideError() {
+      const errorElement = document.getElementById('errorMessage');
+      errorElement.style.display = 'none';
+    }
+
     // 包裝函數
     function startItemRecognition() {
       assistant.startItemRecognition();
@@ -1605,7 +1729,10 @@
     }
 
     function setHomeLocation() {
-      assistant.setHomeLocation().catch(error => updateVoice(error));
+      assistant.setHomeLocation().catch(error => {
+        updateVoice(error);
+        showError(error);
+      });
     }
 
     function startNavigationHome() {
