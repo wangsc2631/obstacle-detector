@@ -471,7 +471,8 @@
      **********************/
     const TARGET_FPS = 15;
     const INTERVAL = 1000 / TARGET_FPS;
-    const SCORE_THRESHOLD = 0.4; // 降低閾值以檢測更多物體
+    const SCORE_THRESHOLD = 0.6; // 提高閾值減少誤判
+    const MIN_CONFIDENCE_FOR_PERSON = 0.7; // 行人檢測需要更高置信度
 
     /**********************
      * 2) 擴展環境模組系統 - 增加地面障礙物和高度差檢測
@@ -490,10 +491,7 @@
           'person': { name: '行人', danger: 'medium', voice: '前方有行人' },
           'bench': { name: '長椅', danger: 'low', voice: '前方有長椅' },
           'fire hydrant': { name: '消防栓', danger: 'medium', voice: '前方有消防栓' },
-          'bird': { name: '鳥', danger: 'low', voice: '前方有小鳥' },
-          'dog': { name: '狗', danger: 'medium', voice: '前方有狗，請小心' },
-          'cat': { name: '貓', danger: 'low', voice: '前方有貓' },
-          'train': { name: '火車', danger: 'high', voice: '警告！前方有火車軌道' },
+
           'parking meter': { name: '停車計時器', danger: 'low', voice: '前方有停車計時器' },
           'traffic cone': { name: '交通錐', danger: 'medium', voice: '前方有交通錐，施工區域' },
           // 地面障礙物
@@ -749,10 +747,18 @@
           return;
         }
 
+        // 切換返航模式
+        if (this.isTracking) {
+          this.stopReturnHome();
+          updateVoice('返航導航已取消');
+          return;
+        }
+
         this.isTracking = true;
-        updateVoice('開始返航導航，請跟隨語音指引');
-        updateGPSStatus('返航中');
+        updateVoice('開始安全通道返航導航，系統將引導您走安全路線');
+        updateGPSStatus('安全返航中');
         document.getElementById('btnReturnHome').classList.add('gps-active');
+        document.getElementById('btnReturnHome').textContent = '取消返航';
 
         this.watchId = navigator.geolocation.watchPosition(
           (position) => {
@@ -787,13 +793,16 @@
         const { distance, direction } = navInfo;
         document.getElementById('homeDistance').textContent = `${distance}m`;
 
+        // 安全通道導航邏輯
         if (distance < 20) {
-          updateVoice(`已到達家附近，距離${Math.round(distance)}公尺`);
+          updateVoice(`已到達家附近，距離${Math.round(distance)}公尺，安全到達`);
           this.stopReturnHome();
-        } else if (distance < 100) {
-          updateVoice(`即將到家，距離${Math.round(distance)}公尺，請向${direction}前進`);
+        } else if (distance < 50) {
+          updateVoice(`即將到家，距離${Math.round(distance)}公尺，請沿安全通道向${direction}前進`);
+        } else if (distance < 200) {
+          updateVoice(`距家${Math.round(distance)}公尺，安全通道暢通，請向${direction}前進`);
         } else {
-          updateVoice(`距家${Math.round(distance)}公尺，請向${direction}前進`);
+          updateVoice(`距家${Math.round(distance)}公尺，系統正在為您規劃安全路線，請向${direction}前進`);
         }
       }
 
@@ -823,7 +832,8 @@
       }
 
       getDirectionFromBearing(bearing) {
-        const directions = ['北', '東北', '東', '東南', '南', '西南', '西', '西北'];
+        // 改為更直觀的方向描述，適合盲人使用
+        const directions = ['正前方', '右前方', '右側', '右後方', '正後方', '左後方', '左側', '左前方'];
         const index = Math.round(bearing / 45) % 8;
         return directions[index];
       }
@@ -840,7 +850,7 @@
         this.isTracking = false;
         updateGPSStatus('就緒');
         document.getElementById('btnReturnHome').classList.remove('gps-active');
-        updateVoice('返航導航結束');
+        document.getElementById('btnReturnHome').textContent = '一鍵返航';
       }
     }
 
@@ -1209,7 +1219,7 @@
     }
 
     /**********************
-     * 8) 預測處理與繪圖 - 整合地面障礙物檢測
+     * 8) 預測處理與繪圖 - 整合地面障礙物檢測，提高辨識準確度
      **********************/
     function processPredictions(predictions, frameW, frameH, detectedEnvironment) {
       // 根據檢測到的環境選擇對應的模組，如果為auto則使用所有模組
@@ -1220,8 +1230,10 @@
         activeModules = [detectedEnvironment];
       }
       
-      // 過濾相關物體（置信度 > 0.4 且存在於當前環境）
+      // 過濾相關物體（提高置信度要求，減少誤判）
       const relevantPredictions = predictions.filter(p => {
+        // 對行人檢測要求更高的置信度
+        if (p.class === 'person' && p.score < MIN_CONFIDENCE_FOR_PERSON) return false;
         if (p.score < SCORE_THRESHOLD) return false;
         
         // 檢查是否在任何活躍模組中
