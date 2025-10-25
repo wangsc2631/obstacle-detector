@@ -86,7 +86,7 @@
       font-weight: 700;
     }
     
-    header .tips {
+    .tips {
       font-size: 12px;
       color: var(--muted);
       display: none;
@@ -402,6 +402,23 @@
       margin-top: 8px;
       font-family: monospace;
     }
+
+    .progress-container {
+      width: 100%;
+      height: 6px;
+      background: var(--glass-strong);
+      border-radius: 3px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    
+    .progress-bar {
+      height: 100%;
+      background: var(--good);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
   </style>
 </head>
 <body class="no-select">
@@ -424,6 +441,11 @@
     <section class="card panel">
       <div id="voiceAlert" class="voice-alert">系統準備中…</div>
       
+      <!-- 模型載入進度 -->
+      <div id="progressContainer" class="progress-container" style="display: none;">
+        <div id="progressBar" class="progress-bar"></div>
+      </div>
+      
       <!-- 相機控制按鈕 -->
       <div class="controls">
         <button id="btnCamera" class="btn primary">開啟相機</button>
@@ -437,7 +459,7 @@
         <button id="btnMirror" class="btn secondary">關閉鏡像</button>
         <button id="btnDebug" class="btn secondary">顯示檢測框</button>
         <button id="btnSwitchCamera" class="btn secondary">切換鏡頭</button>
-        <button id="btnTestDetection" class="btn primary">測試檢測</button>
+        <button id="btnTestDetection" class="btn primary" disabled>測試檢測</button>
       </div>
 
       <!-- 狀態資訊 -->
@@ -447,16 +469,16 @@
           <div class="v" id="status">準備中</div>
         </div>
         <div class="status-item">
+          <div class="k">模型狀態</div>
+          <div class="v" id="modelStatus">載入中</div>
+        </div>
+        <div class="status-item">
           <div class="k">相機狀態</div>
           <div class="v" id="cameraStatus">未開啟</div>
         </div>
         <div class="status-item">
           <div class="k">檢測狀態</div>
           <div class="v" id="detectionStatus">未開始</div>
-        </div>
-        <div class="status-item">
-          <div class="k">最近距離</div>
-          <div class="v" id="closestDistance">— 公尺</div>
         </div>
       </div>
       
@@ -501,10 +523,15 @@
 
   <script>
     /**********************
-     * 1) 參數區
+     * 1) 參數區 - 修復版本
      **********************/
+    // 多個模型來源，優先使用可靠的
     const MODEL_SOURCES = [
+      // 主要：公開 CDN
       'https://cdn.jsdelivr.net/gh/ultralytics/assets@main/yolov8n.onnx',
+      // 備用：你的 GitHub
+      'https://raw.githubusercontent.com/wangsc2631/wangsc2631.github.io/main/yolov8n.onnx',
+      // 最後：本地
       'yolov8n.onnx'
     ];
 
@@ -536,7 +563,8 @@
           'bus': { name: '公車', danger: 'high', voice: '警告！公車' },
           'truck': { name: '卡車', danger: 'high', voice: '警告！卡車' }
         },
-        filterOut: ['cat', 'dog', 'bird', 'bottle', 'cup', 'book', 'laptop']
+        // 修正：使用 filterOut 來排除容易誤判的類別
+        filterOut: ['cat', 'dog', 'bird', 'bottle', 'cup', 'book', 'laptop', 'cell phone']
       },
       indoor: {
         name: '室內環境',
@@ -547,7 +575,7 @@
           'bed': { name: '床', danger: 'medium', voice: '前方有床' },
           'dining table': { name: '餐桌', danger: 'medium', voice: '前方有餐桌' }
         },
-        filterOut: ['cat', 'dog', 'bird', 'bottle', 'cup', 'book', 'laptop']
+        filterOut: ['cat', 'dog', 'bird', 'bottle', 'cup', 'book', 'laptop', 'cell phone']
       }
     };
 
@@ -563,41 +591,131 @@
     let currentStream = null;
     let usingFrontCamera = false;
     let detectionInterval = null;
+    let lastSpeechTime = 0;
+    const SPEECH_COOLDOWN = 3000; // 3秒冷卻
 
     /**********************
-     * 3) 模型載入
+     * 3) 模型載入 - 修復版本
      **********************/
     async function initModel() {
       try {
-        updateVoice('正在載入 AI 模型…');
-        updateStatus('載入模型中');
+        updateVoice('正在初始化 ONNX Runtime…');
+        updateStatus('初始化中');
+        updateModelStatus('開始載入');
         
         ort.env.wasm.numThreads = 1;
+        ort.env.wasm.proxy = false;
+        
+        // 顯示進度條
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        progressContainer.style.display = 'block';
         
         let modelLoaded = false;
+        let lastError = null;
+        
         for (let i = 0; i < MODEL_SOURCES.length; i++) {
           try {
+            const modelUrl = MODEL_SOURCES[i];
+            updateVoice(`嘗試載入模型來源 ${i + 1}/${MODEL_SOURCES.length}`);
+            updateModelStatus(`嘗試來源 ${i + 1}`);
+            progressBar.style.width = `${(i / MODEL_SOURCES.length) * 100}%`;
+            
+            console.log('嘗試載入模型:', modelUrl);
+            
             const cacheBuster = `?t=${Date.now()}`;
-            session = await ort.InferenceSession.create(MODEL_SOURCES[i] + cacheBuster, {
-              executionProviders: ['wasm']
+            session = await ort.InferenceSession.create(modelUrl + cacheBuster, {
+              executionProviders: ['wasm'],
+              graphOptimizationLevel: 'all'
             });
+            
             modelLoaded = true;
+            progressBar.style.width = '100%';
+            progressBar.style.background = 'var(--good)';
+            
+            console.log('✅ 模型載入成功！來源:', modelUrl);
+            console.log('模型輸入:', session.inputNames);
+            console.log('模型輸出:', session.outputNames);
+            
             break;
+            
           } catch (error) {
+            console.warn('❌ 模型載入錯誤:', error.message);
+            lastError = error;
             continue;
           }
         }
         
-        if (!modelLoaded) throw new Error('模型載入失敗');
+        progressContainer.style.display = 'none';
+        
+        if (!modelLoaded) {
+          throw new Error(`所有模型來源都失敗。最後錯誤: ${lastError?.message}`);
+        }
+        
+        // 測試模型推理
+        await testModelInference();
         
         initEventListeners();
         updateStatus('準備就緒');
+        updateModelStatus('載入成功');
         updateVoice('AI 模型載入成功！請先開啟相機');
         
       } catch (error) {
-        console.error('模型載入錯誤:', error);
-        updateVoice('模型載入失敗');
+        console.error('模型載入最終錯誤:', error);
+        handleModelLoadError(error);
       }
+    }
+
+    async function testModelInference() {
+      if (!session) {
+        console.log('❌ 模型未載入，無法測試');
+        return;
+      }
+      
+      try {
+        console.log('開始模型推理測試...');
+        
+        // 創建測試張量
+        const testData = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE).fill(0.5);
+        const testTensor = new ort.Tensor('float32', testData, [1, 3, INPUT_SIZE, INPUT_SIZE]);
+        const feeds = { [session.inputNames[0]]: testTensor };
+        
+        // 執行推理
+        const results = await session.run(feeds);
+        const output = results[session.outputNames[0]];
+        
+        console.log('✅ 模型推理測試成功');
+        console.log('輸出形狀:', output.dims);
+        console.log('輸出數據長度:', output.data.length);
+        
+        updateModelStatus('測試通過');
+        
+      } catch (error) {
+        console.error('❌ 模型推理測試失敗:', error);
+        updateModelStatus('測試失敗');
+      }
+    }
+
+    function handleModelLoadError(error) {
+      updateVoice('模型載入失敗，請檢查網路連接');
+      updateStatus('載入失敗');
+      updateModelStatus('失敗');
+      
+      const progressContainer = document.getElementById('progressContainer');
+      progressContainer.style.display = 'none';
+      
+      let errorDetails = '模型載入失敗詳細信息:\n';
+      
+      if (error.message.includes('Failed to fetch')) {
+        errorDetails += '1. 網路連接問題\n';
+        errorDetails += '2. 模型URL不可訪問\n';
+      } else if (error.message.includes('CORS')) {
+        errorDetails += '跨域訪問被阻止\n';
+      } else {
+        errorDetails += error.message;
+      }
+      
+      console.error(errorDetails);
     }
 
     function initEventListeners() {
@@ -609,6 +727,10 @@
       document.getElementById('btnDebug').addEventListener('click', toggleDetectionBoxes);
       document.getElementById('btnSwitchCamera').addEventListener('click', switchCamera);
       document.getElementById('btnTestDetection').addEventListener('click', testSingleDetection);
+    }
+
+    function updateModelStatus(status) {
+      document.getElementById('modelStatus').textContent = status;
     }
 
     /**********************
@@ -772,10 +894,13 @@
         if (!isDetecting) return;
         
         try {
-          const { predictions, frameW } = await runOnce(video);
+          const frameW = video.videoWidth;
+          const frameH = video.videoHeight;
+          const { predictions } = await runOnce(video, frameW, frameH);
+          
           updateDebugInfo(`檢測到 ${predictions.length} 個物體`);
-          processPredictions(predictions, frameW);
-          updateDetectionBoxes(predictions, video.videoWidth, video.videoHeight);
+          processPredictions(predictions, frameW, frameH);
+          updateDetectionBoxes(predictions, frameW, frameH);
           updateStats(predictions);
         } catch (error) {
           console.error('檢測錯誤:', error);
@@ -812,7 +937,9 @@
       updateVoice('執行單次檢測測試');
       
       try {
-        const { predictions, frameW } = await runOnce(video);
+        const frameW = video.videoWidth;
+        const frameH = video.videoHeight;
+        const { predictions } = await runOnce(video, frameW, frameH);
         updateDebugInfo(`測試檢測: ${predictions.length} 個物體`);
         
         if (predictions.length > 0) {
@@ -822,8 +949,8 @@
           updateVoice('測試完成，未檢測到物體');
         }
         
-        processPredictions(predictions, frameW);
-        updateDetectionBoxes(predictions, video.videoWidth, video.videoHeight);
+        processPredictions(predictions, frameW, frameH);
+        updateDetectionBoxes(predictions, frameW, frameH);
         updateStats(predictions);
         
       } catch (error) {
@@ -833,16 +960,16 @@
     }
 
     /**********************
-     * 6) YOLO 推理
+     * 6) YOLO 推理 - 修復版本
      **********************/
-    async function runOnce(video) {
+    async function runOnce(video, frameW, frameH) {
       try {
         const frame = captureFrame(video);
-        const { predictions, frameW } = await inference(frame);
-        return { predictions, frameW };
+        const predictions = await inference(frame, frameW, frameH);
+        return { predictions };
       } catch (error) {
         console.error('推理錯誤:', error);
-        return { predictions: [], frameW: 640 };
+        return { predictions: [] };
       }
     }
 
@@ -851,7 +978,6 @@
       const ctx = canvas.getContext('2d');
       const { videoWidth: w, videoHeight: h } = video;
       
-      // 使用較小的尺寸提高性能
       canvas.width = INPUT_SIZE;
       canvas.height = INPUT_SIZE;
       
@@ -861,71 +987,87 @@
       return ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
     }
 
-    async function inference(imageData) {
+    async function inference(imageData, frameW, frameH) {
       if (!session) {
         throw new Error('模型未載入');
       }
       
-      const [inferenceTensor, frameW] = preprocess(imageData);
+      const inferenceTensor = preprocess(imageData);
       const feeds = { [session.inputNames[0]]: inferenceTensor };
       const results = await session.run(feeds);
-      const predictions = postprocess(results, frameW);
-      return { predictions, frameW };
+      const predictions = postprocess(results, frameW, frameH);
+      return predictions;
     }
 
-    function preprocess(imageData, modelWidth = INPUT_SIZE, modelHeight = INPUT_SIZE) {
-      const { data, width, height } = imageData;
-      const input = new Float32Array(3 * modelWidth * modelHeight);
+    function preprocess(imageData) {
+      const { data } = imageData;
+      const input = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
       
-      // 簡化的預處理，只進行歸一化
+      // 正確的預處理：RGB 順序，0-1 歸一化
       for (let i = 0; i < data.length; i += 4) {
-        const pixelIndex = i / 4;
+        const pixelIndex = Math.floor(i / 4);
         const r = data[i] / 255.0;
         const g = data[i + 1] / 255.0;
         const b = data[i + 2] / 255.0;
         
+        // YOLO 通常使用 RGB 順序
         input[pixelIndex] = r;
-        input[modelWidth * modelHeight + pixelIndex] = g;
-        input[2 * modelWidth * modelHeight + pixelIndex] = b;
+        input[INPUT_SIZE * INPUT_SIZE + pixelIndex] = g;
+        input[2 * INPUT_SIZE * INPUT_SIZE + pixelIndex] = b;
       }
       
-      const tensor = new ort.Tensor('float32', input, [1, 3, modelWidth, modelHeight]);
-      return [tensor, width];
+      return new ort.Tensor('float32', input, [1, 3, INPUT_SIZE, INPUT_SIZE]);
     }
 
-    function postprocess(results, frameW) {
+    function postprocess(results, frameW, frameH) {
       const output = results[session.outputNames[0]];
       const predictions = [];
       const outputData = output.data;
       const outputDims = output.dims;
       
       // YOLOv8 輸出格式: [1, 84, 8400]
-      for (let i = 0; i < outputDims[2]; i++) {
+      const numBoxes = outputDims[2]; // 8400
+      const numClasses = outputDims[1] - 4; // 84 - 4 = 80
+      
+      for (let i = 0; i < numBoxes; i++) {
         const offset = i * outputDims[1];
-        const scores = outputData.slice(offset + 4, offset + outputDims[1]);
-        const maxScore = Math.max(...scores);
+        const xCenter = outputData[offset];
+        const yCenter = outputData[offset + 1];
+        const w = outputData[offset + 2];
+        const h = outputData[offset + 3];
+        
+        // 獲取類別分數
+        const classScores = [];
+        for (let j = 0; j < numClasses; j++) {
+          classScores.push(outputData[offset + 4 + j]);
+        }
+        
+        const maxScore = Math.max(...classScores);
+        const classId = classScores.indexOf(maxScore);
         
         if (maxScore < SCORE_THRESHOLD) continue;
-        
-        const classId = scores.indexOf(maxScore);
         if (classId >= coco80.length) continue;
         
-        const bbox = outputData.slice(offset, offset + 4);
-        let [x, y, w, h] = bbox;
+        // 正確的坐標轉換：中心點轉為左上角，並縮放到原始影像尺寸
+        const x = (xCenter - w / 2) * frameW;
+        const y = (yCenter - h / 2) * frameH;
+        const width = w * frameW;
+        const height = h * frameH;
         
-        // 轉換為像素坐標
-        x = x * frameW;
-        y = y * frameW;
-        w = w * frameW;
-        h = h * frameW;
+        // 確保邊界框在畫面內
+        const clampedX = Math.max(0, x);
+        const clampedY = Math.max(0, y);
+        const clampedWidth = Math.min(frameW - clampedX, width);
+        const clampedHeight = Math.min(frameH - clampedY, height);
         
-        // 估算距離
-        const distance = estimateDistance(w, h, classId);
+        if (clampedWidth <= 0 || clampedHeight <= 0) continue;
+        
+        const distance = estimateDistance(clampedWidth, clampedHeight, classId);
         
         predictions.push({
           class: coco80[classId],
           score: maxScore,
-          bbox: [x, y, w, h],
+          bbox: [clampedX, clampedY, clampedWidth, clampedHeight],
           distance: distance
         });
       }
@@ -937,7 +1079,8 @@
       const className = coco80[classId];
       const pixelArea = width * height;
       const referenceSizes = {
-        'person': 15000, 'car': 80000, 'chair': 12000
+        'person': 15000, 'car': 80000, 'chair': 12000,
+        'bicycle': 20000, 'motorcycle': 25000, 'bus': 100000, 'truck': 90000
       };
       const refSize = referenceSizes[className] || 20000;
       const distance = Math.sqrt(refSize / pixelArea) * 2;
@@ -947,32 +1090,38 @@
     function nonMaxSuppression(predictions, iouThr) {
       predictions.sort((a, b) => b.score - a.score);
       const selected = [];
+      
       while (predictions.length > 0) {
         const current = predictions[0];
         selected.push(current);
+        
         predictions = predictions.filter(pred => {
           const iou = calculateIOU(current.bbox, pred.bbox);
           return iou < iouThr;
         });
       }
+      
       return selected;
     }
 
     function calculateIOU(box1, box2) {
       const [x1, y1, w1, h1] = box1;
       const [x2, y2, w2, h2] = box2;
+      
       const xi1 = Math.max(x1, x2);
       const yi1 = Math.max(y1, y2);
       const xi2 = Math.min(x1 + w1, x2 + w2);
       const yi2 = Math.min(y1 + h1, y2 + h2);
+      
       const interArea = Math.max(0, xi2 - xi1) * Math.max(0, yi2 - yi1);
       const box1Area = w1 * h1;
       const box2Area = w2 * h2;
+      
       return interArea / (box1Area + box2Area - interArea);
     }
 
     /**********************
-     * 7) 視覺化和處理
+     * 7) 視覺化和處理 - 修復版本
      **********************/
     function toggleDetectionBoxes() {
       showDetectionBoxes = !showDetectionBoxes;
@@ -987,20 +1136,12 @@
       const container = document.getElementById('detectionContainer');
       const [x, y, w, h] = prediction.bbox;
       
-      const scaleX = videoWidth / INPUT_SIZE;
-      const scaleY = videoHeight / INPUT_SIZE;
-      
-      const actualX = x * scaleX;
-      const actualY = y * scaleY;
-      const actualW = w * scaleX;
-      const actualH = h * scaleY;
-      
       const box = document.createElement('div');
       box.className = 'detection-box';
-      box.style.left = actualX + 'px';
-      box.style.top = actualY + 'px';
-      box.style.width = actualW + 'px';
-      box.style.height = actualH + 'px';
+      box.style.left = x + 'px';
+      box.style.top = y + 'px';
+      box.style.width = w + 'px';
+      box.style.height = h + 'px';
       
       const module = environmentModules[currentEnvironment];
       const objConfig = module.objects[prediction.class];
@@ -1012,7 +1153,7 @@
           case 'medium': color = '#f59e0b'; break;
         }
       } else {
-        color = '#6b7280';
+        color = '#6b7280'; // 灰色表示過濾掉的物體
       }
       
       box.style.borderColor = color;
@@ -1020,8 +1161,8 @@
       
       const label = document.createElement('div');
       label.className = 'detection-label';
-      label.style.left = actualX + 'px';
-      label.style.top = (actualY - 25) + 'px';
+      label.style.left = x + 'px';
+      label.style.top = (y - 25) + 'px';
       label.style.background = color;
       
       const confidencePercent = (prediction.score * 100).toFixed(0);
@@ -1046,9 +1187,10 @@
       });
     }
 
-    function processPredictions(predictions, frameW) {
+    function processPredictions(predictions, frameW, frameH) {
       const module = environmentModules[currentEnvironment];
       
+      // 修正篩選邏輯：只顯示相關且不在過濾列表中的物體
       const relevantPredictions = predictions.filter(p => {
         const isRelevant = module.objects[p.class];
         const isFilteredOut = module.filterOut.includes(p.class);
@@ -1074,6 +1216,13 @@
         
         if (closestDistance < 1.5) {
           distanceElement.parentElement.classList.add('danger-warning');
+          // 語音警告（帶冷卻時間）
+          const now = Date.now();
+          if (now - lastSpeechTime > SPEECH_COOLDOWN) {
+            const objConfig = module.objects[closestObject.class];
+            updateVoice(`緊急！${objConfig.name}非常接近，僅${closestDistance.toFixed(1)}公尺`);
+            lastSpeechTime = now;
+          }
         } else if (closestDistance < 3) {
           distanceElement.parentElement.classList.add('obstacle-warning');
         } else {
