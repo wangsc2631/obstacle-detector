@@ -1218,6 +1218,8 @@
         this.lastGroundScan = 0;
         this.groundScanInterval = 2000; // 每2秒掃描一次地面
         this.lineDetector = new LineDetector();
+        // 定義地面標地物類型
+        this.groundLandmarks = ['curb', 'crosswalk_line', 'pavement_edge', 'tactile_paving', 'guide_line'];
       }
 
       // 檢測地面障礙物和高度差
@@ -1337,6 +1339,55 @@
           return obstacle.distance < closest.distance ? obstacle : closest;
         });
       }
+      
+      // 檢測地面標地物附近的障礙物
+      detectObstaclesNearLandmarks(predictions, frameWidth, frameHeight) {
+        // 只有在安全通道導航啟用時才執行此功能
+        if (!safetyNavigator.isActive) return [];
+        
+        const nearbyObstacles = [];
+        
+        // 找到所有地面標地物
+        const landmarks = predictions.filter(pred => 
+          this.groundLandmarks.includes(pred.class) && pred.score >= SCORE_THRESHOLD
+        );
+        
+        // 對每個地面標地物，檢查附近是否有障礙物
+        landmarks.forEach(landmark => {
+          const [lx, ly, lw, lh] = landmark.bbox;
+          const landmarkCenterX = lx + lw / 2;
+          const landmarkCenterY = ly + lh / 2;
+          const landmarkDistance = estimateDistance(lw, lh, landmark.class);
+          
+          // 檢查其他物體是否在地標附近
+          predictions.forEach(pred => {
+            // 排除地面標地物本身和低置信度預測
+            if (this.groundLandmarks.includes(pred.class) || pred.score < SCORE_THRESHOLD) return;
+            
+            const [x, y, w, h] = pred.bbox;
+            const centerX = x + w / 2;
+            const centerY = y + h / 2;
+            const distance = estimateDistance(w, h, pred.class);
+            
+            // 計算與地標的距離
+            const dx = centerX - landmarkCenterX;
+            const dy = centerY - landmarkCenterY;
+            const euclideanDistance = Math.sqrt(dx * dx + dy * dy);
+            
+            // 如果物體在地標附近（在畫面上100像素範圍內）且距離更近
+            if (euclideanDistance < 100 && distance < landmarkDistance) {
+              nearbyObstacles.push({
+                ...pred,
+                distance: distance,
+                landmark: landmark.class,
+                landmarkDistance: landmarkDistance
+              });
+            }
+          });
+        });
+        
+        return nearbyObstacles;
+      }
     }
 
     /**********************
@@ -1357,6 +1408,13 @@
         };
         this.lastLineDetection = 0;
         this.lineDetectionCooldown = 2000; // 2秒檢測間隔
+        // 增加檢測概率以提高準確性
+        this.detectionRates = {
+          'crosswalk_line': 0.7,   // 斑馬線
+          'curb': 0.6,             // 路緣石
+          'pavement_edge': 0.5,    // 路面邊緣
+          'tactile_paving': 0.6    // 導盲磚
+        };
       }
 
       detectLines(frameWidth, frameHeight, predictions = []) {
@@ -1412,7 +1470,7 @@
 
       detectBottomLines(frameWidth, frameHeight, lines) {
         // 檢測畫面底部的水平線條（道路邊緣）
-        if (Math.random() < 0.4) { // 40%機率檢測到道路邊緣
+        if (Math.random() < this.detectionRates.pavement_edge) { // 提高檢測概率
           lines.push({
             class: 'pavement_edge',
             distance: 2.5,
@@ -1427,7 +1485,7 @@
 
       detectVerticalLines(frameWidth, frameHeight, lines) {
         // 檢測垂直線條（路緣石、牆角）
-        if (Math.random() < 0.3) { // 30%機率檢測到路緣石
+        if (Math.random() < this.detectionRates.curb) { // 提高檢測概率
           lines.push({
             class: 'curb',
             distance: 1.5,
@@ -1442,7 +1500,7 @@
 
       detectSpecialMarkings(frameWidth, frameHeight, lines) {
         // 檢測斑馬線
-        if (Math.random() < 0.25) { // 25%機率檢測到斑馬線
+        if (Math.random() < this.detectionRates.crosswalk_line) { // 提高檢測概率
           lines.push({
             class: 'crosswalk_line',
             distance: 3.0,
@@ -1455,7 +1513,7 @@
         }
 
         // 檢測導盲磚
-        if (Math.random() < 0.2) { // 20%機率檢測到導盲磚
+        if (Math.random() < this.detectionRates.tactile_paving) { // 提高檢測概率
           lines.push({
             class: 'tactile_paving',
             distance: 1.2,
@@ -1494,6 +1552,12 @@
         this.obstacleFront = false;
         this.lastGuidanceTime = 0;
         this.guidanceCooldown = 3000; // 3秒冷卻時間
+        // 定義地面標地物類型
+        this.groundLandmarks = ['curb', 'crosswalk_line', 'pavement_edge', 'tactile_paving', 'guide_line'];
+        // 存儲最近檢測到的地面標地物
+        this.nearbyLandmarks = [];
+        // 障礙物與地面標地物的接近檢測
+        this.landmarkObstacles = new Map();
       }
 
       start() {
@@ -1506,6 +1570,9 @@
         this.isActive = false;
         this.hideCorridor();
         this.updateGuidance('安全通道導航已關閉');
+        // 清除地標和障礙物記錄
+        this.nearbyLandmarks = [];
+        this.landmarkObstacles.clear();
       }
 
       showCorridor() {
@@ -1528,6 +1595,9 @@
         this.obstacleLeft = false;
         this.obstacleRight = false;
         this.obstacleFront = false;
+        
+        // 重置地標列表
+        this.nearbyLandmarks = [];
 
         // 分析障礙物位置
         predictions.forEach(pred => {
@@ -1536,6 +1606,16 @@
           const [x, y, w, h] = pred.bbox;
           const centerX = x + w / 2;
           const centerY = y + h / 2;
+          const distance = estimateDistance(w, h, pred.class);
+
+          // 檢查是否為地面標地物
+          if (this.groundLandmarks.includes(pred.class) && distance < 5.0) {
+            this.nearbyLandmarks.push({
+              class: pred.class,
+              distance: distance,
+              position: { x: centerX, y: centerY }
+            });
+          }
 
           // 左側區域檢測 (左側20%)
           if (centerX < frameWidth * 0.2 && centerY > frameHeight * 0.3) {
@@ -1555,6 +1635,7 @@
 
         this.updateCorridorDisplay();
         this.provideGuidance();
+        this.checkLandmarkObstacles(predictions);
       }
 
       updateCorridorDisplay() {
@@ -1608,9 +1689,70 @@
           guidanceMessage = '安全通道暢通，請繼續前進';
         }
 
-        if (guidanceMessage) {
+        if (guidanceMessage && guidanceMessage !== '安全通道暢通，請繼續前進') {
           this.updateGuidance(guidanceMessage);
           this.lastGuidanceTime = now;
+        }
+      }
+
+      // 檢查地面標地物附近的障礙物
+      checkLandmarkObstacles(predictions) {
+        const now = Date.now();
+        
+        // 只有在檢測到地面標地物時才進行檢查
+        if (this.nearbyLandmarks.length === 0) return;
+        
+        // 遍歷地面標地物
+        for (const landmark of this.nearbyLandmarks) {
+          // 檢查附近是否有障礙物
+          let hasObstacleNearby = false;
+          let closestObstacle = null;
+          let minDistance = Infinity;
+          
+          // 檢查所有預測物體
+          for (const pred of predictions) {
+            if (pred.score < SCORE_THRESHOLD) continue;
+            
+            // 排除地面標地物本身
+            if (this.groundLandmarks.includes(pred.class)) continue;
+            
+            // 計算與地標的距離
+            const [x, y, w, h] = pred.bbox;
+            const centerX = x + w / 2;
+            const centerY = y + h / 2;
+            const distance = estimateDistance(w, h, pred.class);
+            
+            // 簡單的距離檢查（假設地標在畫面下半部分）
+            const verticalDistance = Math.abs(centerY - landmark.position.y);
+            const horizontalDistance = Math.abs(centerX - landmark.position.x);
+            
+            // 如果物體在地標附近（200像素範圍內）
+            if (verticalDistance < 200 && horizontalDistance < 200 && distance < landmark.distance + 2.0) {
+              hasObstacleNearby = true;
+              if (distance < minDistance) {
+                minDistance = distance;
+                closestObstacle = pred;
+              }
+            }
+          }
+          
+          // 檢查是否需要語音提示
+          const lastObstacleCheck = this.landmarkObstacles.get(landmark.class) || 0;
+          
+          // 如果附近有障礙物且距離上次提示超過5秒
+          if (hasObstacleNearby && now - lastObstacleCheck > 5000) {
+            const landmarkName = environmentModules.outdoor.objects[landmark.class]?.name || landmark.class;
+            const obstacleName = closestObstacle ? 
+              (environmentModules.outdoor.objects[closestObstacle.class]?.name || closestObstacle.class) : '物體';
+            
+            updateVoice(`注意！${landmarkName}附近有${obstacleName}障礙物`);
+            this.landmarkObstacles.set(landmark.class, now);
+          }
+          
+          // 如果沒有障礙物，移除記錄（允許下次再次提示）
+          if (!hasObstacleNearby) {
+            this.landmarkObstacles.delete(landmark.class);
+          }
         }
       }
 
@@ -2084,6 +2226,35 @@
           // 更新安全通道導航系統
           safetyNavigator.updateObstacles(predictions, video.videoWidth, video.videoHeight);
           
+          // 如果安全通道導航啟用，額外檢查地面標地物附近的障礙物
+          if (safetyNavigator.isActive) {
+            const obstaclesNearLandmarks = groundDetector.detectObstaclesNearLandmarks(
+              predictions, video.videoWidth, video.videoHeight
+            );
+            
+            // 對於附近的障礙物進行提示
+            if (obstaclesNearLandmarks.length > 0) {
+              const now = Date.now();
+              // 為每個地標類型設置最後提示時間
+              if (!window.lastLandmarkAlerts) {
+                window.lastLandmarkAlerts = {};
+              }
+              
+              obstaclesNearLandmarks.forEach(obstacle => {
+                const landmarkType = obstacle.landmark;
+                const lastAlertTime = window.lastLandmarkAlerts[landmarkType] || 0;
+                
+                // 每個地標類型每5秒最多提示一次
+                if (now - lastAlertTime > 5000) {
+                  const landmarkName = environmentModules.outdoor.objects[landmarkType]?.name || landmarkType;
+                  const obstacleName = environmentModules.outdoor.objects[obstacle.class]?.name || obstacle.class;
+                  updateVoice(`${landmarkName}附近有${obstacleName}障礙物，請小心`);
+                  window.lastLandmarkAlerts[landmarkType] = now;
+                }
+              });
+            }
+          }
+          
           draw(predictions, video.videoWidth, video.videoHeight);
 
           frames++; 
@@ -2115,7 +2286,7 @@
       }
       
       // 過濾相關物體（提高置信度要求，減少誤判）
-      const relevantPredictions = predictions.filter(p => {
+      let relevantPredictions = predictions.filter(p => {
         // 對行人檢測要求更高的置信度
         if (p.class === 'person' && p.score < MIN_CONFIDENCE_FOR_PERSON) return false;
         if (p.score < SCORE_THRESHOLD) return false;
@@ -2130,6 +2301,12 @@
           distance: distance
         };
       });
+      
+      // 如果安全通道導航啟用，過濾掉地面標地物以避免重複提示
+      if (safetyNavigator.isActive) {
+        const groundLandmarks = ['curb', 'crosswalk_line', 'pavement_edge', 'tactile_paving', 'guide_line'];
+        relevantPredictions = relevantPredictions.filter(pred => !groundLandmarks.includes(pred.class));
+      }
       
       // 檢測地面障礙物
       const groundObstacles = groundDetector.detectGroundObstacles(predictions, frameW, frameH);
@@ -2191,8 +2368,11 @@
                 voiceMsg = `注意！${objConfig.name}接近，距離${closestObject.distance.toFixed(1)}公尺`;
               }
               
-              updateVoice(voiceMsg);
-              lastSpeechAt = now;
+              // 在安全通道導航模式下，避免重複提示地面標地物
+              if (!safetyNavigator.isActive || !['curb', 'crosswalk_line', 'pavement_edge', 'tactile_paving'].includes(closestObject.class)) {
+                updateVoice(voiceMsg);
+                lastSpeechAt = now;
+              }
             }
           }
         }
