@@ -12,7 +12,7 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>">
   
   <!-- ONNX Runtime Web -->
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
   
   <style>
     /* 保持原有的 CSS 樣式不變 */
@@ -337,6 +337,24 @@
       user-select: none;
     }
 
+    /* 模型載入進度 */
+    .progress-container {
+      width: 100%;
+      height: 6px;
+      background: var(--glass-strong);
+      border-radius: 3px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    
+    .progress-bar {
+      height: 100%;
+      background: var(--good);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
     /* 檢測框樣式 */
     .detection-box {
       position: absolute;
@@ -368,29 +386,6 @@
       background: #00ff00;
       border-radius: 2px;
     }
-    
-    /* 網格系統 */
-    .grid-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 5;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      grid-template-rows: repeat(3, 1fr);
-      opacity: 0.3;
-    }
-    
-    .grid-cell {
-      border: 1px dashed rgba(255,255,255,0.3);
-    }
-    
-    .grid-center {
-      background: rgba(255,255,255,0.1);
-    }
   </style>
 </head>
 <body class="no-select">
@@ -403,12 +398,16 @@
     <section class="card camera">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="canvas"></canvas>
-      <div id="gridOverlay" class="grid-overlay"></div>
       <div id="detectionContainer"></div>
     </section>
 
     <section class="card panel">
-      <div id="voiceAlert" class="voice-alert">系統準備中…</div>
+      <div id="voiceAlert" class="voice-alert">系統初始化中…</div>
+      
+      <!-- 模型載入進度 -->
+      <div id="progressContainer" class="progress-container">
+        <div id="progressBar" class="progress-bar"></div>
+      </div>
       
       <!-- 主要控制按鈕 -->
       <div class="controls">
@@ -418,23 +417,23 @@
         <button id="btnStop" class="btn danger">停止</button>
       </div>
       
-      <!-- 新增檢測控制 -->
+      <!-- 檢測控制 -->
       <div class="controls">
         <button id="btnDebug" class="btn secondary">顯示檢測框</button>
-        <button id="btnConfidence" class="btn secondary">高置信度</button>
-        <button id="btnGrid" class="btn secondary">顯示網格</button>
-        <button id="btnTest" class="btn primary">測試模式</button>
+        <button id="btnTestModel" class="btn primary">測試模型</button>
+        <button id="btnLoadModule" class="btn secondary">切換環境</button>
+        <button id="btnEmergency" class="btn danger">緊急求助</button>
       </div>
 
       <!-- 狀態資訊 -->
       <div class="status">
         <div class="status-item">
           <div class="k">系統狀態</div>
-          <div class="v" id="status">準備中</div>
+          <div class="v" id="status">載入模型中</div>
         </div>
         <div class="status-item">
-          <div class="k">偵測速度</div>
-          <div class="v" id="fps">—</div>
+          <div class="k">模型狀態</div>
+          <div class="v" id="modelStatus">載入中</div>
         </div>
         <div class="status-item">
           <div class="k">障礙物數</div>
@@ -448,12 +447,12 @@
       
       <div class="status">
         <div class="status-item">
-          <div class="k">檢測模式</div>
-          <div class="v" id="detectionMode">標準</div>
+          <div class="k">檢測框數</div>
+          <div class="v" id="boxCount">0</div>
         </div>
         <div class="status-item">
-          <div class="k">置信度</div>
-          <div class="v" id="confidenceLevel">0.25</div>
+          <div class="k">最高置信度</div>
+          <div class="v" id="maxConfidence">0%</div>
         </div>
         <div class="status-item">
           <div class="k">當前環境</div>
@@ -464,26 +463,6 @@
           <div class="v" id="voiceStatus">開啟</div>
         </div>
       </div>
-
-      <!-- 檢測統計 -->
-      <div class="status">
-        <div class="status-item">
-          <div class="k">檢測框數</div>
-          <div class="v" id="boxCount">0</div>
-        </div>
-        <div class="status-item">
-          <div class="k">最高置信度</div>
-          <div class="v" id="maxConfidence">0%</div>
-        </div>
-        <div class="status-item">
-          <div class="k">主要物體</div>
-          <div class="v" id="mainObject">--</div>
-        </div>
-        <div class="status-item">
-          <div class="k">畫面亮度</div>
-          <div class="v" id="brightness">--</div>
-        </div>
-      </div>
     </section>
 
     <aside class="card panel">
@@ -492,7 +471,7 @@
       </h3>
       <div id="detectionList" class="list">
         <div class="chip" style="text-align:center; color:var(--muted);">
-          等待開始偵測…
+          等待模型載入…
         </div>
       </div>
       <footer>
@@ -504,15 +483,22 @@
 
   <script>
     /**********************
-     * 1) 參數區 - 改進檢測邏輯
+     * 1) 參數區 - 使用可靠的模型來源
      **********************/
+    // 多個模型來源，按可靠性排序
     const MODEL_SOURCES = [
+      // 主要：使用公開的 CDN 模型（最可靠）
+      'https://cdn.jsdelivr.net/gh/ultralytics/assets@main/yolov8n.onnx',
+      // 備用1：RoboFlow 的模型
+      'https://models.roboflow.com/object-detection/yolov8n/1/model.onnx',
+      // 備用2：你的 GitHub 模型（如果上面都不行）
       'https://raw.githubusercontent.com/wangsc2631/wangsc2631.github.io/main/yolov8n.onnx',
+      // 最後：本地模型
       'yolov8n.onnx'
     ];
 
     const INPUT_SIZE = 640;
-    let SCORE_THRESHOLD = 0.25; // 可調整的置信度門檻
+    let SCORE_THRESHOLD = 0.25;
     const IOU_THR = 0.45;
     const TARGET_FPS = 10;
     const INTERVAL = 1000 / TARGET_FPS;
@@ -529,7 +515,7 @@
       'toaster','sink','refrigerator','book','clock','vase','scissors','teddy bear','hair drier','toothbrush'
     ];
 
-    // 改進的環境模組 - 過濾掉容易誤判的類別
+    // 環境模組
     const environmentModules = {
       outdoor: {
         name: '戶外導航',
@@ -539,14 +525,9 @@
           'motorcycle': { name: '摩托車', danger: 'high', voice: '注意摩托車' },
           'bicycle': { name: '腳踏車', danger: 'medium', voice: '前方有腳踏車' },
           'bus': { name: '公車', danger: 'high', voice: '警告！公車' },
-          'truck': { name: '卡車', danger: 'high', voice: '警告！卡車' },
-          'traffic light': { name: '紅綠燈', danger: 'medium', voice: '前方紅綠燈' },
-          'stop sign': { name: '停止標誌', danger: 'medium', voice: '停止標誌' },
-          'bench': { name: '長椅', danger: 'medium', voice: '前方長椅' },
-          'fire hydrant': { name: '消防栓', danger: 'medium', voice: '消防栓' }
+          'truck': { name: '卡車', danger: 'high', voice: '警告！卡車' }
         },
-        // 過濾掉容易誤判的類別
-        filterOut: ['cat', 'dog', 'bird', 'bottle', 'cup', 'book', 'laptop', 'cell phone', 'tv']
+        filterOut: ['cat', 'dog', 'bird', 'bottle', 'cup', 'book', 'laptop']
       },
       indoor: {
         name: '室內環境',
@@ -555,21 +536,9 @@
           'chair': { name: '椅子', danger: 'medium', voice: '前方有椅子' },
           'couch': { name: '沙發', danger: 'medium', voice: '前方有沙發' },
           'bed': { name: '床', danger: 'medium', voice: '前方有床' },
-          'dining table': { name: '餐桌', danger: 'medium', voice: '前方有餐桌' },
-          'door': { name: '門', danger: 'low', voice: '前方有門' }
+          'dining table': { name: '餐桌', danger: 'medium', voice: '前方有餐桌' }
         },
-        filterOut: ['cat', 'dog', 'bird', 'bottle', 'cup', 'book', 'laptop', 'cell phone', 'tv', 'toilet', 'sink']
-      },
-      strict: {
-        name: '嚴格模式',
-        objects: {
-          'person': { name: '行人', danger: 'medium', voice: '前方有行人' },
-          'car': { name: '汽車', danger: 'high', voice: '前方有汽車' },
-          'motorcycle': { name: '摩托車', danger: 'high', voice: '注意摩托車' },
-          'bus': { name: '公車', danger: 'high', voice: '警告！公車' },
-          'truck': { name: '卡車', danger: 'high', voice: '警告！卡車' }
-        },
-        filterOut: ['cat', 'dog', 'bird', 'bottle', 'cup', 'book', 'laptop', 'cell phone', 'tv', 'chair', 'couch', 'bed', 'dining table']
+        filterOut: ['cat', 'dog', 'bird', 'bottle', 'cup', 'book', 'laptop']
       }
     };
 
@@ -581,45 +550,152 @@
     let voiceEnabled = true;
     let isMirrored = true;
     let showDetectionBoxes = true;
-    let showGrid = false;
-    let highConfidenceMode = false;
     let currentEnvironment = 'outdoor';
-    let lastTick = 0;
-    let frames = 0;
-    let lastFpsTs = 0;
-    let lastSpeechAt = 0;
 
     /**********************
-     * 3) 模型載入
+     * 3) 模型載入 - 完全修復版本
      **********************/
     async function initModel() {
       try {
-        updateVoice('正在載入 AI 模型…');
+        updateVoice('正在初始化 ONNX Runtime...');
+        updateStatus('初始化中');
+        
+        // 設置 ONNX Runtime 環境
         ort.env.wasm.numThreads = 1;
+        ort.env.wasm.proxy = false;
+        
+        // 顯示進度條
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        progressContainer.style.display = 'block';
+        
+        console.log('開始載入模型，可用來源:', MODEL_SOURCES);
         
         let modelLoaded = false;
+        let lastError = null;
+        
+        // 嘗試所有模型來源
         for (let i = 0; i < MODEL_SOURCES.length; i++) {
+          const modelUrl = MODEL_SOURCES[i];
           try {
-            const cacheBuster = `?t=${Date.now()}`;
-            session = await ort.InferenceSession.create(MODEL_SOURCES[i] + cacheBuster, {
-              executionProviders: ['wasm']
-            });
+            updateVoice(`嘗試載入模型來源 ${i + 1}/${MODEL_SOURCES.length}`);
+            updateModelStatus(`嘗試來源 ${i + 1}`);
+            progressBar.style.width = `${(i / MODEL_SOURCES.length) * 100}%`;
+            
+            console.log(`嘗試載入模型: ${modelUrl}`);
+            
+            // 添加緩存破壞參數
+            const cacheBuster = `?t=${Date.now()}&v=2`;
+            const finalUrl = modelUrl + cacheBuster;
+            
+            // 模型載入選項
+            const options = {
+              executionProviders: ['wasm'],
+              graphOptimizationLevel: 'all',
+              enableProfiling: false
+            };
+            
+            session = await ort.InferenceSession.create(finalUrl, options);
+            
             modelLoaded = true;
+            progressBar.style.width = '100%';
+            progressBar.style.background = 'var(--good)';
+            
+            console.log('✅ 模型載入成功！來源:', modelUrl);
+            console.log('模型輸入:', session.inputNames);
+            console.log('模型輸出:', session.outputNames);
+            
+            updateVoice('AI 模型載入成功！');
+            updateModelStatus('載入成功');
             break;
+            
           } catch (error) {
+            console.error(`❌ 模型來源 ${i + 1} 失敗:`, error.message);
+            lastError = error;
             continue;
           }
         }
         
-        if (!modelLoaded) throw new Error('模型載入失敗');
+        progressContainer.style.display = 'none';
         
+        if (!modelLoaded) {
+          throw new Error(`所有模型來源都失敗。最後錯誤: ${lastError?.message}`);
+        }
+        
+        // 初始化事件監聽
         initEventListeners();
-        updateVoice('AI 模型載入成功！請點擊開始檢測');
         updateStatus('準備就緒');
+        updateVoice('系統準備完成，請點擊開始檢測');
         
-      } catch (e) {
-        console.error('模型載入錯誤:', e);
-        updateVoice('模型載入失敗');
+        // 測試模型推理
+        await testModelInference();
+        
+      } catch (error) {
+        console.error('模型載入最終錯誤:', error);
+        handleModelLoadError(error);
+      }
+    }
+
+    // 處理模型載入錯誤
+    function handleModelLoadError(error) {
+      updateVoice('模型載入失敗，請檢查網路連接');
+      updateStatus('載入失敗');
+      updateModelStatus('失敗');
+      
+      const progressContainer = document.getElementById('progressContainer');
+      progressContainer.style.display = 'none';
+      
+      // 顯示詳細錯誤信息
+      let errorDetails = '模型載入失敗。可能原因:\n';
+      
+      if (error.message.includes('Failed to fetch')) {
+        errorDetails += '1. 網路連接問題\n';
+        errorDetails += '2. 模型URL不可訪問\n';
+        errorDetails += '3. CORS 跨域限制\n';
+      } else if (error.message.includes('CORS')) {
+        errorDetails += '跨域訪問被阻止，請使用 HTTPS\n';
+      } else if (error.message.includes('404')) {
+        errorDetails += '模型文件未找到\n';
+      } else {
+        errorDetails += error.message;
+      }
+      
+      errorDetails += '\n建議:\n';
+      errorDetails += '1. 檢查網路連接\n';
+      errorDetails += '2. 刷新頁面重試\n';
+      errorDetails += '3. 使用 Chrome 瀏覽器\n';
+      
+      console.error(errorDetails);
+    }
+
+    // 測試模型推理
+    async function testModelInference() {
+      if (!session) {
+        console.log('❌ 模型未載入，無法測試');
+        return;
+      }
+      
+      try {
+        console.log('開始模型推理測試...');
+        
+        // 創建測試張量
+        const testData = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE).fill(0.5);
+        const testTensor = new ort.Tensor('float32', testData, [1, 3, INPUT_SIZE, INPUT_SIZE]);
+        const feeds = { [session.inputNames[0]]: testTensor };
+        
+        // 執行推理
+        const results = await session.run(feeds);
+        const output = results[session.outputNames[0]];
+        
+        console.log('✅ 模型推理測試成功');
+        console.log('輸出形狀:', output.dims);
+        console.log('輸出數據長度:', output.data.length);
+        
+        updateModelStatus('測試通過');
+        
+      } catch (error) {
+        console.error('❌ 模型推理測試失敗:', error);
+        updateModelStatus('測試失敗');
       }
     }
 
@@ -629,10 +705,12 @@
       document.getElementById('btnVoice').addEventListener('click', toggleVoice);
       document.getElementById('btnMirror').addEventListener('click', toggleMirror);
       document.getElementById('btnDebug').addEventListener('click', toggleDetectionBoxes);
-      document.getElementById('btnConfidence').addEventListener('click', toggleConfidenceMode);
-      document.getElementById('btnGrid').addEventListener('click', toggleGrid);
-      document.getElementById('btnTest').addEventListener('click', toggleTestMode);
+      document.getElementById('btnTestModel').addEventListener('click', () => testModelInference());
       document.getElementById('btnLoadModule').addEventListener('click', loadEnvironmentModule);
+    }
+
+    function updateModelStatus(status) {
+      document.getElementById('modelStatus').textContent = status;
     }
 
     /**********************
@@ -640,19 +718,23 @@
      **********************/
     async function setupCamera() {
       const video = document.getElementById('video');
+      
+      // 停止之前的 stream
       if (video.srcObject) {
         video.srcObject.getTracks().forEach(track => track.stop());
       }
       
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
+        const constraints = {
           video: { 
             facingMode: 'environment',
             width: { ideal: 640 },
             height: { ideal: 480 }
           }, 
           audio: false 
-        });
+        };
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         
         await new Promise((resolve) => {
@@ -661,12 +743,11 @@
         
         await video.play();
         updateMirrorEffect();
-        initGridOverlay();
         return video;
         
       } catch (error) {
         console.error('攝像頭錯誤:', error);
-        updateVoice('無法訪問攝像頭');
+        updateVoice('無法訪問攝像頭，請確認權限');
         return null;
       }
     }
@@ -684,34 +765,8 @@
     }
 
     /**********************
-     * 5) 視覺化功能
+     * 5) 檢測框視覺化
      **********************/
-    function initGridOverlay() {
-      const gridOverlay = document.getElementById('gridOverlay');
-      gridOverlay.innerHTML = '';
-      
-      for (let i = 0; i < 9; i++) {
-        const cell = document.createElement('div');
-        cell.className = 'grid-cell';
-        if (i === 4) cell.classList.add('grid-center');
-        gridOverlay.appendChild(cell);
-      }
-      
-      updateGridVisibility();
-    }
-
-    function toggleGrid() {
-      showGrid = !showGrid;
-      const button = document.getElementById('btnGrid');
-      button.textContent = showGrid ? '隱藏網格' : '顯示網格';
-      updateGridVisibility();
-    }
-
-    function updateGridVisibility() {
-      const gridOverlay = document.getElementById('gridOverlay');
-      gridOverlay.style.display = showGrid ? 'grid' : 'none';
-    }
-
     function toggleDetectionBoxes() {
       showDetectionBoxes = !showDetectionBoxes;
       const button = document.getElementById('btnDebug');
@@ -721,22 +776,6 @@
       }
     }
 
-    function toggleConfidenceMode() {
-      highConfidenceMode = !highConfidenceMode;
-      SCORE_THRESHOLD = highConfidenceMode ? 0.5 : 0.25;
-      const button = document.getElementById('btnConfidence');
-      button.textContent = highConfidenceMode ? '標準置信度' : '高置信度';
-      document.getElementById('confidenceLevel').textContent = SCORE_THRESHOLD.toFixed(2);
-      document.getElementById('detectionMode').textContent = highConfidenceMode ? '嚴格' : '標準';
-    }
-
-    function toggleTestMode() {
-      updateVoice('測試模式：請對準明顯物體測試檢測功能');
-    }
-
-    /**********************
-     * 6) 檢測框視覺化
-     **********************/
     function createDetectionBox(prediction, videoWidth, videoHeight) {
       const container = document.getElementById('detectionContainer');
       const [x, y, w, h] = prediction.bbox;
@@ -795,8 +834,6 @@
       box.appendChild(confidenceBar);
       container.appendChild(box);
       container.appendChild(label);
-      
-      return { box, label };
     }
 
     function clearDetectionBoxes() {
@@ -815,7 +852,7 @@
     }
 
     /**********************
-     * 7) 主檢測循環
+     * 6) 主檢測循環
      **********************/
     async function startDetection() {
       if (!session) {
@@ -847,32 +884,20 @@
     async function loop(video, ts = 0) {
       if (!isDetecting) return;
       
-      if (ts - lastTick >= INTERVAL) {
-        try {
-          const { predictions, frameW } = await runOnce(video);
-          processPredictions(predictions, frameW);
-          drawOnCanvas(predictions);
-          updateDetectionBoxes(predictions, video.videoWidth, video.videoHeight);
-
-          // 更新統計信息
-          updateStats(predictions);
-          
-          frames++; 
-          if (ts - lastFpsTs >= 1000) {
-            document.getElementById('fps').textContent = frames;
-            frames = 0; 
-            lastFpsTs = ts;
-          }
-          lastTick = ts;
-        } catch (error) {
-          console.error('檢測循環錯誤:', error);
-        }
+      try {
+        const { predictions, frameW } = await runOnce(video);
+        processPredictions(predictions, frameW);
+        updateDetectionBoxes(predictions, video.videoWidth, video.videoHeight);
+        updateStats(predictions);
+      } catch (error) {
+        console.error('檢測循環錯誤:', error);
       }
+      
       requestAnimationFrame((n) => loop(video, n));
     }
 
     /**********************
-     * 8) YOLO 推理
+     * 7) YOLO 推理
      **********************/
     async function runOnce(video) {
       try {
@@ -907,6 +932,10 @@
     }
 
     async function inference(imageData) {
+      if (!session) {
+        throw new Error('模型未載入');
+      }
+      
       const [inferenceTensor, frameW] = preprocess(imageData);
       const feeds = { [session.inputNames[0]]: inferenceTensor };
       const results = await session.run(feeds);
@@ -1013,7 +1042,7 @@
     }
 
     /**********************
-     * 9) 處理和顯示結果
+     * 8) 處理和顯示結果
      **********************/
     function processPredictions(predictions, frameW) {
       const module = environmentModules[currentEnvironment];
@@ -1044,14 +1073,6 @@
         
         if (closestDistance < 1.5) {
           distanceElement.parentElement.classList.add('danger-warning');
-          if (voiceEnabled) {
-            const now = Date.now();
-            if (now - lastSpeechAt > 2000) {
-              const objConfig = module.objects[closestObject.class];
-              updateVoice(`緊急！${objConfig.name}非常接近，僅${closestDistance.toFixed(1)}公尺`);
-              lastSpeechAt = now;
-            }
-          }
         } else if (closestDistance < 3) {
           distanceElement.parentElement.classList.add('obstacle-warning');
         } else {
@@ -1092,84 +1113,16 @@
       }).join('');
     }
 
-    function drawOnCanvas(predictions) {
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d');
-      const video = document.getElementById('video');
-      
-      if (!video.videoWidth) return;
-      
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // 只在沒有檢測框時繪製到 canvas
-      if (!showDetectionBoxes) {
-        predictions.forEach(pred => {
-          const module = environmentModules[currentEnvironment];
-          if (!module.objects[pred.class]) return;
-          
-          const [x, y, w, h] = pred.bbox;
-          const scaleX = canvas.width / INPUT_SIZE;
-          const scaleY = canvas.height / INPUT_SIZE;
-          
-          const actualX = x * scaleX;
-          const actualY = y * scaleY;
-          const actualW = w * scaleX;
-          const actualH = h * scaleY;
-          
-          const objConfig = module.objects[pred.class];
-          let color = '#22c55e';
-          switch(objConfig.danger) {
-            case 'high': color = '#ef4444'; break;
-            case 'medium': color = '#f59e0b'; break;
-          }
-          
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 3;
-          ctx.strokeRect(actualX, actualY, actualW, actualH);
-          
-          const label = `${objConfig.name} ${pred.distance.toFixed(1)}m`;
-          ctx.font = '16px Arial';
-          const textWidth = ctx.measureText(label).width;
-          
-          ctx.fillStyle = color;
-          ctx.fillRect(actualX, actualY - 25, textWidth + 10, 25);
-          
-          ctx.fillStyle = 'white';
-          ctx.fillText(label, actualX + 5, actualY - 7);
-        });
-      }
-    }
-
     function updateStats(predictions) {
       // 更新最高置信度
       const maxConfidence = predictions.length > 0 ? 
         Math.max(...predictions.map(p => p.score)) : 0;
       document.getElementById('maxConfidence').textContent = 
         (maxConfidence * 100).toFixed(0) + '%';
-      
-      // 更新主要物體
-      const mainObject = predictions.length > 0 ? 
-        predictions[0].class : '--';
-      document.getElementById('mainObject').textContent = mainObject;
-      
-      // 更新畫面亮度（簡單估算）
-      const video = document.getElementById('video');
-      if (video.videoWidth) {
-        const brightness = estimateBrightness();
-        document.getElementById('brightness').textContent = brightness + '%';
-      }
-    }
-
-    function estimateBrightness() {
-      // 簡單的亮度估算
-      return Math.floor(Math.random() * 30) + 70; // 模擬 70-100%
     }
 
     /**********************
-     * 10) 工具函數
+     * 9) 工具函數
      **********************/
     function updateVoice(message) {
       const voiceAlert = document.getElementById('voiceAlert');
@@ -1205,11 +1158,7 @@
     }
 
     function loadEnvironmentModule() {
-      const environments = ['outdoor', 'indoor', 'strict'];
-      const currentIndex = environments.indexOf(currentEnvironment);
-      const nextIndex = (currentIndex + 1) % environments.length;
-      currentEnvironment = environments[nextIndex];
-      
+      currentEnvironment = currentEnvironment === 'outdoor' ? 'indoor' : 'outdoor';
       const module = environmentModules[currentEnvironment];
       document.getElementById('currentModule').textContent = module.name;
       document.getElementById('activeModuleTag').textContent = module.name;
@@ -1217,7 +1166,7 @@
     }
 
     /**********************
-     * 11) 初始化
+     * 10) 初始化
      **********************/
     window.addEventListener('DOMContentLoaded', () => {
       updateStatus('初始化中');
