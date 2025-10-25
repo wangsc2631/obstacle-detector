@@ -617,8 +617,8 @@
      **********************/
     const TARGET_FPS = 15;
     const INTERVAL = 1000 / TARGET_FPS;
-    const SCORE_THRESHOLD = 0.6; // 提高閾值減少誤判
-    const MIN_CONFIDENCE_FOR_PERSON = 0.7; // 行人檢測需要更高置信度
+    const SCORE_THRESHOLD = 0.2; // 進一步降低閾值以提高整體識別能力，從0.3降到0.2
+    const MIN_CONFIDENCE_FOR_PERSON = 0.4; // 降低行人檢測的置信度要求，從0.5降到0.4
 
     /**********************
      * 2) 擴展環境模組系統 - 增加地面障礙物和高度差檢測
@@ -766,9 +766,10 @@
           'clock': { name: '時鐘', danger: 'low', voice: '前方有時鐘' },
           'thermometer': { name: '溫度計', danger: 'low', voice: '前方有溫度計' },
           'barometer': { name: '氣壓計', danger: 'low', voice: '前方有氣壓計' },
-          'hygrometer': { name: '濕度計', danger: 'low', voice: '前方有濕度計' }
+          'hygrometer': { name: '濕度計', danger: 'low', voice: '前方有濕度計' },
+          'toilet': { name: '馬桶', danger: 'medium', voice: '前方有馬桶，請小心' }
         },
-        triggers: ['chair', 'bed', 'dining table', 'tv', 'laptop', 'vase', 'knife', 'scissors', 'step', 'stair', 'threshold', 'door', 'window']
+        triggers: ['chair', 'bed', 'dining table', 'tv', 'laptop', 'vase', 'knife', 'scissors', 'step', 'stair', 'threshold', 'door', 'window', 'toilet']
       },
       kitchen: {
         name: '廚房環境',
@@ -807,7 +808,7 @@
       bathroom: {
         name: '浴室環境',
         objects: {
-          'toilet': { name: '馬桶', danger: 'medium', voice: '前方有馬桶' },
+          'toilet': { name: '馬桶', danger: 'medium', voice: '前方有馬桶，請小心' },
           'sink': { name: '洗手台', danger: 'medium', voice: '前方有洗手台' },
           'bottle': { name: '洗髮精', danger: 'low', voice: '前方有洗髮精' },
           'toothbrush': { name: '牙刷', danger: 'low', voice: '前方有牙刷' },
@@ -828,9 +829,10 @@
           'faucet': { name: '水龍頭', danger: 'medium', voice: '前方有水龍頭' },
           'tissue box': { name: '面紙盒', danger: 'low', voice: '前方有面紙盒' },
           'laundry basket': { name: '洗衣籃', danger: 'low', voice: '前方有洗衣籃' },
-          'medicine cabinet': { name: '醫藥櫃', danger: 'medium', voice: '前方有醫藥櫃' }
+          'medicine cabinet': { name: '醫藥櫃', danger: 'medium', voice: '前方有醫藥櫃' },
+          'vase': { name: '花瓶', danger: 'medium', voice: '前方有花瓶，易碎物品請小心' }
         },
-        triggers: ['toilet', 'sink', 'bottle', 'mirror', 'shower', 'bathtub']
+        triggers: ['toilet', 'sink', 'bottle', 'mirror', 'shower', 'bathtub', 'vase']
       },
       office: {
         name: '辦公室環境',
@@ -861,9 +863,11 @@
           'water cooler': { name: '飲水機', danger: 'medium', voice: '前方有飲水機' },
           'photocopier': { name: '影印機', danger: 'medium', voice: '前方有影印機' },
           'telephone': { name: '電話', danger: 'low', voice: '前方有電話' },
-          'headphones': { name: '耳機', danger: 'low', voice: '前方有耳機' }
+          'headphones': { name: '耳機', danger: 'low', voice: '前方有耳機' },
+          'vase': { name: '花瓶', danger: 'medium', voice: '前方有花瓶，易碎物品請小心' },
+          'toilet': { name: '馬桶', danger: 'medium', voice: '前方有馬桶，請小心' }
         },
-        triggers: ['chair', 'desk', 'laptop', 'printer', 'file cabinet', 'projector']
+        triggers: ['chair', 'desk', 'laptop', 'printer', 'file cabinet', 'projector', 'toilet']
       },
       bedroom: {
         name: '臥室環境',
@@ -871,7 +875,7 @@
           'bed': { name: '床', danger: 'medium', voice: '前方有床' },
           'chair': { name: '椅子', danger: 'medium', voice: '前方有椅子' },
           'clock': { name: '時鐘', danger: 'low', voice: '前方有時鐘' },
-          'vase': { name: '花瓶', danger: 'medium', voice: '前方有花瓶，易碎物品' },
+          'vase': { name: '花瓶', danger: 'medium', voice: '前方有花瓶，易碎物品請小心' },
           'lamp': { name: '檯燈', danger: 'low', voice: '前方有檯燈' },
           'mirror': { name: '鏡子', danger: 'medium', voice: '前方有鏡子，請小心碰撞' },
           'dresser': { name: '梳妝台', danger: 'medium', voice: '前方有梳妝台' },
@@ -886,9 +890,10 @@
           'picture frame': { name: '相框', danger: 'low', voice: '前方有相框' },
           'rug': { name: '地毯', danger: 'low', voice: '前方有地毯' },
           'fan': { name: '電風扇', danger: 'medium', voice: '前方有電風扇' },
-          'air conditioner': { name: '冷氣機', danger: 'medium', voice: '前方有冷氣機' }
+          'air conditioner': { name: '冷氣機', danger: 'medium', voice: '前方有冷氣機' },
+          'toilet': { name: '馬桶', danger: 'medium', voice: '前方有馬桶，請小心' }
         },
-        triggers: ['bed', 'mirror', 'dresser', 'lamp', 'wardrobe', 'nightstand']
+        triggers: ['bed', 'mirror', 'dresser', 'lamp', 'wardrobe', 'nightstand', 'toilet']
       },
       supermarket: {
         name: '超市環境',
@@ -1894,11 +1899,11 @@
     class EnvironmentAnalyzer {
       constructor() {
         this.lastEnvironment = 'auto';
-        this.confidenceThreshold = 5; // 提高閾值減少頻繁切換
+        this.confidenceThreshold = 2; // 進一步降低閾值以更快切換環境，從3降到2
         this.environmentScores = {};
         this.keyItemsDetected = {};
         this.lastSwitchTime = 0;
-        this.switchCooldown = 10000; // 10秒冷卻時間
+        this.switchCooldown = 3000; // 縮短冷卻時間，從5000降到3000毫秒
         
         // 初始化環境分數
         Object.keys(environmentModules).forEach(env => {
@@ -1924,14 +1929,14 @@
 
         // 定義關鍵代表性物品（高權重）
         const keyItems = {
-          'bedroom': ['bed', 'dresser', 'mirror', 'lamp'],
+          'bedroom': ['bed', 'dresser', 'mirror', 'lamp', 'toilet'],
           'kitchen': ['oven', 'microwave', 'refrigerator', 'sink', 'knife'],
-          'bathroom': ['toilet', 'sink', 'mirror', 'shower'],
+          'bathroom': ['toilet', 'sink', 'mirror', 'shower', 'bathtub', 'vase'],
           'hospital': ['bed', 'wheelchair', 'crutches', 'medical equipment'],
           'supermarket': ['shopping cart', 'shelf', 'refrigerator', 'cash register'],
-          'office': ['desk', 'chair', 'laptop', 'printer', 'monitor'],
+          'office': ['desk', 'chair', 'laptop', 'printer', 'monitor', 'toilet', 'vase'],
           'outdoor': ['car', 'bus', 'traffic light', 'stop sign', 'tree'],
-          'indoor': ['chair', 'couch', 'tv', 'table', 'lamp']
+          'indoor': ['chair', 'couch', 'tv', 'table', 'lamp', 'toilet', 'vase']
         };
 
         // 分析檢測到的物品
@@ -1943,11 +1948,11 @@
             if (env === 'auto') return;
             
             if (environmentModules[env].objects[pred.class]) {
-              let score = pred.score * 2;
+              let score = pred.score * 4; // 進一步提高權重，從3倍改為4倍
               
               // 如果是關鍵代表性物品，給予更高權重
               if (keyItems[env] && keyItems[env].includes(pred.class)) {
-                score *= 3; // 關鍵物品權重更高
+                score *= 2; // 關鍵物品權重更高，保持2倍
                 this.keyItemsDetected[env].add(pred.class);
               }
               
@@ -1958,7 +1963,7 @@
 
         // 記錄環境分數
         environmentHistory.push({ ...this.environmentScores });
-        if (environmentHistory.length > 15) { // 增加歷史長度
+        if (environmentHistory.length > 8) { // 縮短歷史長度，從10降到8
           environmentHistory.shift();
         }
 
@@ -1979,9 +1984,9 @@
           }
         });
 
-        // 檢查關鍵物品條件
+        // 檢查關鍵物品條件（降低條件要求）
         const hasKeyItems = Object.keys(this.keyItemsDetected).some(env => 
-          this.keyItemsDetected[env].size >= 2 // 至少檢測到2個關鍵物品
+          this.keyItemsDetected[env].size >= 1 // 只需要檢測到1個關鍵物品即可
         );
 
         // 只有當分數足夠高且有關鍵物品時才切換
@@ -2285,10 +2290,14 @@
         activeModules = [detectedEnvironment];
       }
       
-      // 過濾相關物體（提高置信度要求，減少誤判）
+      // 過濾相關物體（降低置信度要求，提高識別能力）
       let relevantPredictions = predictions.filter(p => {
         // 對行人檢測要求更高的置信度
         if (p.class === 'person' && p.score < MIN_CONFIDENCE_FOR_PERSON) return false;
+        
+        // 對所有物體使用較低的置信度閾值以提高識別能力
+        if (p.score >= 0.2) return true;
+        
         if (p.score < SCORE_THRESHOLD) return false;
         
         // 檢查是否在任何活躍模組中
@@ -2347,7 +2356,7 @@
         
         if (voiceEnabled) {
           const now = Date.now();
-          const cooldown = closestObject.distance < 3 ? 3000 : 5000;
+          const cooldown = closestObject.distance < 3 ? 2000 : 4000; // 縮短冷卻時間以提高提示頻率
           
           if (now - lastSpeechAt > cooldown) {
             // 找到物體對應的模組和配置
@@ -2387,26 +2396,55 @@
     function estimateDistance(width, height, className) {
       const pixelArea = width * height;
       
+      // 增加更多物體的參考尺寸以提高距離估計準確性
       const referenceSizes = {
         'person': 8000,
         'car': 40000,
+        'motorcycle': 15000,
+        'bus': 60000,
+        'truck': 80000,
         'bicycle': 12000,
         'chair': 6000,
-        'bed': 15000,
         'couch': 20000,
+        'bed': 15000,
         'dining table': 25000,
         'tv': 8000,
         'laptop': 3000,
-        'bottle': 1500,
-        'cup': 1000,
+        'mouse': 500,
+        'keyboard': 1500,
+        'cell phone': 1000,
         'book': 2000,
-        'vase': 2000
+        'vase': 2000,
+        'cup': 1000,
+        'bottle': 1500,
+        'toilet': 3000,
+        'sink': 4000,
+        'refrigerator': 12000,
+        'oven': 8000,
+        'microwave': 2000,
+        'toothbrush': 300,
+        'hair drier': 800,
+        'toothpaste': 200,
+        'remote': 600,
+        'scissors': 400
       };
       
       const refSize = referenceSizes[className] || 8000;
       const distance = Math.sqrt(refSize / pixelArea) * 8;
       
-      return Math.min(distance, 50);
+      // 為不同的物體類型設置不同的最大距離限制
+      const maxDistances = {
+        'person': 30,
+        'car': 100,
+        'chair': 20,
+        'vase': 15,
+        'toilet': 15,
+        'cup': 10,
+        'bottle': 12
+      };
+      
+      const maxDistance = maxDistances[className] || 50;
+      return Math.min(distance, maxDistance);
     }
 
     function updateDetectionList(predictions, activeModules) {
