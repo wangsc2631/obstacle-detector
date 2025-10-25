@@ -117,7 +117,7 @@
     }
     
     .camera video {
-      transform: scaleX(-1);
+      transform: scaleX(-1); /* 預設鏡像，符合自拍習慣 */
     }
     
     .panel {
@@ -337,22 +337,14 @@
       user-select: none;
     }
 
-    /* 模型載入進度條 */
-    .progress-container {
-      width: 100%;
-      height: 6px;
-      background: var(--glass-strong);
-      border-radius: 3px;
-      margin: 10px 0;
-      overflow: hidden;
-    }
-    
-    .progress-bar {
-      height: 100%;
-      background: var(--good);
-      border-radius: 3px;
-      transition: width 0.3s ease;
-      width: 0%;
+    /* 新增調試信息樣式 */
+    .debug-info {
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 8px;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-top: 8px;
     }
   </style>
 </head>
@@ -369,18 +361,13 @@
     </section>
 
     <section class="card panel">
-      <div id="voiceAlert" class="voice-alert loading">系統初始化中…</div>
+      <div id="voiceAlert" class="voice-alert">系統準備中…</div>
       
-      <!-- 模型載入進度 -->
-      <div id="progressContainer" class="progress-container" style="display: none;">
-        <div id="progressBar" class="progress-bar"></div>
-      </div>
-      
-      <!-- 主要控制按鈕 -->
+      <!-- 新增控制按鈕 -->
       <div class="controls">
         <button id="btnStart" class="btn primary">開始檢測</button>
         <button id="btnVoice" class="btn secondary">語音關閉</button>
-        <button id="btnMode" class="btn primary">步行模式</button>
+        <button id="btnMirror" class="btn secondary">關閉鏡像</button>
         <button id="btnStop" class="btn danger">停止</button>
       </div>
       
@@ -430,6 +417,11 @@
           <div class="v" id="voiceStatus">開啟</div>
         </div>
       </div>
+
+      <!-- 調試信息 -->
+      <div id="debugInfo" class="debug-info" style="display: none;">
+        調試信息將顯示在這裡
+      </div>
     </section>
 
     <aside class="card panel">
@@ -450,26 +442,21 @@
 
   <script>
     /**********************
-     * 1) 參數區 - 使用你的 GitHub 模型
+     * 1) 參數區 - 修復 YOLO 處理
      **********************/
-    // 使用你的 GitHub 模型路徑
     const MODEL_SOURCES = [
-      // 你的 GitHub 模型路徑
       'https://raw.githubusercontent.com/wangsc2631/wangsc2631.github.io/main/yolov8n.onnx',
-      // 備用路徑
-      'https://wangsc2631.github.io/obstacle-detector/yolov8n.onnx',
-      // 本地路徑
       'yolov8n.onnx'
     ];
 
     const INPUT_SIZE = 640;
-    const SCORE_THR_BASE = 0.35;
-    const IOU_THR = 0.5;
+    const SCORE_THR_BASE = 0.25; // 降低門檻，更容易檢測
+    const IOU_THR = 0.45;
 
-    const TARGET_FPS = 15;
+    const TARGET_FPS = 10; // 降低 FPS 提高穩定性
     const INTERVAL = 1000 / TARGET_FPS;
 
-    // COCO80 類別（英→中）
+    // COCO80 類別 - 添加牆壁相關的類別
     const coco80 = [
       'person','bicycle','car','motorcycle','airplane','bus','train','truck','boat','traffic light',
       'fire hydrant','stop sign','parking meter','bench','bird','cat','dog','horse','sheep','cow',
@@ -481,319 +468,111 @@
       'toaster','sink','refrigerator','book','clock','vase','scissors','teddy bear','hair drier','toothbrush'
     ];
 
-    const MODE_PROFILE = { 
-      walking: { nearM: 4, highObjM: 8, scoreThr: 0.45 }, 
-      navigate: { nearM: 6, highObjM: 10, scoreThr: 0.4 } 
-    };
-
-    /**********************
-     * 2) 環境模組系統
-     **********************/
+    // 擴展環境模組，包含牆壁和障礙物
     const environmentModules = {
       outdoor: {
         name: '戶外導航',
         objects: {
+          'person': { name: '行人', danger: 'medium', voice: '前方有行人' },
           'car': { name: '汽車', danger: 'high', voice: '前方有汽車，請保持安全距離' },
           'motorcycle': { name: '摩托車', danger: 'high', voice: '注意！前方有摩托車' },
+          'bicycle': { name: '腳踏車', danger: 'medium', voice: '前方有腳踏車' },
           'bus': { name: '公車', danger: 'high', voice: '警告！前方有公車' },
           'truck': { name: '卡車', danger: 'high', voice: '警告！前方有卡車' },
-          'bicycle': { name: '腳踏車', danger: 'medium', voice: '前方有腳踏車' },
-          'traffic light': { name: '紅綠燈', danger: 'medium', voice: '前方有紅綠燈，請注意交通號誌' },
+          'traffic light': { name: '紅綠燈', danger: 'medium', voice: '前方有紅綠燈' },
           'stop sign': { name: '停止標誌', danger: 'medium', voice: '停止標誌，請停車觀察' },
-          'person': { name: '行人', danger: 'medium', voice: '前方有行人' },
-          'bench': { name: '公車站', danger: 'low', voice: '公車站' },
+          'bench': { name: '長椅', danger: 'medium', voice: '前方有長椅' },
           'fire hydrant': { name: '消防栓', danger: 'medium', voice: '前方有消防栓' },
-          'bird': { name: '鳥', danger: 'low', voice: '前方有小鳥' },
           'dog': { name: '狗', danger: 'medium', voice: '前方有狗，請小心' },
-          'cat': { name: '貓', danger: 'low', voice: '前方有貓' }
+          'cat': { name: '貓', danger: 'low', voice: '前方有貓' },
+          // 添加通用障礙物檢測
+          'wall': { name: '牆壁', danger: 'high', voice: '前方有牆壁，請停止前進' },
+          'obstacle': { name: '障礙物', danger: 'high', voice: '前方有障礙物' }
         },
-        triggers: ['car', 'motorcycle', 'bus', 'traffic light', 'stop sign', 'person']
+        triggers: ['person', 'car', 'motorcycle', 'bus', 'truck', 'wall', 'obstacle']
       },
-      kitchen: {
-        name: '廚房環境',
+      indoor: {
+        name: '室內環境',
         objects: {
-          'knife': { name: '刀子', danger: 'high', voice: '警告！前方有刀子，鋒利物品請小心' },
-          'cup': { name: '杯子', danger: 'medium', voice: '前方有杯子，請小心拿取' },
-          'fork': { name: '叉子', danger: 'medium', voice: '前方有叉子，請注意尖齒' },
-          'spoon': { name: '湯匙', danger: 'low', voice: '前方有湯匙' },
-          'bowl': { name: '碗', danger: 'medium', voice: '前方有碗' },
-          'oven': { name: '烤箱', danger: 'high', voice: '警告！前方有烤箱，高溫設備請小心' },
-          'microwave': { name: '微波爐', danger: 'high', voice: '注意！前方有微波爐' },
-          'refrigerator': { name: '冰箱', danger: 'medium', voice: '前方有冰箱' },
-          'sink': { name: '水槽', danger: 'medium', voice: '前方有水槽' },
-          'bottle': { name: '瓶子', danger: 'medium', voice: '前方有瓶子' }
+          'person': { name: '人員', danger: 'medium', voice: '前方有人員' },
+          'chair': { name: '椅子', danger: 'medium', voice: '前方有椅子' },
+          'couch': { name: '沙發', danger: 'medium', voice: '前方有沙發' },
+          'bed': { name: '床', danger: 'medium', voice: '前方有床' },
+          'dining table': { name: '餐桌', danger: 'medium', voice: '前方有餐桌' },
+          'tv': { name: '電視', danger: 'medium', voice: '前方有電視' },
+          'laptop': { name: '筆電', danger: 'low', voice: '前方有筆電' },
+          'book': { name: '書本', danger: 'low', voice: '前方有書本' },
+          'bottle': { name: '瓶子', danger: 'medium', voice: '前方有瓶子' },
+          'cup': { name: '杯子', danger: 'medium', voice: '前方有杯子' },
+          'wall': { name: '牆壁', danger: 'high', voice: '前方有牆壁，請停止前進' },
+          'obstacle': { name: '障礙物', danger: 'high', voice: '前方有障礙物' }
         },
-        triggers: ['knife', 'oven', 'microwave', 'cup', 'bottle']
-      },
-      bathroom: {
-        name: '浴室環境',
-        objects: {
-          'toilet': { name: '馬桶', danger: 'medium', voice: '前方有馬桶' },
-          'sink': { name: '洗手台', danger: 'medium', voice: '前方有洗手台' },
-          'bottle': { name: '洗髮精', danger: 'low', voice: '前方有洗髮精' },
-          'toothbrush': { name: '牙刷', danger: 'low', voice: '前方有牙刷' },
-          'hair drier': { name: '吹風機', danger: 'medium', voice: '前方有吹風機' }
-        },
-        triggers: ['toilet', 'sink', 'bottle']
+        triggers: ['person', 'chair', 'couch', 'bed', 'wall', 'obstacle']
       }
     };
 
     /**********************
-     * 3) GPS導航系統
-     **********************/
-    class GPSNavigator {
-      constructor() {
-        this.homePosition = null;
-        this.currentPosition = null;
-        this.isTracking = false;
-        this.watchId = null;
-        this.returnHomeInterval = null;
-        this.loadHomePosition();
-      }
-
-      loadHomePosition() {
-        const saved = localStorage.getItem('homePosition');
-        if (saved) {
-          this.homePosition = JSON.parse(saved);
-          updateGPSStatus('就緒');
-          document.getElementById('btnSetHome').classList.add('gps-active');
-        }
-      }
-
-      setHomePosition() {
-        if (!navigator.geolocation) {
-          updateVoice('您的裝置不支援GPS定位');
-          return;
-        }
-
-        updateVoice('正在獲取當前位置...');
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            this.homePosition = {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-              timestamp: new Date().toISOString()
-            };
-            localStorage.setItem('homePosition', JSON.stringify(this.homePosition));
-            updateVoice(`家的位置已記錄！`);
-            updateGPSStatus('已設定家');
-            document.getElementById('btnSetHome').classList.add('gps-active');
-          },
-          (error) => {
-            let errorMsg = '無法獲取位置：';
-            switch(error.code) {
-              case error.PERMISSION_DENIED:
-                errorMsg += '請允許位置權限';
-                break;
-              case error.POSITION_UNAVAILABLE:
-                errorMsg += '位置資訊不可用';
-                break;
-              case error.TIMEOUT:
-                errorMsg += '定位請求超時';
-                break;
-              default:
-                errorMsg += '未知錯誤';
-            }
-            updateVoice(errorMsg);
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 60000
-          }
-        );
-      }
-
-      startReturnHome() {
-        if (!this.homePosition) {
-          updateVoice('請先設定家的位置');
-          return;
-        }
-
-        this.isTracking = true;
-        updateVoice('開始返航導航，請跟隨語音指引');
-        updateGPSStatus('返航中');
-        document.getElementById('btnReturnHome').classList.add('gps-active');
-
-        this.watchId = navigator.geolocation.watchPosition(
-          (position) => {
-            this.currentPosition = {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-              accuracy: position.coords.accuracy
-            };
-            this.updateNavigation();
-          },
-          (error) => {
-            updateVoice('GPS信號不穩定');
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 5000,
-            maximumAge: 3000
-          }
-        );
-
-        this.returnHomeInterval = setInterval(() => {
-          if (this.currentPosition) {
-            this.updateNavigation();
-          }
-        }, 10000);
-      }
-
-      updateNavigation() {
-        const navInfo = this.calculateNavigation();
-        if (!navInfo) return;
-
-        const { distance, direction } = navInfo;
-        document.getElementById('homeDistance').textContent = `${distance}m`;
-
-        if (distance < 20) {
-          updateVoice(`已到達家附近，距離${Math.round(distance)}公尺`);
-          this.stopReturnHome();
-        } else if (distance < 100) {
-          updateVoice(`即將到家，距離${Math.round(distance)}公尺，請向${direction}前進`);
-        } else {
-          updateVoice(`距家${Math.round(distance)}公尺，請向${direction}前進`);
-        }
-      }
-
-      calculateNavigation() {
-        if (!this.currentPosition || !this.homePosition) return null;
-
-        const R = 6371000;
-        const φ1 = this.currentPosition.lat * Math.PI/180;
-        const φ2 = this.homePosition.lat * Math.PI/180;
-        const Δφ = (this.homePosition.lat - this.currentPosition.lat) * Math.PI/180;
-        const Δλ = (this.homePosition.lng - this.currentPosition.lng) * Math.PI/180;
-
-        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                  Math.cos(φ1) * Math.cos(φ2) *
-                  Math.sin(Δλ/2) * Math.sin(Δλ/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        const distance = Math.round(R * c);
-
-        const y = Math.sin(Δλ) * Math.cos(φ2);
-        const x = Math.cos(φ1) * Math.sin(φ2) -
-                  Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-        const θ = Math.atan2(y, x);
-        const bearing = (θ * 180/Math.PI + 360) % 360;
-
-        const direction = this.getDirectionFromBearing(bearing);
-        return { distance, direction };
-      }
-
-      getDirectionFromBearing(bearing) {
-        const directions = ['北', '東北', '東', '東南', '南', '西南', '西', '西北'];
-        const index = Math.round(bearing / 45) % 8;
-        return directions[index];
-      }
-
-      stopReturnHome() {
-        if (this.watchId) {
-          navigator.geolocation.clearWatch(this.watchId);
-          this.watchId = null;
-        }
-        if (this.returnHomeInterval) {
-          clearInterval(this.returnHomeInterval);
-          this.returnHomeInterval = null;
-        }
-        this.isTracking = false;
-        updateGPSStatus('就緒');
-        document.getElementById('btnReturnHome').classList.remove('gps-active');
-        updateVoice('返航導航結束');
-      }
-    }
-
-    /**********************
-     * 4) 狀態變數
+     * 2) 狀態變數
      **********************/
     let session = null;
     let isDetecting = false;
     let voiceEnabled = true;
-    let currentMode = 'walking';
+    let isMirrored = true; // 預設鏡像
     let lastTick = 0;
     let frames = 0;
     let lastFpsTs = 0;
     let lastSpeechAt = 0;
     let currentEnvironment = 'outdoor';
-    let gpsNavigator = new GPSNavigator();
+    let debugMode = true; // 預設開啟調試
 
     /**********************
-     * 5) 模型載入 - 修復版本
+     * 3) 模型載入 - 簡化版本
      **********************/
     async function initModel() {
       try {
-        updateVoice('正在初始化 ONNX Runtime Web…');
+        updateVoice('正在載入 AI 模型…');
+        console.log('開始載入模型...');
+        
         ort.env.wasm.numThreads = 1;
         
-        // 顯示進度條
-        const progressContainer = document.getElementById('progressContainer');
-        const progressBar = document.getElementById('progressBar');
-        progressContainer.style.display = 'block';
-        
         let modelLoaded = false;
-        let lastError = null;
         
-        // 嘗試所有模型來源
         for (let i = 0; i < MODEL_SOURCES.length; i++) {
           const modelUrl = MODEL_SOURCES[i];
           try {
-            updateVoice(`嘗試載入模型來源 ${i + 1}/${MODEL_SOURCES.length}...`);
-            progressBar.style.width = `${(i / MODEL_SOURCES.length) * 100}%`;
-            
             console.log(`嘗試載入模型: ${modelUrl}`);
-            
-            // 添加時間戳避免緩存
-            const cacheBuster = `?t=${Date.now()}`;
-            const finalUrl = modelUrl + cacheBuster;
-            
-            session = await ort.InferenceSession.create(finalUrl, {
+            session = await ort.InferenceSession.create(modelUrl, {
               executionProviders: ['wasm']
             });
             
             modelLoaded = true;
-            progressBar.style.width = '100%';
-            progressBar.style.background = 'var(--good)';
-            updateVoice('模型載入成功！');
-            console.log('✅ 模型載入成功，來源:', modelUrl);
+            console.log('✅ 模型載入成功');
             break;
             
           } catch (error) {
-            console.log(`❌ 模型來源 ${i + 1} 失敗:`, error.message);
-            lastError = error;
+            console.log(`模型來源 ${i + 1} 失敗:`, error.message);
             continue;
           }
         }
         
-        progressContainer.style.display = 'none';
-        
         if (!modelLoaded) {
-          throw new Error('所有模型來源都無法載入。最後錯誤: ' + lastError?.message);
+          throw new Error('所有模型來源都無法載入');
         }
         
-        // 初始化事件監聽
+        // 顯示模型信息
+        console.log('模型輸入:', session.inputNames);
+        console.log('模型輸出:', session.outputNames);
+        
         initEventListeners();
-        updateVoice('系統準備完成，請點擊開始檢測');
+        updateVoice('AI 模型載入成功！請點擊開始檢測');
         updateStatus('準備就緒');
+        
+        // 顯示調試信息
+        showDebugInfo('模型載入完成，準備開始檢測');
         
       } catch (e) {
         console.error('模型載入錯誤:', e);
-        updateVoice('模型載入失敗，請檢查控制台錯誤信息');
-        document.getElementById('progressContainer').style.display = 'none';
-        
-        // 顯示詳細錯誤資訊
-        const errorDetails = `
-模型載入失敗詳細信息:
-${e.message}
-
-請確認:
-1. 模型文件 yolov8n.onnx 已上傳到 GitHub
-2. 文件路徑正確: https://raw.githubusercontent.com/wangsc2631/wangsc2631.github.io/main/yolov8n.onnx
-3. 開啟 GitHub Pages 功能
-4. 使用 HTTPS 訪問頁面
-        `;
-        console.error(errorDetails);
+        updateVoice('模型載入失敗：' + e.message);
       }
     }
 
@@ -801,43 +580,79 @@ ${e.message}
       document.getElementById('btnStart').addEventListener('click', startDetection);
       document.getElementById('btnStop').addEventListener('click', stopDetection);
       document.getElementById('btnVoice').addEventListener('click', toggleVoice);
-      document.getElementById('btnMode').addEventListener('click', toggleMode);
-      document.getElementById('btnSetHome').addEventListener('click', () => gpsNavigator.setHomePosition());
-      document.getElementById('btnReturnHome').addEventListener('click', () => gpsNavigator.startReturnHome());
+      document.getElementById('btnMirror').addEventListener('click', toggleMirror);
       document.getElementById('btnLoadModule').addEventListener('click', loadEnvironmentModule);
-      document.getElementById('btnEmergency').addEventListener('click', emergencyAlert);
-    }
-
-    async function setupCamera() {
-      const video = document.getElementById('video');
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: 'environment', 
-            width: { ideal: 640 },
-            height: { ideal: 480 } 
-          }, 
-          audio: false 
-        });
-        video.srcObject = stream; 
-        await new Promise((resolve) => {
-          video.onloadedmetadata = () => { resolve(video); };
-        }); 
-        await video.play();
-        return video;
-      } catch (e) { 
-        console.error('相機錯誤:', e); 
-        updateVoice('無法存取相機，請確認權限'); 
-        return null; 
-      }
     }
 
     /**********************
-     * 6) 主流程（推論）
+     * 4) 攝像頭和鏡像控制
+     **********************/
+    async function setupCamera() {
+      const video = document.getElementById('video');
+      
+      // 停止之前的 stream
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+      }
+      
+      try {
+        const constraints = {
+          video: { 
+            facingMode: 'environment', // 使用後置攝像頭
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }, 
+          audio: false 
+        };
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        
+        await new Promise((resolve) => {
+          video.onloadedmetadata = () => { resolve(video); };
+        });
+        
+        await video.play();
+        
+        // 應用鏡像設置
+        updateMirrorEffect();
+        
+        showDebugInfo(`攝像頭啟動: ${video.videoWidth}x${video.videoHeight}`);
+        return video;
+        
+      } catch (error) {
+        console.error('攝像頭錯誤:', error);
+        updateVoice('無法訪問攝像頭，請確認權限');
+        return null;
+      }
+    }
+
+    function toggleMirror() {
+      isMirrored = !isMirrored;
+      const button = document.getElementById('btnMirror');
+      
+      if (isMirrored) {
+        button.textContent = '關閉鏡像';
+        updateVoice('已開啟鏡像');
+      } else {
+        button.textContent = '開啟鏡像';
+        updateVoice('已關閉鏡像');
+      }
+      
+      updateMirrorEffect();
+    }
+
+    function updateMirrorEffect() {
+      const video = document.getElementById('video');
+      video.style.transform = isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+    }
+
+    /**********************
+     * 5) 主檢測循環 - 修復版本
      **********************/
     async function startDetection() {
       if (!session) {
-        updateVoice('模型尚未載入完成，請稍候');
+        updateVoice('模型尚未載入完成');
         return;
       }
       
@@ -846,7 +661,9 @@ ${e.message}
       
       isDetecting = true; 
       updateStatus('檢測中'); 
-      updateVoice('開始障礙物檢測…');
+      updateVoice('開始障礙物檢測，請緩慢移動手機');
+      
+      showDebugInfo('開始檢測循環');
       
       requestAnimationFrame((ts) => loop(video, ts));
     }
@@ -859,7 +676,6 @@ ${e.message}
         video.srcObject.getTracks().forEach(track => track.stop());
       }
       updateVoice('檢測已停止');
-      gpsNavigator.stopReturnHome();
     }
 
     async function loop(video, ts = 0) {
@@ -868,13 +684,18 @@ ${e.message}
       if (ts - lastTick >= INTERVAL) {
         try {
           const { predictions, frameW } = await runOnce(video);
+          
+          // 顯示檢測信息
+          if (debugMode && predictions.length > 0) {
+            showDebugInfo(`檢測到 ${predictions.length} 個物體: ${predictions.map(p => p.class).join(', ')}`);
+          }
+          
           processPredictions(predictions, frameW);
           draw(predictions);
 
+          // 更新 FPS
           frames++; 
-          if (!lastFpsTs) {
-            lastFpsTs = ts;
-          } else if (ts - lastFpsTs >= 1000) {
+          if (ts - lastFpsTs >= 1000) {
             document.getElementById('fps').textContent = frames;
             frames = 0; 
             lastFpsTs = ts;
@@ -882,11 +703,15 @@ ${e.message}
           lastTick = ts;
         } catch (error) {
           console.error('檢測循環錯誤:', error);
+          showDebugInfo(`檢測錯誤: ${error.message}`);
         }
       }
       requestAnimationFrame((n) => loop(video, n));
     }
 
+    /**********************
+     * 6) YOLO 推理 - 關鍵修復
+     **********************/
     async function runOnce(video) {
       try {
         const frame = captureFrame(video);
@@ -903,12 +728,23 @@ ${e.message}
       const ctx = canvas.getContext('2d');
       const { videoWidth: w, videoHeight: h } = video;
       
-      const scale = 0.5;
-      canvas.width = w * scale;
-      canvas.height = h * scale;
+      // 使用完整分辨率進行檢測
+      canvas.width = INPUT_SIZE;
+      canvas.height = INPUT_SIZE;
       
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      return ctx.getImageData(0, 0, canvas.width, canvas.height);
+      // 計算縮放以保持比例
+      const scale = Math.min(INPUT_SIZE / w, INPUT_SIZE / h);
+      const scaledW = w * scale;
+      const scaledH = h * scale;
+      const xOffset = (INPUT_SIZE - scaledW) / 2;
+      const yOffset = (INPUT_SIZE - scaledH) / 2;
+      
+      // 繪製到 canvas
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+      ctx.drawImage(video, xOffset, yOffset, scaledW, scaledH);
+      
+      return ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
     }
 
     async function inference(imageData) {
@@ -921,47 +757,62 @@ ${e.message}
 
     function preprocess(imageData, modelWidth = INPUT_SIZE, modelHeight = INPUT_SIZE) {
       const { data, width, height } = imageData;
-      const frameW = width;
       
       const input = new Float32Array(3 * modelWidth * modelHeight);
+      const means = [0.485, 0.456, 0.406];
+      const stds = [0.229, 0.224, 0.225];
       
       for (let c = 0; c < 3; c++) {
         for (let h = 0; h < modelHeight; h++) {
           for (let w = 0; w < modelWidth; w++) {
+            // 計算源圖像坐標
             const srcH = Math.floor(h * height / modelHeight);
             const srcW = Math.floor(w * width / modelWidth);
             const srcIndex = (srcH * width + srcW) * 4;
+            
+            // 獲取像素值並正規化
             const pixel = data[srcIndex + c];
-            input[c * modelWidth * modelHeight + h * modelWidth + w] = pixel / 255.0;
+            const normalized = (pixel / 255.0 - means[c]) / stds[c];
+            
+            input[c * modelWidth * modelHeight + h * modelWidth + w] = normalized;
           }
         }
       }
       
       const tensor = new ort.Tensor('float32', input, [1, 3, modelWidth, modelHeight]);
-      return [tensor, frameW];
+      return [tensor, width]; // 返回原始寬度用於坐標轉換
     }
 
     function postprocess(results, frameW) {
       const output = results[session.outputNames[0]];
       const predictions = [];
-      const scoreThr = MODE_PROFILE[currentMode].scoreThr;
       
-      for (let idx = 0; idx < output.dims[1]; idx++) {
-        const data = output.data.slice(idx * output.dims[2], (idx + 1) * output.dims[2]);
-        const scores = data.slice(4);
+      // YOLOv8 輸出格式: [batch, 84, 8400]
+      const outputData = output.data;
+      const outputDims = output.dims;
+      
+      for (let i = 0; i < outputDims[2]; i++) {
+        const offset = i * outputDims[1];
+        const scores = outputData.slice(offset + 4, offset + outputDims[1]);
         const maxScore = Math.max(...scores);
         
-        if (maxScore < scoreThr) continue;
+        if (maxScore < SCORE_THR_BASE) continue;
         
         const classId = scores.indexOf(maxScore);
         if (classId >= coco80.length) continue;
         
-        let [x, y, w, h] = data.slice(0, 4);
+        const bbox = outputData.slice(offset, offset + 4);
+        
+        // 轉換為像素坐標
+        let [x, y, w, h] = bbox;
+        
+        // 反归一化
         x = (x - w / 2) * frameW;
         y = (y - h / 2) * frameW;
         w = w * frameW;
         h = h * frameW;
         
+        // 估算距離
         const distance = estimateDistance(w, h, classId);
         
         predictions.push({
@@ -979,18 +830,20 @@ ${e.message}
       const className = coco80[classId];
       const pixelArea = width * height;
       
+      // 更準確的距離估算
       const referenceSizes = {
-        'person': 10000,
-        'car': 50000,
-        'bicycle': 15000,
-        'chair': 8000,
-        'bottle': 2000
+        'person': 15000,
+        'car': 80000,
+        'chair': 12000,
+        'bottle': 3000,
+        'tv': 20000,
+        'laptop': 8000
       };
       
-      const refSize = referenceSizes[className] || 10000;
-      const distance = Math.sqrt(refSize / pixelArea) * 10;
+      const refSize = referenceSizes[className] || 20000;
+      const distance = Math.sqrt(refSize / pixelArea) * 2;
       
-      return Math.min(distance, 50);
+      return Math.min(distance, 20);
     }
 
     function nonMaxSuppression(predictions, iouThr) {
@@ -1027,14 +880,19 @@ ${e.message}
     }
 
     /**********************
-     * 7) 預測處理與繪圖
+     * 7) 處理和顯示結果
      **********************/
     function processPredictions(predictions, frameW) {
       const module = environmentModules[currentEnvironment];
-      const relevantPredictions = predictions.filter(p => module.objects[p.class]);
+      
+      // 過濾相關物體
+      const relevantPredictions = predictions.filter(p => {
+        return module.objects[p.class] && p.score > 0.2;
+      });
       
       document.getElementById('obstacleCount').textContent = relevantPredictions.length;
       
+      // 找到最近物體
       let closestDistance = Infinity;
       let closestObject = null;
       
@@ -1045,35 +903,27 @@ ${e.message}
         }
       });
       
+      // 更新距離顯示
       const distanceElement = document.getElementById('closestDistance');
       if (closestObject) {
         distanceElement.textContent = closestDistance.toFixed(1) + ' 公尺';
         
-        if (closestDistance < 2) {
+        // 視覺警告
+        if (closestDistance < 1.5) {
           distanceElement.parentElement.classList.add('danger-warning');
-        } else if (closestDistance < 5) {
+          // 緊急語音警告
+          if (voiceEnabled) {
+            const now = Date.now();
+            if (now - lastSpeechAt > 2000) { // 2秒冷卻
+              const objConfig = module.objects[closestObject.class];
+              updateVoice(`緊急！${objConfig.name}非常接近，僅${closestDistance.toFixed(1)}公尺`);
+              lastSpeechAt = now;
+            }
+          }
+        } else if (closestDistance < 3) {
           distanceElement.parentElement.classList.add('obstacle-warning');
         } else {
           distanceElement.parentElement.classList.remove('obstacle-warning', 'danger-warning');
-        }
-        
-        if (voiceEnabled) {
-          const now = Date.now();
-          const cooldown = closestObject.distance < 3 ? 3000 : 5000;
-          
-          if (now - lastSpeechAt > cooldown) {
-            const objConfig = module.objects[closestObject.class];
-            let voiceMsg = objConfig.voice;
-            
-            if (closestObject.distance < 2) {
-              voiceMsg = `緊急！${objConfig.name}非常接近，僅${closestObject.distance.toFixed(1)}公尺`;
-            } else if (closestObject.distance < 5) {
-              voiceMsg = `注意！${objConfig.name}接近，距離${closestObject.distance.toFixed(1)}公尺`;
-            }
-            
-            updateVoice(voiceMsg);
-            lastSpeechAt = now;
-          }
         }
       } else {
         distanceElement.textContent = '— 公尺';
@@ -1138,10 +988,12 @@ ${e.message}
           default: color = '#22c55e';
         }
         
+        // 繪製邊框
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
         ctx.strokeRect(x, y, w, h);
         
+        // 繪製標籤
         const label = `${objConfig.name} ${pred.distance.toFixed(1)}m`;
         ctx.font = '16px Arial';
         const textWidth = ctx.measureText(label).width;
@@ -1168,7 +1020,6 @@ ${e.message}
         utterance.lang = 'zh-TW';
         utterance.rate = 0.9;
         utterance.pitch = 1.0;
-        utterance.volume = 1.0;
         
         window.speechSynthesis.speak(utterance);
       }
@@ -1176,10 +1027,6 @@ ${e.message}
 
     function updateStatus(status) {
       document.getElementById('status').textContent = status;
-    }
-
-    function updateGPSStatus(status) {
-      document.getElementById('gpsStatus').textContent = status;
     }
 
     function toggleVoice() {
@@ -1190,90 +1037,39 @@ ${e.message}
       if (voiceEnabled) {
         status.textContent = '開啟';
         button.textContent = '語音關閉';
-        button.classList.remove('warning');
-        button.classList.add('secondary');
         updateVoice('語音提示已開啟');
       } else {
         status.textContent = '關閉';
         button.textContent = '語音開啟';
-        button.classList.remove('secondary');
-        button.classList.add('warning');
         window.speechSynthesis.cancel();
       }
     }
 
-    function toggleMode() {
-      const button = document.getElementById('btnMode');
-      currentMode = currentMode === 'walking' ? 'navigate' : 'walking';
-      
-      if (currentMode === 'walking') {
-        button.textContent = '導航模式';
-        updateVoice('切換到步行模式');
-      } else {
-        button.textContent = '步行模式';
-        updateVoice('切換到導航模式');
-      }
-    }
-
     function loadEnvironmentModule() {
-      const environments = Object.keys(environmentModules);
-      const currentIndex = environments.indexOf(currentEnvironment);
-      const nextIndex = (currentIndex + 1) % environments.length;
-      currentEnvironment = environments[nextIndex];
-      
+      currentEnvironment = currentEnvironment === 'outdoor' ? 'indoor' : 'outdoor';
       const module = environmentModules[currentEnvironment];
       document.getElementById('currentModule').textContent = module.name;
       document.getElementById('activeModuleTag').textContent = module.name;
-      
-      updateVoice(`切換到${module.name}環境`);
+      updateVoice(`切換到${module.name}`);
     }
 
-    function emergencyAlert() {
-      const button = document.getElementById('btnEmergency');
-      button.classList.add('emergency-alert');
-      
-      updateVoice('緊急求助！正在發送位置資訊給緊急聯絡人');
-      
-      if (gpsNavigator.currentPosition) {
-        const { lat, lng } = gpsNavigator.currentPosition;
-        console.log(`緊急位置發送: 緯度 ${lat.toFixed(6)}, 經度 ${lng.toFixed(6)}`);
+    function showDebugInfo(message) {
+      if (debugMode) {
+        const debugElement = document.getElementById('debugInfo');
+        debugElement.style.display = 'block';
+        debugElement.textContent = `調試: ${message}`;
+        console.log(message);
       }
-      
-      setTimeout(() => {
-        button.classList.remove('emergency-alert');
-      }, 5000);
     }
 
     /**********************
-     * 9) 初始化應用
+     * 9) 初始化
      **********************/
     window.addEventListener('DOMContentLoaded', () => {
       updateStatus('初始化中');
       updateVoice('盲人輔助導航系統啟動中...');
-      
-      // 直接初始化模型
       initModel();
     });
-
-    // 防止頁面休眠
-    let wakeLock = null;
-    async function requestWakeLock() {
-      try {
-        if ('wakeLock' in navigator) {
-          wakeLock = await navigator.wakeLock.request('screen');
-        }
-      } catch (err) {
-        console.log('Wake Lock 失敗:', err.message);
-      }
-    }
-
-    document.addEventListener('visibilitychange', async () => {
-      if (document.visibilityState === 'visible' && isDetecting) {
-        await requestWakeLock();
-      }
-    });
-
-    requestWakeLock();
   </script>
 </body>
 </html>
