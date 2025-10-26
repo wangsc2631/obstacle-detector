@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>羅乙程寶貝專用 - 神奇寶貝英文學習</title>
+  <style>
+    :root {
+      --pokemon-yellow: #ffcc00;
+      --pokemon-blue: #3b4cca;
+      --pokemon-red: #ff0000;
+      --pokemon-light-blue: #6aa9ff;
+    }
+    
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Microsoft JhengHei', '微軟正黑體', sans-serif;
+      text-align: center;
+      background: linear-gradient(135deg, var(--pokemon-yellow), #ff9900);
+      margin: 0;
+      padding: 0;
+      color: #333;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    
+    .container {
+      width: 100%;
+      margin: 0 auto;
+      background-color: rgba(255, 255, 255, 0.95);
+      padding: 15px;
+      border-bottom: 8px solid var(--pokemon-blue);
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .container::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 10px;
+      background: var(--pokemon-red);
+      z-index: 1;
+    }
+    
+    h1 {
+      color: var(--pokemon-blue);
+      font-size: 1.8rem;
+      margin: 10px 0 5px;
+      text-shadow: 1px 1px 0 #fff, 2px 2px 0 rgba(0,0,0,0.1);
+      position: relative;
+      display: inline-block;
+      padding: 0 15px;
+    }
+    
+    h1::after {
+      content: "";
+      position: absolute;
+      bottom: -5px;
+      left: 10%;
+      width: 80%;
+      height: 3px;
+      background: var(--pokemon-red);
+      border-radius: 2px;
+    }
+    
+    .subtitle {
+      font-size: 0.9rem;
+      color: #555;
+      margin-bottom: 15px;
+    }
+    
+    .video-container {
+      position: relative;
+      width: 100%;
+      margin: 0 auto 15px;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    
+    #video {
+      width: 100%;
+      height: 50vh;
+      max-height: 400px;
+      background: #000;
+      object-fit: cover;
+      transform: scaleX(1); /* 取消鏡像效果 */
+    }
+    
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    
+    .word-display {
+      margin: 10px 0;
+      padding: 15px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      min-height: 80px;
+      font-size: 1.8rem;
+      color: var(--pokemon-blue);
+      border: 3px solid var(--pokemon-yellow);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .word-display .zh {
+      font-size: 1.2rem;
+      color: #666;
+      margin-top: 5px;
+    }
+    
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin: 10px 0;
+    }
+    
+    button {
+      padding: 12px 15px;
+      font-size: 1rem;
+      background: var(--pokemon-blue);
+      color: white;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-weight: bold;
+      box-shadow: 0 3px 0 rgba(0,0,0,0.2);
+      flex: 1;
+      min-width: 120px;
+      max-width: 160px;
+    }
+    
+    button:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 rgba(0,0,0,0.2);
+    }
+    
+    button.active {
+      background: var(--pokemon-red);
+    }
+    
+    .mode-selector {
+      display: flex;
+      justify-content: center;
+      margin: 10px 0;
+      gap: 10px;
+    }
+    
+    .mode-btn {
+      background: var(--pokemon-light-blue);
+      flex: 1;
+      max-width: 160px;
+    }
+    
+    .mode-btn.active {
+      background: var(--pokemon-red);
+    }
+    
+    .game-mode {
+      background: #fff8e1;
+      padding: 12px;
+      border-radius: 12px;
+      margin: 10px 0;
+      font-size: 1rem;
+      color: #e65100;
+      border: 2px dashed var(--pokemon-red);
+      display: none;
+    }
+    
+    .vocab-section {
+      margin-top: 15px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .vocab-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    .vocab-header h2 {
+      color: var(--pokemon-blue);
+      background: var(--pokemon-yellow);
+      padding: 6px 15px;
+      border-radius: 20px;
+      margin: 0;
+      border: 2px solid var(--pokemon-blue);
+      font-size: 1.2rem;
+    }
+    
+    .vocab-list {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      padding: 10px;
+      flex: 1;
+      overflow-y: auto;
+      text-align: left;
+      border: 2px solid var(--pokemon-light-blue);
+      max-height: 30vh;
+    }
+    
+    .vocab-item {
+      padding: 8px;
+      border-bottom: 1px solid #eee;
+      font-size: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .vocab-item strong {
+      color: var(--pokemon-red);
+    }
+    
+    .remove-btn {
+      background: transparent;
+      color: #ff4444;
+      box-shadow: none;
+      padding: 5px;
+      min-width: auto;
+      max-width: 40px;
+      font-size: 0.9rem;
+    }
+    
+    .clear-btn {
+      background: #ff6b6b;
+      padding: 6px 12px;
+      font-size: 0.9rem;
+      min-width: auto;
+    }
+    
+    .pikachu-corner {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      width: 60px;
+      height: 60px;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M50,10 C70,10 85,25 85,45 C85,65 70,80 50,80 C30,80 15,65 15,45 C15,25 30,10 50,10 Z" fill="%23FFCC00" stroke="%233B4CCA" stroke-width="2"/><circle cx="40" cy="35" r="5" fill="%23333"/><circle cx="60" cy="35" r="5" fill="%23333"/><path d="M45,55 Q50,60 55,55" stroke="%23333" stroke-width="2" fill="none"/><path d="M30,20 L25,15 M70,20 L75,15" stroke="%23333" stroke-width="2"/></svg>');
+      background-repeat: no-repeat;
+      opacity: 0.7;
+      z-index: 10;
+    }
+    
+    .pokeball {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      background: linear-gradient(to bottom, var(--pokemon-red) 0%, var(--pokemon-red) 45%, #000 45%, #000 50%, white 50%, white 55%, #000 55%, #000 100%);
+      border-radius: 50%;
+      border: 1px solid #000;
+      margin: 0 3px;
+      vertical-align: middle;
+    }
+    
+    .empty-vocab {
+      text-align: center;
+      color: #888;
+      padding: 20px;
+      font-style: italic;
+    }
+    
+    @media (max-height: 700px) {
+      #video {
+        height: 40vh;
+      }
+      
+      .vocab-list {
+        max-height: 25vh;
+      }
+    }
+    
+    @media (max-height: 600px) {
+      #video {
+        height: 35vh;
+      }
+      
+      .vocab-list {
+        max-height: 20vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1><span class="pokeball"></span> 羅乙程寶貝英文學習 <span class="pokeball"></span></h1>
+    <div class="subtitle">對準物品或字母開始學習</div>
+    
+    <!-- 模式選擇 -->
+    <div class="mode-selector">
+      <button id="objectModeBtn" class="mode-btn active">🔍 物品辨識</button>
+      <button id="ocrModeBtn" class="mode-btn">🔤 字母辨識</button>
+    </div>
+
+    <!-- 遊戲模式提示 -->
+    <div id="gameMode" class="game-mode">
+      找到 → <strong id="targetWord"></strong>
+    </div>
+
+    <!-- 單一相機畫面 -->
+    <div class="video-container">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="canvas"></canvas>
+    </div>
+
+    <!-- 單字顯示 -->
+    <div class="word-display" id="wordDisplay">
+      準備中...
+    </div>
+
+    <!-- 控制按鈕 -->
+    <div class="controls">
+      <button id="langBtnEn" class="active">🔊 英文</button>
+      <button id="langBtnZh">🔊 中文</button>
+      <button id="gameBtn">🎮 遊戲模式</button>
+    </div>
+
+    <!-- 單字本區域 -->
+    <div class="vocab-section">
+      <div class="vocab-header">
+        <h2>📚 我的單字本</h2>
+        <button id="clearVocab" class="clear-btn">清除</button>
+      </div>
+      <div class="vocab-list" id="vocabList">
+        <div class="empty-vocab">還沒有收藏單字</div>
+      </div>
+    </div>
+    
+    <div class="pikachu-corner"></div>
+  </div>
+
+  <!-- 載入您的 itemDatabase.js -->
+  <script src="itemDatabase.js"></script>
+
+  <!-- TensorFlow.js 與 COCO-SSD -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  
+  <!-- Tesseract.js for OCR -->
+  <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
+
+  <script>
+    // 初始化變數
+    let net;
+    let isEnglish = true;
+    let isInGameMode = false;
+    let isOCRMode = false;
+    let currentTarget = '';
+    let collectedWords = JSON.parse(localStorage.getItem('collectedWords')) || [];
+    let lastSpokenWord = '';
+
+    // DOM 元素
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const wordDisplay = document.getElementById('wordDisplay');
+    const vocabList = document.getElementById('vocabList');
+    const gameMode = document.getElementById('gameMode');
+    const targetWord = document.getElementById('targetWord');
+    const langBtnEn = document.getElementById('langBtnEn');
+    const langBtnZh = document.getElementById('langBtnZh');
+    const gameBtn = document.getElementById('gameBtn');
+    const clearVocab = document.getElementById('clearVocab');
+    const objectModeBtn = document.getElementById('objectModeBtn');
+    const ocrModeBtn = document.getElementById('ocrModeBtn');
+
+    // COCO-SSD 與資料庫 key 對應表
+    const cocoToYourKey = {
+      'cell phone': 'smartphone',
+      'hair drier': 'hair dryer'
+    };
+
+    // 從 itemDatabase 查詢單字資訊
+    function getWordInfo(label) {
+      const key = cocoToYourKey[label] || label;
+      const zh = itemNames[key] || '未知物品';
+      const en = label.charAt(0).toUpperCase() + label.slice(1);
+      return { en, zh, key };
+    }
+
+    // 語音朗讀功能
+    function speak(text, lang = 'en-US') {
+      if (lastSpokenWord === text) return;
+      
+      lastSpokenWord = text;
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = lang;
+      utter.rate = 0.9;
+      utter.pitch = 1;
+      speechSynthesis.speak(utter);
+      
+      setTimeout(() => {
+        lastSpokenWord = '';
+      }, 3000);
+    }
+
+    // 語言切換
+    langBtnEn.addEventListener('click', () => {
+      isEnglish = true;
+      langBtnEn.classList.add('active');
+      langBtnZh.classList.remove('active');
+    });
+    
+    langBtnZh.addEventListener('click', () => {
+      isEnglish = false;
+      langBtnZh.classList.add('active');
+      langBtnEn.classList.remove('active');
+    });
+
+    // 模式切換
+    objectModeBtn.addEventListener('click', () => {
+      isOCRMode = false;
+      objectModeBtn.classList.add('active');
+      ocrModeBtn.classList.remove('active');
+      wordDisplay.textContent = '物品辨識模式 - 對準物品開始學習';
+    });
+    
+    ocrModeBtn.addEventListener('click', () => {
+      isOCRMode = true;
+      ocrModeBtn.classList.add('active');
+      objectModeBtn.classList.remove('active');
+      wordDisplay.textContent = '字母辨識模式 - 對準英文字母開始學習';
+    });
+
+    // 遊戲模式
+    gameBtn.addEventListener('click', () => {
+      if (isOCRMode) {
+        alert('遊戲模式目前僅支援物品辨識模式');
+        return;
+      }
+      
+      isInGameMode = !isInGameMode;
+      if (isInGameMode) {
+        gameBtn.textContent = '退出遊戲';
+        gameMode.style.display = 'block';
+        startNewGame();
+      } else {
+        gameBtn.textContent = '🎮 遊戲模式';
+        gameMode.style.display = 'none';
+      }
+    });
+
+    function startNewGame() {
+      const allKeys = Object.keys(itemNames);
+      const candidates = allKeys.filter(k => itemNames[k] && k !== 'background');
+      const randomKey = candidates[Math.floor(Math.random() * candidates.length)];
+      const zh = itemNames[randomKey];
+      currentTarget = randomKey;
+
+      targetWord.textContent = zh;
+      speak(`請找到 ${zh}`, 'zh-TW');
+    }
+
+    // 單字本功能
+    function addToVocab(en, zh, key) {
+      if (!collectedWords.some(w => w.key === key)) {
+        collectedWords.push({ en, zh, key });
+        localStorage.setItem('collectedWords', JSON.stringify(collectedWords));
+        renderVocabList();
+      }
+    }
+
+    function renderVocabList() {
+      if (collectedWords.length === 0) {
+        vocabList.innerHTML = '<div class="empty-vocab">還沒有收藏單字</div>';
+        return;
+      }
+      
+      vocabList.innerHTML = collectedWords.map(w => 
+        `<div class="vocab-item">
+          <div><strong>${w.en}</strong> - ${w.zh}</div>
+          <button class="remove-btn" onclick="removeWord('${w.key}')">❌</button>
+        </div>`
+      ).join('');
+    }
+
+    function removeWord(key) {
+      collectedWords = collectedWords.filter(w => w.key !== key);
+      localStorage.setItem('collectedWords', JSON.stringify(collectedWords));
+      renderVocabList();
+    }
+
+    window.removeWord = removeWord;
+
+    clearVocab.addEventListener('click', () => {
+      if (confirm('確定要清除所有單字嗎？')) {
+        collectedWords = [];
+        localStorage.removeItem('collectedWords');
+        renderVocabList();
+      }
+    });
+
+    // OCR 功能
+    async function performOCR() {
+      try {
+        // 將影片畫面繪製到 canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        const { data: { text } } = await Tesseract.recognize(
+          canvas,
+          'eng',
+          { 
+            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+          }
+        );
+        
+        const cleanText = text.replace(/[^A-Za-z]/g, '');
+        
+        if (cleanText.length > 0) {
+          const letter = cleanText.charAt(0).toUpperCase();
+          
+          wordDisplay.innerHTML = `<strong>${letter}</strong>`;
+          
+          if (isEnglish) {
+            speak(letter, 'en-US');
+          }
+          
+          // 畫框標示識別區域
+          ctx.strokeStyle = '#00ff00';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(canvas.width/2 - 40, canvas.height/2 - 40, 80, 80);
+          ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+          ctx.fillRect(canvas.width/2 - 40, canvas.height/2 - 40, 80, 80);
+          ctx.fillStyle = 'white';
+          ctx.font = '16px Arial';
+          ctx.fillText(`字母: ${letter}`, canvas.width/2 - 35, canvas.height/2 - 15);
+        }
+      } catch (error) {
+        console.error('OCR 錯誤:', error);
+      }
+    }
+
+    // 攝影機與偵測功能
+    async function setupCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'environment', // 使用後置鏡頭
+            width: { ideal: 640 }, 
+            height: { ideal: 480 } 
+          } 
+        });
+        video.srcObject = stream;
+        
+        video.onloadedmetadata = () => {
+          video.play();
+          // 設定 canvas 尺寸與影片一致
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          detectFrame();
+        };
+      } catch (error) {
+        console.error('無法存取攝影機:', error);
+        wordDisplay.textContent = '無法存取攝影機，請確認權限設定';
+      }
+    }
+
+    let lastLabel = '';
+    let lastOCRTime = 0;
+
+    async function detectFrame() {
+      // OCR 模式
+      if (isOCRMode) {
+        const now = Date.now();
+        if (now - lastOCRTime > 2000) {
+          lastOCRTime = now;
+          await performOCR();
+        }
+        requestAnimationFrame(detectFrame);
+        return;
+      }
+      
+      // 物品辨識模式
+      try {
+        const predictions = await net.detect(video);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (predictions.length > 0) {
+          const pred = predictions[0];
+          const { class: label, score, bbox } = pred;
+
+          if (score > 0.7) {
+            const { en, zh, key } = getWordInfo(label);
+
+            wordDisplay.innerHTML = `<strong>${en}</strong><br><span class="zh">${zh}</span>`;
+
+            if (!isInGameMode) {
+              if (lastLabel !== label) {
+                lastLabel = label;
+                addToVocab(en, zh, key);
+                if (isEnglish) speak(en, 'en-US');
+                else speak(zh, 'zh-TW');
+              }
+            } else if (label === currentTarget) {
+              speak(`答對了！這是 ${zh}`, 'zh-TW');
+              setTimeout(startNewGame, 1500);
+            }
+
+            // 畫框
+            const [x, y, w, h] = bbox;
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            ctx.fillStyle = 'rgba(231, 76, 60, 0.5)';
+            ctx.fillRect(x, y, w, 20);
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Arial';
+            ctx.fillText(`${en} (${score.toFixed(2)})`, x + 5, y + 15);
+          }
+        } else {
+          wordDisplay.textContent = '未偵測到物品';
+        }
+      } catch (error) {
+        console.error('偵測錯誤:', error);
+      }
+
+      requestAnimationFrame(detectFrame);
+    }
+
+    // 啟動應用
+    async function loadModel() {
+      try {
+        wordDisplay.textContent = '載入AI模型中...';
+        net = await cocoSsd.load();
+        console.log('✅ COCO-SSD 模型載入完成');
+        wordDisplay.textContent = '模型載入完成！對準物品開始學習';
+        setupCamera();
+      } catch (error) {
+        console.error('模型載入失敗:', error);
+        wordDisplay.textContent = '模型載入失敗，請重新整理頁面';
+      }
+    }
+
+    // 初始化
+    renderVocabList();
+    loadModel();
+  </script>
+</body>
+</html>
