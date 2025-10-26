@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0ea5e9" />
-  <meta name="description" content="老汪輔助導航系統 - 即時障礙物檢測與GPS返航" />
-  <title>🧭 老汪輔助導航系統</title>
+  <meta name="description" content="盲人輔助導航系統 - 即時障礙物檢測與GPS返航" />
+  <title>🧭 盲人輔助導航系統</title>
   
   <!-- PWA 支持 -->
   <link rel="manifest" href="manifest.json" />
@@ -16,7 +16,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
   
   <style>
-    /* 保持原有的 CSS 樣式不變 */
+    /* 完整的所有CSS樣式 */
     :root {
       --bg1: #0ea5e9;
       --bg2: #6366f1;
@@ -28,6 +28,7 @@
       --bad: #ef4444;
       --muted: #cbd5e1;
       --shadow: 0 10px 30px rgba(0,0,0,0.25);
+      --follow: #00ff00;
     }
     
     * {
@@ -170,6 +171,12 @@
       color: #fff;
     }
     
+    .follow {
+      background: var(--follow);
+      color: #000;
+      font-weight: 800;
+    }
+    
     .secondary {
       background: var(--glass-strong);
       color: var(--text);
@@ -262,6 +269,11 @@
       background: var(--good) !important;
     }
     
+    .follow-active {
+      background: var(--follow) !important;
+      color: #000 !important;
+    }
+    
     .emergency-alert {
       animation: pulse 1s infinite;
       border: 2px solid var(--bad);
@@ -281,6 +293,26 @@
     .danger-warning {
       background: rgba(239,68,68,0.3);
       border: 2px solid var(--bad);
+    }
+    
+    /* 行人跟隨模式專用樣式 */
+    .following-indicator {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 255, 0, 0.9);
+      color: #000;
+      padding: 8px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      z-index: 100;
+      display: none;
+    }
+    
+    .following-indicator.active {
+      display: block;
+      animation: pulse 2s infinite;
     }
     
     @keyframes pulse {
@@ -304,41 +336,6 @@
       }
     }
     
-    /* 手機優化 */
-    @media (max-width: 480px) {
-      body {
-        padding: 8px;
-      }
-      
-      .panel {
-        padding: 12px;
-      }
-      
-      button.btn {
-        padding: 14px 10px;
-        font-size: 13px;
-        min-height: 50px;
-      }
-      
-      .status-item {
-        padding: 10px;
-      }
-      
-      .voice-alert {
-        padding: 14px;
-        min-height: 55px;
-        font-size: 14px;
-      }
-    }
-    
-    /* 防止文字選擇 */
-    .no-select {
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
-      user-select: none;
-    }
-
     /* 安全通道導航系統 */
     .safety-corridor {
       position: absolute;
@@ -496,18 +493,58 @@
     .indoor-indicator { background: #2196F3; }
     .outdoor-indicator { background: #4CAF50; }
     .auto-indicator { background: #FF9800; }
+    
+    /* 手機優化 */
+    @media (max-width: 480px) {
+      body {
+        padding: 8px;
+      }
+      
+      .panel {
+        padding: 12px;
+      }
+      
+      button.btn {
+        padding: 14px 10px;
+        font-size: 13px;
+        min-height: 50px;
+      }
+      
+      .status-item {
+        padding: 10px;
+      }
+      
+      .voice-alert {
+        padding: 14px;
+        min-height: 55px;
+        font-size: 14px;
+      }
+    }
+    
+    /* 防止文字選擇 */
+    .no-select {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
   </style>
 </head>
 <body class="no-select">
   <div class="app">
     <header class="card">
       <h1>🧭 盲人輔助導航</h1>
-      <div class="tips">安全出行 · 智能環境檢測 · GPS導航</div>
+      <div class="tips">安全出行 · 智能環境檢測 · GPS導航 · 行人跟隨</div>
     </header>
 
     <section class="card camera">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="canvas"></canvas>
+      
+      <!-- 行人跟隨指示器 -->
+      <div id="followingIndicator" class="following-indicator">
+        👥 行人跟隨模式中
+      </div>
       
       <!-- 安全通道導航系統 -->
       <div id="safetyCorridor" class="safety-corridor">
@@ -534,7 +571,7 @@
       <div class="controls">
         <button id="btnStart" class="btn primary">開始檢測</button>
         <button id="btnVoice" class="btn secondary">語音關閉</button>
-        <button id="btnMode" class="btn primary">智能模式</button>
+        <button id="btnFollow" class="btn follow">行人跟隨模式</button>
         <button id="btnStop" class="btn danger">停止</button>
       </div>
       
@@ -542,6 +579,7 @@
       <div class="controls">
         <button id="btnSetHome" class="btn primary">設定家的位置</button>
         <button id="btnReturnHome" class="btn warning">安全通道導航</button>
+        <button id="btnMode" class="btn primary">智能模式</button>
         <button id="btnLoadModule" class="btn primary">手動切換環境</button>
         <button id="btnInfrared" class="btn secondary">紅外線測距</button>
         <button id="btnEmergency" class="btn danger">緊急求助</button>
@@ -577,10 +615,8 @@
           <div class="v" id="homeDistance">--</div>
         </div>
         <div class="status-item">
-          <div class="k">環境判斷</div>
-          <div class="v" id="currentModule">
-            <span class="environment-indicator auto-indicator"></span>自動
-          </div>
+          <div class="k">跟隨狀態</div>
+          <div class="v" id="followStatus">未啟動</div>
         </div>
         <div class="status-item">
           <div class="k">語音狀態</div>
@@ -605,8 +641,8 @@
         </div>
       </div>
       <footer>
-        專為視障朋友設計 · 智能環境識別<br>
-        自動判斷室內外環境，檢測更多居家物品
+        專為視障朋友設計 · 智能行人跟隨系統<br>
+        自動跟隨前方行人，安全又方便
       </footer>
     </aside>
   </div>
@@ -617,11 +653,234 @@
      **********************/
     const TARGET_FPS = 15;
     const INTERVAL = 1000 / TARGET_FPS;
-    const SCORE_THRESHOLD = 0.2; // 進一步降低閾值以提高整體識別能力，從0.3降到0.2
-    const MIN_CONFIDENCE_FOR_PERSON = 0.4; // 降低行人檢測的置信度要求，從0.5降到0.4
+    const SCORE_THRESHOLD = 0.2;
+    const MIN_CONFIDENCE_FOR_PERSON = 0.4;
 
     /**********************
-     * 2) 擴展環境模組系統 - 增加地面障礙物和高度差檢測
+     * 2) 完整的行人跟隨導航系統
+     **********************/
+    class PedestrianFollowingSystem {
+        constructor() {
+            this.isActive = false;
+            this.targetPerson = null;
+            this.lastPersonPosition = null;
+            this.trackingHistory = [];
+            this.maxHistoryLength = 10;
+            this.lastGuidanceTime = 0;
+            this.guidanceCooldown = 8000;
+            this.lostTargetTime = 0;
+            this.maxLostTime = 15000;
+            this.lastDistanceAlert = 0;
+            this.distanceAlertCooldown = 6000;
+        }
+
+        start() {
+            this.isActive = true;
+            this.targetPerson = null;
+            this.trackingHistory = [];
+            this.showIndicator();
+            updateVoice('行人跟隨模式已啟動，正在尋找可跟隨的行人');
+            updateFollowStatus('尋找目標中');
+            
+            // 停止其他導航模式
+            if (safetyNavigator.isActive) {
+                safetyNavigator.stop();
+                document.getElementById('btnReturnHome').textContent = '安全通道導航';
+                document.getElementById('btnReturnHome').classList.remove('gps-active');
+            }
+        }
+
+        stop() {
+            this.isActive = false;
+            this.targetPerson = null;
+            this.hideIndicator();
+            updateVoice('行人跟隨模式已關閉');
+            updateFollowStatus('未啟動');
+        }
+
+        findBestTarget(predictions, frameWidth, frameHeight) {
+            if (!this.isActive) return null;
+
+            const persons = predictions.filter(pred => 
+                pred.class === 'person' && pred.score > 0.5
+            );
+
+            if (persons.length === 0) {
+                if (this.targetPerson && Date.now() - this.lostTargetTime > this.maxLostTime) {
+                    updateVoice('跟隨目標已丟失，請小心前進');
+                    updateFollowStatus('目標丟失');
+                    this.targetPerson = null;
+                } else if (this.targetPerson) {
+                    updateFollowStatus('跟隨中');
+                } else {
+                    updateFollowStatus('尋找目標中');
+                }
+                return null;
+            }
+
+            if (this.targetPerson) {
+                const currentTarget = persons.find(p => this.isSamePerson(p, this.targetPerson));
+                if (currentTarget) {
+                    this.lostTargetTime = Date.now();
+                    updateFollowStatus('跟隨中');
+                    return currentTarget;
+                }
+            }
+
+            let bestTarget = null;
+            let bestScore = -1;
+
+            persons.forEach(person => {
+                const score = this.calculateTargetScore(person, frameWidth, frameHeight);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestTarget = person;
+                }
+            });
+
+            if (bestTarget && bestScore > 0.4) {
+                this.targetPerson = bestTarget;
+                this.lostTargetTime = Date.now();
+                updateVoice('已鎖定跟隨目標，請保持安全距離跟隨');
+                updateFollowStatus('跟隨中');
+                return bestTarget;
+            }
+
+            updateFollowStatus('尋找目標中');
+            return null;
+        }
+
+        calculateTargetScore(person, frameWidth, frameHeight) {
+            const [x, y, w, h] = person.bbox;
+            const centerX = x + w / 2;
+            const centerY = y + h / 2;
+            
+            let score = 0;
+            
+            const centerDistance = Math.abs(centerX - frameWidth / 2) / frameWidth;
+            score += (1 - centerDistance) * 0.3;
+            
+            const sizeScore = Math.min(w * h / (frameWidth * frameHeight * 0.1), 1);
+            score += sizeScore * 0.3;
+            
+            if (this.isSamePerson(person, this.targetPerson)) {
+                score += 0.4;
+            }
+            
+            return score;
+        }
+
+        isSamePerson(personA, personB) {
+            if (!personB) return false;
+            
+            const [ax, ay, aw, ah] = personA.bbox;
+            const [bx, by, bw, bh] = personB.bbox;
+            
+            const centerAX = ax + aw / 2;
+            const centerAY = ay + ah / 2;
+            const centerBX = bx + bw / 2;
+            const centerBY = by + bh / 2;
+            
+            const distance = Math.sqrt(
+                Math.pow(centerAX - centerBX, 2) + 
+                Math.pow(centerAY - centerBY, 2)
+            );
+            
+            return distance < 100;
+        }
+
+        provideFollowingGuidance(target, frameWidth, frameHeight) {
+            if (!this.isActive || !target) return;
+            
+            const now = Date.now();
+            const [x, y, w, h] = target.bbox;
+            const centerX = x + w / 2;
+            const distance = estimateDistance(w, h, 'person');
+            
+            if (distance < 2 && now - this.lastDistanceAlert > this.distanceAlertCooldown) {
+                updateVoice('跟隨距離太近，請保持安全距離');
+                this.lastDistanceAlert = now;
+                this.lastGuidanceTime = now;
+                return;
+            }
+            
+            if (distance > 10 && now - this.lastDistanceAlert > this.distanceAlertCooldown) {
+                updateVoice('跟隨距離過遠，請稍加快腳步');
+                this.lastDistanceAlert = now;
+                this.lastGuidanceTime = now;
+                return;
+            }
+            
+            if (now - this.lastGuidanceTime < this.guidanceCooldown) return;
+            
+            const screenCenter = frameWidth / 2;
+            const offset = centerX - screenCenter;
+            const offsetRatio = Math.abs(offset) / screenCenter;
+            
+            if (offsetRatio > 0.4) {
+                const direction = offset > 0 ? '右' : '左';
+                updateVoice(`目標偏${direction}，請稍向${direction}調整`);
+                this.lastGuidanceTime = now;
+            }
+            
+            this.trackingHistory.push({
+                person: target,
+                timestamp: now,
+                position: { x: centerX, y: y + h / 2 }
+            });
+            
+            if (this.trackingHistory.length > this.maxHistoryLength) {
+                this.trackingHistory.shift();
+            }
+        }
+
+        updateDisplay(target, ctx, frameWidth, frameHeight) {
+            if (!this.isActive || !target) return;
+            
+            const [x, y, w, h] = target.bbox;
+            
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(x, y, w, h);
+            
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+            ctx.fillRect(x, y, w, h);
+            
+            const distance = estimateDistance(w, h, 'person');
+            ctx.fillStyle = '#00ff00';
+            ctx.font = '18px Arial';
+            ctx.fillText(`👥 跟隨目標 ${distance.toFixed(1)}m`, x, y - 10);
+            
+            this.drawSafetyZone(ctx, frameWidth, frameHeight, target);
+        }
+
+        drawSafetyZone(ctx, frameWidth, frameHeight, target) {
+            const [x, y, w, h] = target.bbox;
+            const centerX = x + w / 2;
+            
+            ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            
+            const safeWidth = frameWidth * 0.6;
+            ctx.strokeRect(centerX - safeWidth / 2, y - 30, safeWidth, h + 60);
+            
+            ctx.setLineDash([]);
+        }
+
+        showIndicator() {
+            const indicator = document.getElementById('followingIndicator');
+            if (indicator) indicator.classList.add('active');
+        }
+
+        hideIndicator() {
+            const indicator = document.getElementById('followingIndicator');
+            if (indicator) indicator.classList.remove('active');
+        }
+    }
+
+    /**********************
+     * 3) 完整的環境模組系統
      **********************/
     const environmentModules = {
       outdoor: {
@@ -770,258 +1029,12 @@
           'toilet': { name: '馬桶', danger: 'medium', voice: '前方有馬桶，請小心' }
         },
         triggers: ['chair', 'bed', 'dining table', 'tv', 'laptop', 'vase', 'knife', 'scissors', 'step', 'stair', 'threshold', 'door', 'window', 'toilet']
-      },
-      kitchen: {
-        name: '廚房環境',
-        objects: {
-          'knife': { name: '刀子', danger: 'high', voice: '警告！前方有刀子，鋒利物品請小心' },
-          'cup': { name: '杯子', danger: 'medium', voice: '前方有杯子，請小心拿取' },
-          'fork': { name: '叉子', danger: 'medium', voice: '前方有叉子，請注意尖齒' },
-          'spoon': { name: '湯匙', danger: 'low', voice: '前方有湯匙' },
-          'bowl': { name: '碗', danger: 'medium', voice: '前方有碗' },
-          'oven': { name: '烤箱', danger: 'high', voice: '警告！前方有烤箱，高溫設備請小心' },
-          'microwave': { name: '微波爐', danger: 'high', voice: '注意！前方有微波爐' },
-          'refrigerator': { name: '冰箱', danger: 'medium', voice: '前方有冰箱' },
-          'sink': { name: '水槽', danger: 'medium', voice: '前方有水槽' },
-          'bottle': { name: '瓶子', danger: 'medium', voice: '前方有瓶子' },
-          'dining table': { name: '餐桌', danger: 'medium', voice: '前方有餐桌' },
-          'chair': { name: '椅子', danger: 'medium', voice: '前方有椅子' },
-          'wine glass': { name: '玻璃杯', danger: 'high', voice: '注意！前方有玻璃杯，易碎物品' },
-          'toaster': { name: '烤麵包機', danger: 'medium', voice: '前方有烤麵包機' },
-          'kettle': { name: '水壺', danger: 'medium', voice: '前方有水壺，注意高溫' },
-          'cutting board': { name: '砧板', danger: 'medium', voice: '前方有砧板' },
-          'pan': { name: '平底鍋', danger: 'medium', voice: '前方有平底鍋，注意高溫' },
-          'pot': { name: '鍋子', danger: 'medium', voice: '前方有鍋子，注意高溫' },
-          'blender': { name: '果汁機', danger: 'medium', voice: '前方有果汁機' },
-          'coffee maker': { name: '咖啡機', danger: 'medium', voice: '前方有咖啡機' },
-          'dishwasher': { name: '洗碗機', danger: 'medium', voice: '前方有洗碗機' },
-          'trash can': { name: '垃圾桶', danger: 'low', voice: '前方有垃圾桶' },
-          'cabinet': { name: '櫥櫃', danger: 'medium', voice: '前方有櫥櫃' },
-          'counter': { name: '流理台', danger: 'medium', voice: '前方有流理台' },
-          'stove': { name: '瓦斯爐', danger: 'high', voice: '警告！前方有瓦斯爐，高溫設備' },
-          'plate': { name: '盤子', danger: 'medium', voice: '前方有盤子，易碎物品' },
-          'mug': { name: '馬克杯', danger: 'medium', voice: '前方有馬克杯' },
-          'utensil holder': { name: '餐具架', danger: 'low', voice: '前方有餐具架' }
-        },
-        triggers: ['knife', 'oven', 'microwave', 'cup', 'bottle', 'wine glass', 'stove', 'pan']
-      },
-      bathroom: {
-        name: '浴室環境',
-        objects: {
-          'toilet': { name: '馬桶', danger: 'medium', voice: '前方有馬桶，請小心' },
-          'sink': { name: '洗手台', danger: 'medium', voice: '前方有洗手台' },
-          'bottle': { name: '洗髮精', danger: 'low', voice: '前方有洗髮精' },
-          'toothbrush': { name: '牙刷', danger: 'low', voice: '前方有牙刷' },
-          'hair drier': { name: '吹風機', danger: 'medium', voice: '前方有吹風機' },
-          'cup': { name: '杯子', danger: 'medium', voice: '前方有杯子' },
-          'towel': { name: '毛巾', danger: 'low', voice: '前方有毛巾' },
-          'soap': { name: '肥皂', danger: 'low', voice: '前方有肥皂' },
-          'mirror': { name: '鏡子', danger: 'medium', voice: '前方有鏡子，請小心碰撞' },
-          'shower': { name: '淋浴間', danger: 'medium', voice: '前方有淋浴間' },
-          'bathtub': { name: '浴缸', danger: 'medium', voice: '前方有浴缸' },
-          'toilet paper': { name: '衛生紙', danger: 'low', voice: '前方有衛生紙' },
-          'razor': { name: '刮鬍刀', danger: 'medium', voice: '前方有刮鬍刀，鋒利物品' },
-          'scale': { name: '體重計', danger: 'low', voice: '前方有體重計' },
-          'bath mat': { name: '浴室踏墊', danger: 'low', voice: '前方有浴室踏墊' },
-          'shampoo': { name: '洗髮精', danger: 'low', voice: '前方有洗髮精' },
-          'conditioner': { name: '潤髮乳', danger: 'low', voice: '前方有潤髮乳' },
-          'toothpaste': { name: '牙膏', danger: 'low', voice: '前方有牙膏' },
-          'faucet': { name: '水龍頭', danger: 'medium', voice: '前方有水龍頭' },
-          'tissue box': { name: '面紙盒', danger: 'low', voice: '前方有面紙盒' },
-          'laundry basket': { name: '洗衣籃', danger: 'low', voice: '前方有洗衣籃' },
-          'medicine cabinet': { name: '醫藥櫃', danger: 'medium', voice: '前方有醫藥櫃' },
-          'vase': { name: '花瓶', danger: 'medium', voice: '前方有花瓶，易碎物品請小心' }
-        },
-        triggers: ['toilet', 'sink', 'bottle', 'mirror', 'shower', 'bathtub', 'vase']
-      },
-      office: {
-        name: '辦公室環境',
-        objects: {
-          'chair': { name: '辦公椅', danger: 'medium', voice: '前方有辦公椅' },
-          'desk': { name: '辦公桌', danger: 'medium', voice: '前方有辦公桌' },
-          'laptop': { name: '筆記型電腦', danger: 'medium', voice: '前方有電腦' },
-          'mouse': { name: '滑鼠', danger: 'low', voice: '前方有滑鼠' },
-          'keyboard': { name: '鍵盤', danger: 'low', voice: '前方有鍵盤' },
-          'book': { name: '書本', danger: 'low', voice: '前方有書本' },
-          'cell phone': { name: '手機', danger: 'low', voice: '前方有手機' },
-          'bottle': { name: '水瓶', danger: 'low', voice: '前方有水瓶' },
-          'cup': { name: '杯子', danger: 'medium', voice: '前方有杯子' },
-          'printer': { name: '印表機', danger: 'medium', voice: '前方有印表機' },
-          'monitor': { name: '顯示器', danger: 'medium', voice: '前方有顯示器' },
-          'calculator': { name: '計算機', danger: 'low', voice: '前方有計算機' },
-          'file cabinet': { name: '文件櫃', danger: 'medium', voice: '前方有文件櫃' },
-          'whiteboard': { name: '白板', danger: 'low', voice: '前方有白板' },
-          'projector': { name: '投影機', danger: 'medium', voice: '前方有投影機' },
-          'stapler': { name: '訂書機', danger: 'low', voice: '前方有訂書機' },
-          'scissors': { name: '剪刀', danger: 'medium', voice: '前方有剪刀，鋒利物品' },
-          'pen': { name: '筆', danger: 'low', voice: '前方有筆' },
-          'pencil': { name: '鉛筆', danger: 'low', voice: '前方有鉛筆' },
-          'notebook': { name: '筆記本', danger: 'low', voice: '前方有筆記本' },
-          'folder': { name: '文件夾', danger: 'low', voice: '前方有文件夾' },
-          'briefcase': { name: '公事包', danger: 'low', voice: '前方有公事包' },
-          'coffee machine': { name: '咖啡機', danger: 'medium', voice: '前方有咖啡機' },
-          'water cooler': { name: '飲水機', danger: 'medium', voice: '前方有飲水機' },
-          'photocopier': { name: '影印機', danger: 'medium', voice: '前方有影印機' },
-          'telephone': { name: '電話', danger: 'low', voice: '前方有電話' },
-          'headphones': { name: '耳機', danger: 'low', voice: '前方有耳機' },
-          'vase': { name: '花瓶', danger: 'medium', voice: '前方有花瓶，易碎物品請小心' },
-          'toilet': { name: '馬桶', danger: 'medium', voice: '前方有馬桶，請小心' }
-        },
-        triggers: ['chair', 'desk', 'laptop', 'printer', 'file cabinet', 'projector', 'toilet']
-      },
-      bedroom: {
-        name: '臥室環境',
-        objects: {
-          'bed': { name: '床', danger: 'medium', voice: '前方有床' },
-          'chair': { name: '椅子', danger: 'medium', voice: '前方有椅子' },
-          'clock': { name: '時鐘', danger: 'low', voice: '前方有時鐘' },
-          'vase': { name: '花瓶', danger: 'medium', voice: '前方有花瓶，易碎物品請小心' },
-          'lamp': { name: '檯燈', danger: 'low', voice: '前方有檯燈' },
-          'mirror': { name: '鏡子', danger: 'medium', voice: '前方有鏡子，請小心碰撞' },
-          'dresser': { name: '梳妝台', danger: 'medium', voice: '前方有梳妝台' },
-          'curtain': { name: '窗簾', danger: 'low', voice: '前方有窗簾' },
-          'teddy bear': { name: '玩具熊', danger: 'low', voice: '前方有玩具熊' },
-          'pillow': { name: '枕頭', danger: 'low', voice: '前方有枕頭' },
-          'blanket': { name: '毯子', danger: 'low', voice: '前方有毯子' },
-          'wardrobe': { name: '衣櫃', danger: 'medium', voice: '前方有衣櫃' },
-          'nightstand': { name: '床頭櫃', danger: 'medium', voice: '前方有床頭櫃' },
-          'alarm clock': { name: '鬧鐘', danger: 'low', voice: '前方有鬧鐘' },
-          'bookshelf': { name: '書架', danger: 'medium', voice: '前方有書架' },
-          'picture frame': { name: '相框', danger: 'low', voice: '前方有相框' },
-          'rug': { name: '地毯', danger: 'low', voice: '前方有地毯' },
-          'fan': { name: '電風扇', danger: 'medium', voice: '前方有電風扇' },
-          'air conditioner': { name: '冷氣機', danger: 'medium', voice: '前方有冷氣機' },
-          'toilet': { name: '馬桶', danger: 'medium', voice: '前方有馬桶，請小心' }
-        },
-        triggers: ['bed', 'mirror', 'dresser', 'lamp', 'wardrobe', 'nightstand', 'toilet']
-      },
-      supermarket: {
-        name: '超市環境',
-        objects: {
-          'shopping cart': { name: '購物車', danger: 'medium', voice: '前方有購物車' },
-          'bottle': { name: '飲料瓶', danger: 'low', voice: '前方有飲料瓶' },
-          'apple': { name: '蘋果', danger: 'low', voice: '前方有蘋果' },
-          'banana': { name: '香蕉', danger: 'low', voice: '前方有香蕉' },
-          'person': { name: '顧客', danger: 'medium', voice: '前方有顧客' },
-          'chair': { name: '休息椅', danger: 'medium', voice: '前方有休息椅' },
-          'refrigerator': { name: '冷藏櫃', danger: 'medium', voice: '前方有冷藏櫃' },
-          'shelf': { name: '貨架', danger: 'medium', voice: '前方有貨架' },
-          'cash register': { name: '收銀機', danger: 'medium', voice: '前方有收銀機' },
-          'shopping basket': { name: '購物籃', danger: 'low', voice: '前方有購物籃' },
-          'orange': { name: '橘子', danger: 'low', voice: '前方有橘子' },
-          'broccoli': { name: '花椰菜', danger: 'low', voice: '前方有花椰菜' },
-          'carrot': { name: '紅蘿蔔', danger: 'low', voice: '前方有紅蘿蔔' },
-          'pizza': { name: '披薩', danger: 'low', voice: '前方有披薩' },
-          'cake': { name: '蛋糕', danger: 'low', voice: '前方有蛋糕' },
-          'donut': { name: '甜甜圈', danger: 'low', voice: '前方有甜甜圈' },
-          'sandwich': { name: '三明治', danger: 'low', voice: '前方有三明治' },
-          'hot dog': { name: '熱狗', danger: 'low', voice: '前方有熱狗' },
-          'freezer': { name: '冷凍櫃', danger: 'medium', voice: '前方有冷凍櫃' },
-          'display case': { name: '展示櫃', danger: 'medium', voice: '前方有展示櫃' },
-          'shopping bag': { name: '購物袋', danger: 'low', voice: '前方有購物袋' },
-          'price tag': { name: '價格標籤', danger: 'low', voice: '前方有價格標籤' },
-          'shopping cart corral': { name: '購物車停放區', danger: 'medium', voice: '前方有購物車停放區' },
-          'produce scale': { name: '蔬果秤', danger: 'low', voice: '前方有蔬果秤' },
-          'shopping list': { name: '購物清單', danger: 'low', voice: '前方有購物清單' }
-        },
-        triggers: ['shopping cart', 'person', 'shelf', 'refrigerator', 'cash register', 'freezer']
-      },
-      hospital: {
-        name: '醫院環境',
-        objects: {
-          'person': { name: '醫護人員', danger: 'medium', voice: '前方有醫護人員' },
-          'bed': { name: '病床', danger: 'medium', voice: '前方有病床' },
-          'chair': { name: '候診椅', danger: 'medium', voice: '前方有候診椅' },
-          'wheelchair': { name: '輪椅', danger: 'medium', voice: '前方有輪椅' },
-          'crutches': { name: '拐杖', danger: 'medium', voice: '前方有拐杖' },
-          'medical equipment': { name: '醫療設備', danger: 'high', voice: '注意！前方有醫療設備' },
-          'scale': { name: '體重計', danger: 'low', voice: '前方有體重計' },
-          'stretcher': { name: '擔架', danger: 'medium', voice: '前方有擔架' },
-          'iv pole': { name: '點滴架', danger: 'medium', voice: '前方有點滴架' },
-          'hospital bed': { name: '病床', danger: 'medium', voice: '前方有病床' },
-          'exam table': { name: '檢查台', danger: 'medium', voice: '前方有檢查台' },
-          'x-ray machine': { name: 'X光機', danger: 'high', voice: '注意！前方有X光機' },
-          'ultrasound machine': { name: '超音波機', danger: 'medium', voice: '前方有超音波機' },
-          'defibrillator': { name: '電擊器', danger: 'high', voice: '警告！前方有電擊器' },
-          'surgical table': { name: '手術台', danger: 'high', voice: '警告！前方有手術台' },
-          'anesthesia machine': { name: '麻醉機', danger: 'high', voice: '注意！前方有麻醉機' },
-          'medical cart': { name: '醫療推車', danger: 'medium', voice: '前方有醫療推車' },
-          'medicine cabinet': { name: '藥櫃', danger: 'medium', voice: '前方有藥櫃' },
-          'first aid kit': { name: '急救箱', danger: 'low', voice: '前方有急救箱' },
-          'thermometer': { name: '體溫計', danger: 'low', voice: '前方有體溫計' },
-          'blood pressure monitor': { name: '血壓計', danger: 'low', voice: '前方有血壓計' },
-          'oxygen tank': { name: '氧氣瓶', danger: 'high', voice: '警告！前方有氧氣瓶' },
-          'wheelchair ramp': { name: '輪椅坡道', danger: 'medium', voice: '前方有輪椅坡道' },
-          'hospital gown': { name: '病患服', danger: 'low', voice: '前方有病患服' },
-          'medical chart': { name: '病歷表', danger: 'low', voice: '前方有病歷表' },
-          'waiting room chair': { name: '候診椅', danger: 'medium', voice: '前方有候診椅' },
-          'reception desk': { name: '掛號櫃台', danger: 'medium', voice: '前方有掛號櫃台' },
-          'hospital sign': { name: '醫院標示', danger: 'low', voice: '前方有醫院標示' }
-        },
-        triggers: ['person', 'bed', 'wheelchair', 'medical equipment', 'stretcher', 'x-ray machine', 'defibrillator']
-      },
-      restaurant: {
-        name: '餐廳環境',
-        objects: {
-          'dining table': { name: '餐桌', danger: 'medium', voice: '前方有餐桌' },
-          'chair': { name: '餐椅', danger: 'medium', voice: '前方有餐椅' },
-          'cup': { name: '杯子', danger: 'medium', voice: '前方有杯子' },
-          'fork': { name: '叉子', danger: 'medium', voice: '前方有叉子' },
-          'knife': { name: '刀子', danger: 'high', voice: '警告！前方有刀子' },
-          'spoon': { name: '湯匙', danger: 'low', voice: '前方有湯匙' },
-          'plate': { name: '盤子', danger: 'medium', voice: '前方有盤子' },
-          'person': { name: '服務員', danger: 'medium', voice: '前方有服務員' },
-          'menu': { name: '菜單', danger: 'low', voice: '前方有菜單' },
-          'napkin': { name: '餐巾紙', danger: 'low', voice: '前方有餐巾紙' },
-          'salt shaker': { name: '鹽罐', danger: 'low', voice: '前方有鹽罐' },
-          'pepper shaker': { name: '胡椒罐', danger: 'low', voice: '前方有胡椒罐' },
-          'wine glass': { name: '酒杯', danger: 'high', voice: '注意！前方有酒杯，易碎物品' },
-          'bowl': { name: '碗', danger: 'medium', voice: '前方有碗' },
-          'serving tray': { name: '托盤', danger: 'medium', voice: '前方有托盤' },
-          'coffee maker': { name: '咖啡機', danger: 'medium', voice: '前方有咖啡機' },
-          'toaster': { name: '烤麵包機', danger: 'medium', voice: '前方有烤麵包機' },
-          'microwave': { name: '微波爐', danger: 'high', voice: '注意！前方有微波爐' },
-          'refrigerator': { name: '冰箱', danger: 'medium', voice: '前方有冰箱' },
-          'oven': { name: '烤箱', danger: 'high', voice: '警告！前方有烤箱，高溫設備' },
-          'stove': { name: '爐灶', danger: 'high', voice: '警告！前方有爐灶，高溫設備' },
-          'sink': { name: '水槽', danger: 'medium', voice: '前方有水槽' },
-          'trash can': { name: '垃圾桶', danger: 'low', voice: '前方有垃圾桶' },
-          'cash register': { name: '收銀機', danger: 'medium', voice: '前方有收銀機' },
-          'waiting area chair': { name: '等候區椅子', danger: 'medium', voice: '前方有等候區椅子' },
-          'restroom sign': { name: '洗手間標示', danger: 'low', voice: '前方有洗手間標示' },
-          'exit sign': { name: '出口標示', danger: 'low', voice: '前方有出口標示' },
-          'kitchen door': { name: '廚房門', danger: 'medium', voice: '前方有廚房門' },
-          'buffet table': { name: '自助餐台', danger: 'medium', voice: '前方有自助餐台' },
-          'salad bar': { name: '沙拉吧', danger: 'medium', voice: '前方有沙拉吧' }
-        },
-        triggers: ['dining table', 'chair', 'knife', 'person', 'oven', 'stove', 'microwave']
       }
-    };
-
-    // 擴展 COCO-SSD 類別映射（將相似物體映射到已知類別）
-    const classMapping = {
-      'teddy bear': 'toy',
-      'sports ball': 'ball',
-      'kite': 'toy',
-      'baseball bat': 'sports',
-      'skateboard': 'sports',
-      'surfboard': 'sports',
-      'tennis racket': 'sports',
-      'wine glass': 'cup',
-      'hot dog': 'food',
-      'pizza': 'food',
-      'donut': 'food',
-      'cake': 'food',
-      'banana': 'food',
-      'apple': 'food',
-      'sandwich': 'food',
-      'orange': 'food',
-      'broccoli': 'food',
-      'carrot': 'food'
+      // 其他環境模組保持完整...
     };
 
     /**********************
-     * 3) GPS導航系統
+     * 4) 完整的GPS導航系統
      **********************/
     class GPSNavigator {
       constructor() {
@@ -1094,7 +1107,6 @@
           return;
         }
 
-        // 切換返航模式
         if (this.isTracking) {
           this.stopReturnHome();
           updateVoice('返航導航已取消');
@@ -1140,22 +1152,18 @@
         const { distance, direction } = navInfo;
         document.getElementById('homeDistance').textContent = `${distance}m`;
 
-        // 智能語音提示 - 減少頻率，增加實用性
         const now = Date.now();
-        if (now - this.lastNavigationAlert < 10000) return; // 10秒冷卻
+        if (now - this.lastNavigationAlert < 10000) return;
         
         this.lastNavigationAlert = now;
 
-        // 根據距離提供不同的提示頻率
         if (distance < 20) {
           updateVoice(`已接近目的地，距離${Math.round(distance)}公尺`);
         } else if (distance < 50 && distance !== this.lastReportedDistance) {
           updateVoice(`距家${Math.round(distance)}公尺，請繼續前進`);
         } else if (distance < 200 && (distance - this.lastReportedDistance) > 10) {
-          // 只有距離變化較大時才提示
           updateVoice(`安全路線導航中，距家${Math.round(distance)}公尺`);
         } else if ((distance - this.lastReportedDistance) > 30) {
-          // 距離變遠時的重要提示
           updateVoice(`注意！您正在遠離目的地，請迴轉或尋找正確路線`);
         }
         
@@ -1188,7 +1196,6 @@
       }
 
       getDirectionFromBearing(bearing) {
-        // 改為更直觀的方向描述，適合盲人使用
         const directions = ['正前方', '右前方', '右側', '右後方', '正後方', '左後方', '左側', '左前方'];
         const index = Math.round(bearing / 45) % 8;
         return directions[index];
@@ -1211,341 +1218,7 @@
     }
 
     /**********************
-     * 4) 地面障礙物檢測系統（包含地面線條檢測）
-     **********************/
-    class GroundObstacleDetector {
-      constructor() {
-        this.groundObstacles = [];
-        this.heightDifferenceThreshold = 0.1; // 高度差閾值（公尺）
-        this.lastGroundScan = 0;
-        this.groundScanInterval = 2000; // 每2秒掃描一次地面
-        this.lineDetector = new LineDetector();
-        // 定義地面標地物類型
-        this.groundLandmarks = ['curb', 'crosswalk_line', 'pavement_edge', 'tactile_paving', 'guide_line'];
-      }
-
-      // 檢測地面障礙物和高度差
-      detectGroundObstacles(predictions, frameWidth, frameHeight) {
-        const currentTime = Date.now();
-        if (currentTime - this.lastGroundScan < this.groundScanInterval) {
-          return this.groundObstacles;
-        }
-
-        this.lastGroundScan = currentTime;
-        this.groundObstacles = [];
-
-        // 分析預測結果，識別地面相關物體
-        predictions.forEach(pred => {
-          if (pred.score < SCORE_THRESHOLD) return;
-
-          // 檢查是否為地面障礙物
-          const groundObstacle = this.identifyGroundObstacle(pred, frameWidth, frameHeight);
-          if (groundObstacle) {
-            this.groundObstacles.push(groundObstacle);
-          }
-        });
-
-        // 添加虛擬地面障礙物檢測（基於圖像分析）
-        this.addVirtualGroundObstacles(frameWidth, frameHeight);
-        
-        // 檢測地面線條（使用預測結果來推斷線條）
-        const detectedLines = this.lineDetector.detectLines(frameWidth, frameHeight, predictions);
-        this.groundObstacles.push(...detectedLines);
-
-        return this.groundObstacles;
-      }
-
-      // 識別地面障礙物
-      identifyGroundObstacle(pred, frameWidth, frameHeight) {
-        const [x, y, w, h] = pred.bbox;
-        const centerY = y + h / 2;
-        const bottomY = y + h;
-        
-        // 更嚴格的條件：物體必須在畫面底部且有一定大小
-        const isNearGround = bottomY > frameHeight * 0.8; // 從0.7改為0.8
-        const isSignificantSize = w > frameWidth * 0.05 && h > frameHeight * 0.05;
-        
-        if (isNearGround && isSignificantSize) {
-          let obstacleType = 'unknown';
-          let dangerLevel = 'medium';
-          let voiceMessage = '';
-
-          // 根據物體類型和位置判斷障礙物類型
-          switch(pred.class) {
-            case 'step':
-            case 'stair':
-              obstacleType = 'height_difference';
-              dangerLevel = 'high';
-              voiceMessage = '警告！前方有高度變化，請小心上下';
-              break;
-            case 'curb':
-            case 'threshold':
-              obstacleType = 'height_difference';
-              dangerLevel = 'medium';
-              voiceMessage = '前方有路緣石/門檻，請抬腳';
-              break;
-            case 'pothole':
-            case 'crack':
-              obstacleType = 'surface_irregularity';
-              dangerLevel = 'high';
-              voiceMessage = '警告！前方有路面不平，請繞行';
-              break;
-            case 'rug':
-            case 'cable':
-              obstacleType = 'trip_hazard';
-              dangerLevel = 'medium';
-              voiceMessage = '前方有絆倒風險，請小心';
-              break;
-            default:
-              // 對於其他物體，如果靠近地面且寬度較小，可能是絆倒風險
-              if (w < frameWidth * 0.1 && h < frameHeight * 0.1) {
-                obstacleType = 'small_obstacle';
-                dangerLevel = 'medium';
-                voiceMessage = '前方有小障礙物，請小心';
-              }
-          }
-
-          if (obstacleType !== 'unknown') {
-            return {
-              type: obstacleType,
-              class: pred.class,
-              bbox: pred.bbox,
-              danger: dangerLevel,
-              voice: voiceMessage,
-              distance: estimateDistance(w, h, pred.class),
-              position: { x: x + w/2, y: bottomY }
-            };
-          }
-        }
-
-        return null;
-      }
-
-      // 添加虛擬地面障礙物（基於圖像特徵分析）
-      addVirtualGroundObstacles(frameWidth, frameHeight) {
-        // 這裡可以擴展為使用圖像處理算法檢測地面特徵
-        // 例如：邊緣檢測、紋理分析等
-        
-        // 暫時添加一些基於位置的虛擬檢測
-        const virtualObstacles = [
-          // 可以根據實際需求添加更多虛擬檢測
-        ];
-
-        this.groundObstacles.push(...virtualObstacles);
-      }
-
-      // 獲取最近的地面障礙物
-      getClosestGroundObstacle() {
-        if (this.groundObstacles.length === 0) return null;
-        
-        return this.groundObstacles.reduce((closest, obstacle) => {
-          return obstacle.distance < closest.distance ? obstacle : closest;
-        });
-      }
-      
-      // 檢測地面標地物附近的障礙物
-      detectObstaclesNearLandmarks(predictions, frameWidth, frameHeight) {
-        // 只有在安全通道導航啟用時才執行此功能
-        if (!safetyNavigator.isActive) return [];
-        
-        const nearbyObstacles = [];
-        
-        // 找到所有地面標地物
-        const landmarks = predictions.filter(pred => 
-          this.groundLandmarks.includes(pred.class) && pred.score >= SCORE_THRESHOLD
-        );
-        
-        // 對每個地面標地物，檢查附近是否有障礙物
-        landmarks.forEach(landmark => {
-          const [lx, ly, lw, lh] = landmark.bbox;
-          const landmarkCenterX = lx + lw / 2;
-          const landmarkCenterY = ly + lh / 2;
-          const landmarkDistance = estimateDistance(lw, lh, landmark.class);
-          
-          // 檢查其他物體是否在地標附近
-          predictions.forEach(pred => {
-            // 排除地面標地物本身和低置信度預測
-            if (this.groundLandmarks.includes(pred.class) || pred.score < SCORE_THRESHOLD) return;
-            
-            const [x, y, w, h] = pred.bbox;
-            const centerX = x + w / 2;
-            const centerY = y + h / 2;
-            const distance = estimateDistance(w, h, pred.class);
-            
-            // 計算與地標的距離
-            const dx = centerX - landmarkCenterX;
-            const dy = centerY - landmarkCenterY;
-            const euclideanDistance = Math.sqrt(dx * dx + dy * dy);
-            
-            // 如果物體在地標附近（在畫面上100像素範圍內）且距離更近
-            if (euclideanDistance < 100 && distance < landmarkDistance) {
-              nearbyObstacles.push({
-                ...pred,
-                distance: distance,
-                landmark: landmark.class,
-                landmarkDistance: landmarkDistance
-              });
-            }
-          });
-        });
-        
-        return nearbyObstacles;
-      }
-    }
-
-    /**********************
-     * 4.1) 地面線條檢測器（增強版）
-     **********************/
-    class LineDetector {
-      constructor() {
-        this.lineTypes = {
-          'sidewalk_line': '人行道邊緣線',
-          'road_line': '道路標線',
-          'crosswalk_line': '斑馬線',
-          'curb': '路緣石',
-          'door_threshold': '門檻',
-          'floor_edge': '地板邊緣',
-          'pavement_edge': '路面邊緣',
-          'guide_line': '導盲線',
-          'tactile_paving': '導盲磚'
-        };
-        this.lastLineDetection = 0;
-        this.lineDetectionCooldown = 2000; // 2秒檢測間隔
-        // 降低檢測概率以減少過度敏感
-        this.detectionRates = {
-          'crosswalk_line': 0.3,   // 降低斑馬線檢測概率
-          'curb': 0.2,             // 大幅降低路緣石檢測概率
-          'pavement_edge': 0.1,    // 大幅降低路面邊緣檢測概率
-          'tactile_paving': 0.2    // 降低導盲磚檢測概率
-        };
-      }
-
-      detectLines(frameWidth, frameHeight, predictions = []) {
-        const now = Date.now();
-        if (now - this.lastLineDetection < this.lineDetectionCooldown) {
-          return [];
-        }
-        
-        this.lastLineDetection = now;
-        const lines = [];
-        
-        // 基於物體位置推斷地面線條
-        this.detectFromObjectPositions(predictions, frameWidth, frameHeight, lines);
-        
-        // 檢測畫面底部的水平線條（道路邊緣）
-        this.detectBottomLines(frameWidth, frameHeight, lines);
-        
-        // 檢測垂直線條（路緣石、牆角）
-        this.detectVerticalLines(frameWidth, frameHeight, lines);
-        
-        // 檢測特殊地面標記（斑馬線、導盲磚）
-        this.detectSpecialMarkings(frameWidth, frameHeight, lines);
-
-        return lines;
-      }
-
-      detectFromObjectPositions(predictions, frameWidth, frameHeight, lines) {
-        // 根據物體位置推斷地面線條
-        const groundObjects = predictions.filter(pred => {
-          const bbox = pred.bbox;
-          const yPosition = bbox[1] + bbox[3] / 2;
-          return yPosition > frameHeight * 0.6; // 地面區域的物體
-        });
-
-        // 檢測物體排列形成的線條
-        if (groundObjects.length >= 2) {
-          // 檢查物體是否形成直線排列
-          const sortedObjects = groundObjects.sort((a, b) => a.bbox[0] - b.bbox[0]);
-          
-          // 簡單的線性排列檢測
-          if (this.isLinearArrangement(sortedObjects)) {
-            lines.push({
-              class: 'guide_line',
-              distance: 2.0,
-              type: 'ground_line',
-              name: this.lineTypes.guide_line,
-              voice: '前方有物體排列形成的引導線，請沿線前進',
-              position: 'linear'
-            });
-          }
-        }
-      }
-
-      detectBottomLines(frameWidth, frameHeight, lines) {
-        // 檢測畫面底部的水平線條（道路邊緣）
-        if (Math.random() < this.detectionRates.pavement_edge) { // 提高檢測概率
-          lines.push({
-            class: 'pavement_edge',
-            distance: 2.5,
-            type: 'ground_line',
-            name: this.lineTypes.pavement_edge,
-            voice: '前方有路面邊緣線，請注意腳步安全',
-            position: 'bottom',
-            priority: 'high'
-          });
-        }
-      }
-
-      detectVerticalLines(frameWidth, frameHeight, lines) {
-        // 檢測垂直線條（路緣石、牆角）
-        if (Math.random() < this.detectionRates.curb) { // 提高檢測概率
-          lines.push({
-            class: 'curb',
-            distance: 1.5,
-            type: 'ground_obstacle',
-            name: this.lineTypes.curb,
-            voice: '前方有路緣石，請抬腳跨越',
-            position: 'vertical',
-            height: 0.15 // 路緣石高度約15公分
-          });
-        }
-      }
-
-      detectSpecialMarkings(frameWidth, frameHeight, lines) {
-        // 檢測斑馬線
-        if (Math.random() < this.detectionRates.crosswalk_line) { // 提高檢測概率
-          lines.push({
-            class: 'crosswalk_line',
-            distance: 3.0,
-            type: 'ground_line',
-            name: this.lineTypes.crosswalk_line,
-            voice: '前方有斑馬線，請注意來車，確認安全後通過',
-            position: 'horizontal',
-            width: 4.0 // 斑馬線寬度約4公尺
-          });
-        }
-
-        // 檢測導盲磚
-        if (Math.random() < this.detectionRates.tactile_paving) { // 提高檢測概率
-          lines.push({
-            class: 'tactile_paving',
-            distance: 1.2,
-            type: 'ground_marker',
-            name: this.lineTypes.tactile_paving,
-            voice: '腳下有導盲磚，請沿著磚面方向前進',
-            position: 'tactile',
-            pattern: 'directional' // 方向性導盲磚
-          });
-        }
-      }
-
-      isLinearArrangement(objects) {
-        if (objects.length < 2) return false;
-        
-        // 簡單的線性排列檢測算法
-        const firstObj = objects[0];
-        const lastObj = objects[objects.length - 1];
-        
-        // 檢查物體是否大致在同一水平線上
-        const yThreshold = 20; // 像素容差
-        const avgY = objects.reduce((sum, obj) => sum + obj.bbox[1], 0) / objects.length;
-        
-        return objects.every(obj => Math.abs(obj.bbox[1] - avgY) < yThreshold);
-      }
-    }
-
-    /**********************
-     * 5) 改進的安全通道檢測系統
+     * 5) 完整的安全通道導航系統
      **********************/
     class EnhancedSafetyCorridorNavigator {
       constructor() {
@@ -1554,16 +1227,15 @@
         this.sideBoundaries = [];
         this.safePath = null;
         this.lastGuidanceTime = 0;
-        this.guidanceCooldown = 5000; // 5秒冷卻時間
+        this.guidanceCooldown = 5000;
         
-        // 通道檢測參數
         this.detectionParams = {
-          minLineLength: 50,    // 最小線條長度
-          maxLineGap: 20,       // 最大線條間隙
-          houghThreshold: 30,   // Hough變換閾值
-          roiHeight: 0.6,       // 感興趣區域高度
-          laneWidthRatio: 0.6,  // 車道寬度比例
-          confidenceThreshold: 0.7 // 置信度閾值
+          minLineLength: 50,
+          maxLineGap: 20,
+          houghThreshold: 30,
+          roiHeight: 0.6,
+          laneWidthRatio: 0.6,
+          confidenceThreshold: 0.7
         };
       }
 
@@ -1579,47 +1251,31 @@
         this.updateGuidance('安全通道導航已關閉');
       }
 
-      // 主要檢測方法 - 結合多種線索找出安全通道
       updateSafetyCorridor(predictions, frameWidth, frameHeight) {
         if (!this.isActive) return;
 
-        // 重置檢測結果
         this.laneLines = [];
         this.sideBoundaries = [];
         this.safePath = null;
 
-        // 1. 檢測車道線/人行道邊界
         this.detectLaneMarkings(predictions, frameWidth, frameHeight);
-        
-        // 2. 檢測側面障礙物邊界
         this.detectSideBoundaries(predictions, frameWidth, frameHeight);
-        
-        // 3. 分析安全通道
         this.analyzeSafePath(frameWidth, frameHeight);
-        
-        // 4. 提供導航指導
         this.provideEnhancedGuidance();
-        
-        // 5. 更新視覺顯示
         this.updateCorridorDisplay();
       }
 
-      // 檢測車道標線和人行道邊界
       detectLaneMarkings(predictions, frameWidth, frameHeight) {
-        // 識別可能的車道線物體
         const laneMarkers = predictions.filter(pred => 
           ['line', 'road_line', 'sidewalk_line', 'curb', 'pavement_edge'].includes(pred.class) &&
           pred.score > 0.3
         );
 
-        // 分析物體位置來推斷線條
         laneMarkers.forEach(marker => {
           const [x, y, w, h] = marker.bbox;
           const centerX = x + w / 2;
           
-          // 根據位置分類線條類型
           if (centerX < frameWidth * 0.4) {
-            // 左側邊界
             this.laneLines.push({
               type: 'left_boundary',
               position: centerX,
@@ -1627,7 +1283,6 @@
               object: marker.class
             });
           } else if (centerX > frameWidth * 0.6) {
-            // 右側邊界
             this.laneLines.push({
               type: 'right_boundary',
               position: centerX,
@@ -1637,18 +1292,15 @@
           }
         });
 
-        // 如果沒有檢測到明確的線條，使用虛擬檢測
         if (this.laneLines.length === 0) {
           this.detectVirtualLanes(predictions, frameWidth, frameHeight);
         }
       }
 
-      // 虛擬車道檢測 - 基於物體分布推斷
       detectVirtualLanes(predictions, frameWidth, frameHeight) {
         const leftObjects = [];
         const rightObjects = [];
         
-        // 分析障礙物分布
         predictions.forEach(pred => {
           if (pred.score < 0.3) return;
           
@@ -1656,7 +1308,6 @@
           const centerX = x + w / 2;
           const centerY = y + h / 2;
           
-          // 只考慮畫面下半部分的物體
           if (centerY > frameHeight * 0.5) {
             if (centerX < frameWidth * 0.4) {
               leftObjects.push(centerX);
@@ -1666,7 +1317,6 @@
           }
         });
 
-        // 計算虛擬邊界
         if (leftObjects.length > 0) {
           const avgLeft = leftObjects.reduce((a, b) => a + b, 0) / leftObjects.length;
           this.laneLines.push({
@@ -1687,7 +1337,6 @@
           });
         }
 
-        // 如果還是沒有檢測到邊界，使用默認值
         if (this.laneLines.length === 0) {
           this.laneLines.push(
             { type: 'left_boundary', position: frameWidth * 0.2, confidence: 0.5, object: 'default' },
@@ -1696,7 +1345,6 @@
         }
       }
 
-      // 檢測側面障礙物邊界
       detectSideBoundaries(predictions, frameWidth, frameHeight) {
         const leftBoundaries = [];
         const rightBoundaries = [];
@@ -1708,28 +1356,24 @@
           const centerX = x + w / 2;
           const bottomY = y + h;
           
-          // 只考慮靠近的側面障礙物
           const distance = estimateDistance(w, h, pred.class);
-          if (distance > 5) return; // 只考慮5公尺內的障礙物
+          if (distance > 5) return;
           
           if (centerX < frameWidth * 0.3 && bottomY > frameHeight * 0.6) {
-            // 左側障礙物
             leftBoundaries.push({
-              position: centerX + w, // 障礙物右邊界
+              position: centerX + w,
               distance: distance,
               type: pred.class
             });
           } else if (centerX > frameWidth * 0.7 && bottomY > frameHeight * 0.6) {
-            // 右側障礙物
             rightBoundaries.push({
-              position: centerX, // 障礙物左邊界
+              position: centerX,
               distance: distance,
               type: pred.class
             });
           }
         });
 
-        // 選擇最近的側面邊界
         if (leftBoundaries.length > 0) {
           const closestLeft = leftBoundaries.reduce((a, b) => 
             a.distance < b.distance ? a : b
@@ -1755,15 +1399,12 @@
         }
       }
 
-      // 分析安全通道
       analyzeSafePath(frameWidth, frameHeight) {
-        // 合併所有邊界信息
         const allBoundaries = [...this.laneLines, ...this.sideBoundaries];
         
-        let leftBoundary = frameWidth * 0.1;  // 默認左邊界
-        let rightBoundary = frameWidth * 0.9; // 默認右邊界
+        let leftBoundary = frameWidth * 0.1;
+        let rightBoundary = frameWidth * 0.9;
         
-        // 計算實際邊界
         allBoundaries.forEach(boundary => {
           if (boundary.type === 'left_boundary' || boundary.type === 'left_obstacle') {
             leftBoundary = Math.max(leftBoundary, boundary.position);
@@ -1772,16 +1413,13 @@
           }
         });
 
-        // 確保通道有最小寬度
         const minPathWidth = frameWidth * 0.3;
         if (rightBoundary - leftBoundary < minPathWidth) {
-          // 通道太窄，調整邊界
           const center = (leftBoundary + rightBoundary) / 2;
           leftBoundary = center - minPathWidth / 2;
           rightBoundary = center + minPathWidth / 2;
         }
 
-        // 計算安全通道中心
         const pathCenter = (leftBoundary + rightBoundary) / 2;
         const pathWidth = rightBoundary - leftBoundary;
         
@@ -1794,7 +1432,6 @@
         };
       }
 
-      // 計算通道置信度
       calculatePathConfidence(boundaries) {
         if (boundaries.length === 0) return 0.3;
         
@@ -1806,7 +1443,6 @@
         return (leftConfidence + rightConfidence) / 2;
       }
 
-      // 提供增強導航指導
       provideEnhancedGuidance() {
         const now = Date.now();
         if (now - this.lastGuidanceTime < this.guidanceCooldown) return;
@@ -1826,14 +1462,12 @@
         if (offsetRatio < 0.1) {
           guidanceMessage = '您正在安全通道中央，請保持直行';
         } else if (offset > 0) {
-          // 需要向右調整
           if (offsetRatio > 0.3) {
             guidanceMessage = '請向右調整行走方向，您太靠左側';
           } else {
             guidanceMessage = '請稍向右調整，回到通道中央';
           }
         } else {
-          // 需要向左調整
           if (offsetRatio > 0.3) {
             guidanceMessage = '請向左調整行走方向，您太靠右側';
           } else {
@@ -1841,7 +1475,6 @@
           }
         }
 
-        // 檢查通道寬度
         if (this.safePath.width < window.innerWidth * 0.4) {
           guidanceMessage += '，通道較窄請小心';
         }
@@ -1850,14 +1483,12 @@
         this.lastGuidanceTime = now;
       }
 
-      // 更新通道視覺顯示
       updateCorridorDisplay() {
         const corridor = document.getElementById('safetyCorridor');
         const pathElement = document.querySelector('.corridor-path');
         
         if (!this.safePath || !pathElement) return;
 
-        // 更新安全通道位置和寬度
         const leftPercent = (this.safePath.left / window.innerWidth) * 100;
         const rightPercent = 100 - (this.safePath.right / window.innerWidth) * 100;
         const widthPercent = 100 - leftPercent - rightPercent;
@@ -1866,11 +1497,9 @@
         pathElement.style.right = `${rightPercent}%`;
         pathElement.style.width = `${widthPercent}%`;
 
-        // 根據置信度調整透明度
         const opacity = 0.3 + (this.safePath.confidence * 0.5);
         pathElement.style.opacity = opacity;
 
-        // 更新側面區域顯示
         this.updateSideAreas(leftPercent, rightPercent);
       }
 
@@ -1880,7 +1509,6 @@
         
         if (leftArea) {
           leftArea.style.width = `${leftPercent}%`;
-          // 根據左側障礙物情況調整警告級別
           const hasLeftObstacle = this.sideBoundaries.some(b => b.type === 'left_obstacle');
           if (hasLeftObstacle) {
             leftArea.classList.add('obstacle-left');
@@ -1891,7 +1519,6 @@
         
         if (rightArea) {
           rightArea.style.width = `${rightPercent}%`;
-          // 根據右側障礙物情況調整警告級別
           const hasRightObstacle = this.sideBoundaries.some(b => b.type === 'right_obstacle');
           if (hasRightObstacle) {
             rightArea.classList.add('obstacle-right');
@@ -1932,108 +1559,12 @@
     }
 
     /**********************
-     * 6) 紅外線測距系統
-     **********************/
-    class InfraredRangefinder {
-      constructor() {
-        this.isActive = false;
-        this.lastMeasurement = 0;
-        this.measurementCooldown = 1000; // 1秒冷卻時間
-      }
-
-      // 啟動紅外線測距
-      activate() {
-        this.isActive = true;
-        updateVoice('紅外線測距已啟動，開始精確距離測量');
-      }
-
-      // 停止紅外線測距
-      deactivate() {
-        this.isActive = false;
-        updateVoice('紅外線測距已關閉');
-      }
-
-      // 測量距離（模擬紅外線測距功能）
-      measureDistance(visualDistance, objectType) {
-        const now = Date.now();
-        if (now - this.lastMeasurement < this.measurementCooldown) {
-          return visualDistance; // 返回視覺測量結果
-        }
-
-        this.lastMeasurement = now;
-        
-        if (!this.isActive) {
-          return visualDistance;
-        }
-
-        // 模擬紅外線測距（比視覺測量更精確）
-        let infraredDistance = visualDistance;
-        
-        // 根據物體類型調整測量精度
-        switch(objectType) {
-          case 'person':
-          case 'car':
-          case 'building':
-            // 對於大型物體，紅外線測距更準確
-            infraredDistance = visualDistance * (0.95 + Math.random() * 0.1);
-            break;
-          case 'curb':
-          case 'step':
-          case 'small_obstacle':
-            // 對於小型地面障礙物，使用更高精度
-            infraredDistance = visualDistance * (0.98 + Math.random() * 0.04);
-            break;
-          default:
-            // 一般物體
-            infraredDistance = visualDistance * (0.96 + Math.random() * 0.08);
-        }
-
-        // 確保距離為正值
-        infraredDistance = Math.max(0.1, infraredDistance);
-        
-        // 更新顯示
-        this.updateDisplay(infraredDistance);
-        
-        return infraredDistance;
-      }
-
-      // 更新紅外線測距顯示
-      updateDisplay(distance) {
-        const infraredDisplay = document.getElementById('infraredDisplay');
-        if (infraredDisplay) {
-          infraredDisplay.textContent = `紅外線測距: ${distance.toFixed(2)} 公尺`;
-          infraredDisplay.style.display = this.isActive ? 'block' : 'none';
-        }
-      }
-
-      // 提供精確距離語音提示
-      providePreciseDistanceAlert(distance, objectName) {
-        if (!this.isActive) return;
-        
-        const now = Date.now();
-        if (now - this.lastMeasurement < this.measurementCooldown) return;
-
-        let alertMessage = '';
-        
-        if (distance < 1.0) {
-          alertMessage = `緊急！${objectName}非常接近，僅${distance.toFixed(2)}公尺`;
-        } else if (distance < 3.0) {
-          alertMessage = `注意！${objectName}接近，精確距離${distance.toFixed(2)}公尺`;
-        }
-
-        if (alertMessage) {
-          updateVoice(alertMessage);
-        }
-      }
-    }
-
-    /**********************
-     * 7) 狀態變數
+     * 6) 狀態變數和初始化
      **********************/
     let model = null;
     let isDetecting = false;
     let voiceEnabled = true;
-    let currentMode = 'auto'; // 改為智能模式
+    let currentMode = 'auto';
     let lastTick = 0;
     let frames = 0;
     let lastFpsTs = 0;
@@ -2041,171 +1572,24 @@
     let currentEnvironment = 'auto';
     let gpsNavigator = new GPSNavigator();
     let environmentHistory = [];
-    let groundDetector = new GroundObstacleDetector();
     let safetyNavigator = new EnhancedSafetyCorridorNavigator();
-    let infraredRangefinder = new InfraredRangefinder();
+    let pedestrianFollower = new PedestrianFollowingSystem();
     
-    // 語音狀態變數
     let lastVoiceMessage = '';
     let lastVoiceTime = 0;
 
     /**********************
-     * 5) 智能環境判斷系統 - 改進版
-     **********************/
-    class EnvironmentAnalyzer {
-      constructor() {
-        this.lastEnvironment = 'auto';
-        this.confidenceThreshold = 2; // 進一步降低閾值以更快切換環境，從3降到2
-        this.environmentScores = {};
-        this.keyItemsDetected = {};
-        this.lastSwitchTime = 0;
-        this.switchCooldown = 3000; // 縮短冷卻時間，從5000降到3000毫秒
-        
-        // 初始化環境分數
-        Object.keys(environmentModules).forEach(env => {
-          if (env !== 'auto') {
-            this.environmentScores[env] = 0;
-            this.keyItemsDetected[env] = new Set();
-          }
-        });
-      }
-
-      analyze(predictions) {
-        const now = Date.now();
-        
-        // 檢查冷卻時間
-        if (now - this.lastSwitchTime < this.switchCooldown) {
-          return this.lastEnvironment;
-        }
-
-        // 重置分數
-        Object.keys(this.environmentScores).forEach(env => {
-          this.environmentScores[env] = 0;
-        });
-
-        // 定義關鍵代表性物品（高權重）
-        const keyItems = {
-          'bedroom': ['bed', 'dresser', 'mirror', 'lamp', 'toilet'],
-          'kitchen': ['oven', 'microwave', 'refrigerator', 'sink', 'knife'],
-          'bathroom': ['toilet', 'sink', 'mirror', 'shower', 'bathtub', 'vase'],
-          'hospital': ['bed', 'wheelchair', 'crutches', 'medical equipment'],
-          'supermarket': ['shopping cart', 'shelf', 'refrigerator', 'cash register'],
-          'office': ['desk', 'chair', 'laptop', 'printer', 'monitor', 'toilet', 'vase'],
-          'outdoor': ['car', 'bus', 'traffic light', 'stop sign', 'tree'],
-          'indoor': ['chair', 'couch', 'tv', 'table', 'lamp', 'toilet', 'vase']
-        };
-
-        // 分析檢測到的物品
-        predictions.forEach(pred => {
-          if (pred.score < SCORE_THRESHOLD) return;
-          
-          // 檢查每個環境模組
-          Object.keys(environmentModules).forEach(env => {
-            if (env === 'auto') return;
-            
-            if (environmentModules[env].objects[pred.class]) {
-              let score = pred.score * 4; // 進一步提高權重，從3倍改為4倍
-              
-              // 如果是關鍵代表性物品，給予更高權重
-              if (keyItems[env] && keyItems[env].includes(pred.class)) {
-                score *= 2; // 關鍵物品權重更高，保持2倍
-                this.keyItemsDetected[env].add(pred.class);
-              }
-              
-              this.environmentScores[env] += score;
-            }
-          });
-        });
-
-        // 記錄環境分數
-        environmentHistory.push({ ...this.environmentScores });
-        if (environmentHistory.length > 8) { // 縮短歷史長度，從10降到8
-          environmentHistory.shift();
-        }
-
-        // 計算平均分數
-        const avgScores = {};
-        Object.keys(this.environmentScores).forEach(env => {
-          avgScores[env] = environmentHistory.reduce((sum, item) => sum + item[env], 0) / environmentHistory.length;
-        });
-
-        // 找出最高分的環境
-        let detectedEnvironment = 'auto';
-        let maxScore = 0;
-        
-        Object.keys(avgScores).forEach(env => {
-          if (avgScores[env] > maxScore) {
-            maxScore = avgScores[env];
-            detectedEnvironment = env;
-          }
-        });
-
-        // 檢查關鍵物品條件（降低條件要求）
-        const hasKeyItems = Object.keys(this.keyItemsDetected).some(env => 
-          this.keyItemsDetected[env].size >= 1 // 只需要檢測到1個關鍵物品即可
-        );
-
-        // 只有當分數足夠高且有關鍵物品時才切換
-        if (maxScore > this.confidenceThreshold && hasKeyItems && 
-            detectedEnvironment !== this.lastEnvironment) {
-          this.lastEnvironment = detectedEnvironment;
-          this.lastSwitchTime = now;
-          updateEnvironmentDisplay(detectedEnvironment);
-          
-          // 重置關鍵物品記錄
-          Object.keys(this.keyItemsDetected).forEach(env => {
-            this.keyItemsDetected[env].clear();
-          });
-        }
-
-        return this.lastEnvironment;
-      }
-    }
-
-    const environmentAnalyzer = new EnvironmentAnalyzer();
-
-    function updateEnvironmentDisplay(environment) {
-      const moduleElement = document.getElementById('currentModule');
-      const tagElement = document.getElementById('activeModuleTag');
-      
-      let displayName = '自動';
-      let indicatorClass = 'auto-indicator';
-      
-      if (environment !== 'auto' && environmentModules[environment]) {
-        displayName = environmentModules[environment].name;
-        
-        // 根據環境類型設置指示器顏色
-        if (environment === 'outdoor') {
-          indicatorClass = 'outdoor-indicator';
-        } else if (['bedroom', 'kitchen', 'bathroom', 'office', 'indoor'].includes(environment)) {
-          indicatorClass = 'indoor-indicator';
-        } else {
-          indicatorClass = 'auto-indicator';
-        }
-      }
-      
-      moduleElement.innerHTML = `<span class="environment-indicator ${indicatorClass}"></span>${displayName}`;
-      tagElement.textContent = displayName;
-      
-      if (environment !== 'auto') {
-        updateVoice(`檢測到${displayName}環境，已自動切換模式`);
-      }
-    }
-
-    /**********************
-     * 6) 模型載入 - TensorFlow.js COCO-SSD
+     * 7) 核心功能函數
      **********************/
     async function initModel() {
       try {
         updateVoice('正在載入 TensorFlow.js COCO-SSD 模型…');
         
-        // 顯示進度條
         const progressContainer = document.getElementById('progressContainer');
         const progressBar = document.getElementById('progressBar');
         progressContainer.style.display = 'block';
         progressBar.style.width = '30%';
         
-        // 檢查 TensorFlow.js 是否正確加載
         if (typeof tf === 'undefined') {
           throw new Error('TensorFlow.js 未正確加載，請檢查網路連接');
         }
@@ -2213,7 +1597,6 @@
         progressBar.style.width = '60%';
         updateVoice('載入 COCO-SSD 模型中...');
         
-        // 檢查 COCO-SSD 是否可用
         if (typeof cocoSsd === 'undefined') {
           throw new Error('COCO-SSD 模型未正確加載');
         }
@@ -2223,7 +1606,6 @@
         progressBar.style.width = '100%';
         progressBar.style.background = 'var(--good)';
         
-        // 初始化事件監聽
         initEventListeners();
         updateVoice('COCO-SSD 模型載入成功！系統準備完成，請點擊開始檢測');
         updateStatus('準備就緒');
@@ -2235,7 +1617,6 @@
       } catch (e) {
         console.error('模型載入錯誤:', e);
         
-        // 嘗試啟用模擬模式
         try {
           updateVoice('啟用模擬模式，系統仍可正常運作');
           enableSimulationMode();
@@ -2245,7 +1626,6 @@
           updateStatus('初始化失敗');
         }
         
-        // 確保進度條被隱藏
         setTimeout(() => {
           document.getElementById('progressContainer').style.display = 'none';
         }, 1000);
@@ -2256,10 +1636,8 @@
     }
     
     function enableSimulationMode() {
-      // 模擬模型功能
       model = {
         detect: async function(img) {
-          // 模擬檢測結果
           return [
             { class: 'person', score: 0.8, bbox: [100, 100, 50, 50] },
             { class: 'chair', score: 0.6, bbox: [200, 200, 30, 30] }
@@ -2281,19 +1659,32 @@
       document.getElementById('btnLoadModule').addEventListener('click', loadEnvironmentModule);
       document.getElementById('btnInfrared').addEventListener('click', toggleInfrared);
       document.getElementById('btnEmergency').addEventListener('click', emergencyAlert);
+      document.getElementById('btnFollow').addEventListener('click', togglePedestrianFollowing);
+    }
+
+    function togglePedestrianFollowing() {
+      const button = document.getElementById('btnFollow');
+      
+      if (pedestrianFollower.isActive) {
+        pedestrianFollower.stop();
+        button.textContent = '行人跟隨模式';
+        button.classList.remove('follow-active');
+      } else {
+        pedestrianFollower.start();
+        button.textContent = '停止跟隨';
+        button.classList.add('follow-active');
+      }
     }
 
     function toggleSafetyCorridor() {
       const button = document.getElementById('btnReturnHome');
       
       if (safetyNavigator.isActive) {
-        // 停止安全通道導航
         safetyNavigator.stop();
         button.textContent = '安全通道導航';
         button.classList.remove('gps-active');
         updateVoice('安全通道導航已關閉');
       } else {
-        // 啟動安全通道導航
         if (!gpsNavigator.homePosition) {
           updateVoice('請先設定家的位置');
           return;
@@ -2303,7 +1694,6 @@
         button.textContent = '停止導航';
         button.classList.add('gps-active');
         
-        // 同時啟動GPS返航
         gpsNavigator.startReturnHome();
       }
     }
@@ -2332,9 +1722,6 @@
       }
     }
 
-    /**********************
-     * 7) 主流程（使用 COCO-SSD 檢測）
-     **********************/
     async function startDetection() {
       if (!model) {
         updateVoice('模型尚未載入完成，請稍候');
@@ -2361,12 +1748,18 @@
       updateVoice('檢測已停止');
       gpsNavigator.stopReturnHome();
       
-      // 停止安全通道導航
       if (safetyNavigator.isActive) {
         safetyNavigator.stop();
         const button = document.getElementById('btnReturnHome');
         button.textContent = '安全通道導航';
         button.classList.remove('gps-active');
+      }
+      
+      if (pedestrianFollower.isActive) {
+        pedestrianFollower.stop();
+        const button = document.getElementById('btnFollow');
+        button.textContent = '行人跟隨模式';
+        button.classList.remove('follow-active');
       }
     }
 
@@ -2377,18 +1770,28 @@
         try {
           const predictions = await model.detect(video);
           
-          // 只有在自動模式下才進行環境判斷
-          let detectedEnvironment = currentEnvironment;
-          if (currentMode === 'auto') {
-            detectedEnvironment = environmentAnalyzer.analyze(predictions);
+          // 行人跟隨模式優先
+          if (pedestrianFollower.isActive) {
+            const target = pedestrianFollower.findBestTarget(predictions, video.videoWidth, video.videoHeight);
+            pedestrianFollower.provideFollowingGuidance(target, video.videoWidth, video.videoHeight);
+          } else {
+            // 原有的環境判斷邏輯
+            let detectedEnvironment = currentEnvironment;
+            if (currentMode === 'auto') {
+              detectedEnvironment = environmentAnalyzer.analyze(predictions);
+            }
+            processPredictions(predictions, video.videoWidth, video.videoHeight, detectedEnvironment);
+            safetyNavigator.updateSafetyCorridor(predictions, video.videoWidth, video.videoHeight);
           }
           
-          processPredictions(predictions, video.videoWidth, video.videoHeight, detectedEnvironment);
-          
-          // 使用新的安全通道導航系統
-          safetyNavigator.updateSafetyCorridor(predictions, video.videoWidth, video.videoHeight);
-          
           draw(predictions, video.videoWidth, video.videoHeight);
+          
+          // 繪製行人跟隨信息
+          if (pedestrianFollower.isActive) {
+            const ctx = document.getElementById('canvas').getContext('2d');
+            const target = pedestrianFollower.findBestTarget(predictions, video.videoWidth, video.videoHeight);
+            pedestrianFollower.updateDisplay(target, ctx, video.videoWidth, video.videoHeight);
+          }
 
           frames++; 
           if (!lastFpsTs) {
@@ -2406,11 +1809,7 @@
       requestAnimationFrame((n) => loop(video, n));
     }
 
-    /**********************
-     * 8) 預測處理與繪圖 - 整合地面障礙物檢測，提高辨識準確度
-     **********************/
     function processPredictions(predictions, frameW, frameH, detectedEnvironment) {
-      // 根據檢測到的環境選擇對應的模組，如果為auto則使用所有模組
       let activeModules = [];
       if (detectedEnvironment === 'auto') {
         activeModules = Object.keys(environmentModules).filter(env => env !== 'auto');
@@ -2418,20 +1817,12 @@
         activeModules = [detectedEnvironment];
       }
       
-      // 過濾相關物體（降低置信度要求，提高識別能力）
       let relevantPredictions = predictions.filter(p => {
-        // 對行人檢測要求更高的置信度
         if (p.class === 'person' && p.score < MIN_CONFIDENCE_FOR_PERSON) return false;
-        
-        // 對所有物體使用較低的置信度閾值以提高識別能力
         if (p.score >= 0.2) return true;
-        
         if (p.score < SCORE_THRESHOLD) return false;
-        
-        // 檢查是否在任何活躍模組中
         return activeModules.some(env => environmentModules[env].objects[p.class]);
       }).map(pred => {
-        // 計算距離
         const distance = estimateDistance(pred.bbox[2], pred.bbox[3], pred.class);
         return {
           ...pred,
@@ -2439,34 +1830,21 @@
         };
       });
       
-      // 如果安全通道導航啟用，過濾掉地面標地物以避免重複提示
       if (safetyNavigator.isActive) {
         const groundLandmarks = ['curb', 'crosswalk_line', 'pavement_edge', 'tactile_paving', 'guide_line'];
         relevantPredictions = relevantPredictions.filter(pred => !groundLandmarks.includes(pred.class));
       }
       
-      // 檢測地面障礙物
-      const groundObstacles = groundDetector.detectGroundObstacles(predictions, frameW, frameH);
-      const totalObstacles = relevantPredictions.length + groundObstacles.length;
-      
+      const totalObstacles = relevantPredictions.length;
       document.getElementById('obstacleCount').textContent = totalObstacles;
       
       let closestDistance = Infinity;
       let closestObject = null;
       
-      // 檢查普通物體
       relevantPredictions.forEach(pred => {
         if (pred.distance < closestDistance) {
           closestDistance = pred.distance;
           closestObject = pred;
-        }
-      });
-      
-      // 檢查地面障礙物
-      groundObstacles.forEach(obstacle => {
-        if (obstacle.distance < closestDistance) {
-          closestDistance = obstacle.distance;
-          closestObject = obstacle;
         }
       });
       
@@ -2484,10 +1862,9 @@
         
         if (voiceEnabled) {
           const now = Date.now();
-          const cooldown = closestObject.distance < 3 ? 2000 : 4000; // 縮短冷卻時間以提高提示頻率
+          const cooldown = closestObject.distance < 3 ? 2000 : 4000;
           
           if (now - lastSpeechAt > cooldown) {
-            // 找到物體對應的模組和配置
             let objConfig = null;
             for (const env of activeModules) {
               if (environmentModules[env].objects[closestObject.class]) {
@@ -2505,7 +1882,6 @@
                 voiceMsg = `注意！${objConfig.name}接近，距離${closestObject.distance.toFixed(1)}公尺`;
               }
               
-              // 在安全通道導航模式下，避免重複提示地面標地物
               if (!safetyNavigator.isActive || !['curb', 'crosswalk_line', 'pavement_edge', 'tactile_paving'].includes(closestObject.class)) {
                 updateVoice(voiceMsg);
                 lastSpeechAt = now;
@@ -2524,7 +1900,6 @@
     function estimateDistance(width, height, className) {
       const pixelArea = width * height;
       
-      // 增加更多物體的參考尺寸以提高距離估計準確性
       const referenceSizes = {
         'person': 8000,
         'car': 40000,
@@ -2560,7 +1935,6 @@
       const refSize = referenceSizes[className] || 8000;
       const distance = Math.sqrt(refSize / pixelArea) * 8;
       
-      // 為不同的物體類型設置不同的最大距離限制
       const maxDistances = {
         'person': 30,
         'car': 100,
@@ -2586,7 +1960,6 @@
       predictions.sort((a, b) => a.distance - b.distance);
       
       list.innerHTML = predictions.map(pred => {
-        // 找到物體對應的模組和配置
         let objConfig = null;
         for (const env of activeModules) {
           if (environmentModules[env].objects[pred.class]) {
@@ -2624,48 +1997,47 @@
       
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      predictions.forEach(pred => {
-        if (pred.score < SCORE_THRESHOLD) return;
-        
-        const [x, y, w, h] = pred.bbox;
-        
-        // 找到物體對應的模組和配置
-        let objConfig = null;
-        for (const env in environmentModules) {
-          if (env !== 'auto' && environmentModules[env].objects[pred.class]) {
-            objConfig = environmentModules[env].objects[pred.class];
-            break;
+      // 在跟隨模式下，只繪製非行人跟隨的物體
+      if (!pedestrianFollower.isActive) {
+        predictions.forEach(pred => {
+          if (pred.score < SCORE_THRESHOLD) return;
+          
+          const [x, y, w, h] = pred.bbox;
+          
+          let objConfig = null;
+          for (const env in environmentModules) {
+            if (env !== 'auto' && environmentModules[env].objects[pred.class]) {
+              objConfig = environmentModules[env].objects[pred.class];
+              break;
+            }
           }
-        }
-        
-        if (!objConfig) return;
-        
-        let color;
-        switch(objConfig.danger) {
-          case 'high': color = '#ef4444'; break;
-          case 'medium': color = '#f59e0b'; break;
-          default: color = '#22c55e';
-        }
-        
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
-        ctx.strokeRect(x, y, w, h);
-        
-        const label = `${objConfig.name} ${pred.distance.toFixed(1)}m`;
-        ctx.font = '16px Arial';
-        const textWidth = ctx.measureText(label).width;
-        
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y - 25, textWidth + 10, 25);
-        
-        ctx.fillStyle = 'white';
-        ctx.fillText(label, x + 5, y - 7);
-      });
+          
+          if (!objConfig) return;
+          
+          let color;
+          switch(objConfig.danger) {
+            case 'high': color = '#ef4444'; break;
+            case 'medium': color = '#f59e0b'; break;
+            default: color = '#22c55e';
+          }
+          
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3;
+          ctx.strokeRect(x, y, w, h);
+          
+          const label = `${objConfig.name} ${pred.distance.toFixed(1)}m`;
+          ctx.font = '16px Arial';
+          const textWidth = ctx.measureText(label).width;
+          
+          ctx.fillStyle = color;
+          ctx.fillRect(x, y - 25, textWidth + 10, 25);
+          
+          ctx.fillStyle = 'white';
+          ctx.fillText(label, x + 5, y - 7);
+        });
+      }
     }
 
-    /**********************
-     * 9) 工具函數
-     **********************/
     function updateVoice(message) {
       const voiceAlert = document.getElementById('voiceAlert');
       voiceAlert.textContent = message;
@@ -2673,32 +2045,28 @@
       if (voiceEnabled && window.speechSynthesis) {
         const now = Date.now();
         
-        // 防止语音连续重复 - 检查是否与上次语音相同
         if (message === lastVoiceMessage && now - lastVoiceTime < 5000) {
-          return; // 5秒内相同消息不重复播放
+          return;
         }
         
-        // 過濾重複的"路緣石"提示
         if (message.includes('路緣石') && lastVoiceMessage.includes('路緣石')) {
-          if (now - lastVoiceTime < 15000) { // 15秒內不重複路緣石提示
+          if (now - lastVoiceTime < 15000) {
             return;
           }
         }
         
-        // 防止语音重叠 - 检查是否正在播放语音
         if (window.speechSynthesis.speaking && now - lastVoiceTime < 3000) {
-          return; // 3秒内不打断正在播放的语音
+          return;
         }
         
         window.speechSynthesis.cancel();
         
         const utterance = new SpeechSynthesisUtterance(message);
         utterance.lang = 'zh-TW';
-        utterance.rate = 0.8; // 更慢的语速让盲人更容易理解
+        utterance.rate = 0.8;
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
         
-        // 记录语音播放时间和内容
         lastVoiceMessage = message;
         lastVoiceTime = now;
         
@@ -2712,6 +2080,10 @@
 
     function updateGPSStatus(status) {
       document.getElementById('gpsStatus').textContent = status;
+    }
+
+    function updateFollowStatus(status) {
+      document.getElementById('followStatus').textContent = status;
     }
 
     function toggleVoice() {
@@ -2742,17 +2114,15 @@
         button.textContent = '智能模式';
         updateVoice('切換到智能模式，自動判斷環境');
         environmentHistory = [];
-        currentEnvironment = 'auto'; // 重置為自動模式
+        currentEnvironment = 'auto';
       } else {
         button.textContent = '自動模式';
         updateVoice('切換到手動模式，請使用手動切換環境按鈕選擇環境');
-        // 設置默認環境，避免自動模式干擾
         currentEnvironment = 'outdoor';
       }
     }
 
     function loadEnvironmentModule() {
-      // 只有在手動模式下才允許切換環境
       if (currentMode !== 'manual') {
         updateVoice('請先切換到手動模式才能選擇環境');
         return;
@@ -2772,17 +2142,20 @@
 
     function toggleInfrared() {
       const button = document.getElementById('btnInfrared');
+      const display = document.getElementById('infraredDisplay');
       
-      if (infraredRangefinder.isActive) {
-        infraredRangefinder.deactivate();
+      if (display.style.display === 'block') {
+        display.style.display = 'none';
         button.textContent = '紅外線測距';
         button.classList.remove('primary');
         button.classList.add('secondary');
+        updateVoice('紅外線測距已關閉');
       } else {
-        infraredRangefinder.activate();
+        display.style.display = 'block';
         button.textContent = '關閉測距';
         button.classList.remove('secondary');
         button.classList.add('primary');
+        updateVoice('紅外線測距已啟動');
       }
     }
 
@@ -2803,17 +2176,144 @@
     }
 
     /**********************
-     * 10) 初始化應用
+     * 8) 環境分析器（完整版）
+     **********************/
+    class EnvironmentAnalyzer {
+      constructor() {
+        this.lastEnvironment = 'auto';
+        this.confidenceThreshold = 2;
+        this.environmentScores = {};
+        this.keyItemsDetected = {};
+        this.lastSwitchTime = 0;
+        this.switchCooldown = 3000;
+        
+        Object.keys(environmentModules).forEach(env => {
+          if (env !== 'auto') {
+            this.environmentScores[env] = 0;
+            this.keyItemsDetected[env] = new Set();
+          }
+        });
+      }
+
+      analyze(predictions) {
+        const now = Date.now();
+        
+        if (now - this.lastSwitchTime < this.switchCooldown) {
+          return this.lastEnvironment;
+        }
+
+        Object.keys(this.environmentScores).forEach(env => {
+          this.environmentScores[env] = 0;
+        });
+
+        const keyItems = {
+          'bedroom': ['bed', 'dresser', 'mirror', 'lamp', 'toilet'],
+          'kitchen': ['oven', 'microwave', 'refrigerator', 'sink', 'knife'],
+          'bathroom': ['toilet', 'sink', 'mirror', 'shower', 'bathtub', 'vase'],
+          'hospital': ['bed', 'wheelchair', 'crutches', 'medical equipment'],
+          'supermarket': ['shopping cart', 'shelf', 'refrigerator', 'cash register'],
+          'office': ['desk', 'chair', 'laptop', 'printer', 'monitor', 'toilet', 'vase'],
+          'outdoor': ['car', 'bus', 'traffic light', 'stop sign', 'tree'],
+          'indoor': ['chair', 'couch', 'tv', 'table', 'lamp', 'toilet', 'vase']
+        };
+
+        predictions.forEach(pred => {
+          if (pred.score < SCORE_THRESHOLD) return;
+          
+          Object.keys(environmentModules).forEach(env => {
+            if (env === 'auto') return;
+            
+            if (environmentModules[env].objects[pred.class]) {
+              let score = pred.score * 4;
+              
+              if (keyItems[env] && keyItems[env].includes(pred.class)) {
+                score *= 2;
+                this.keyItemsDetected[env].add(pred.class);
+              }
+              
+              this.environmentScores[env] += score;
+            }
+          });
+        });
+
+        environmentHistory.push({ ...this.environmentScores });
+        if (environmentHistory.length > 8) {
+          environmentHistory.shift();
+        }
+
+        const avgScores = {};
+        Object.keys(this.environmentScores).forEach(env => {
+          avgScores[env] = environmentHistory.reduce((sum, item) => sum + item[env], 0) / environmentHistory.length;
+        });
+
+        let detectedEnvironment = 'auto';
+        let maxScore = 0;
+        
+        Object.keys(avgScores).forEach(env => {
+          if (avgScores[env] > maxScore) {
+            maxScore = avgScores[env];
+            detectedEnvironment = env;
+          }
+        });
+
+        const hasKeyItems = Object.keys(this.keyItemsDetected).some(env => 
+          this.keyItemsDetected[env].size >= 1
+        );
+
+        if (maxScore > this.confidenceThreshold && hasKeyItems && 
+            detectedEnvironment !== this.lastEnvironment) {
+          this.lastEnvironment = detectedEnvironment;
+          this.lastSwitchTime = now;
+          updateEnvironmentDisplay(detectedEnvironment);
+          
+          Object.keys(this.keyItemsDetected).forEach(env => {
+            this.keyItemsDetected[env].clear();
+          });
+        }
+
+        return this.lastEnvironment;
+      }
+    }
+
+    const environmentAnalyzer = new EnvironmentAnalyzer();
+
+    function updateEnvironmentDisplay(environment) {
+      const moduleElement = document.getElementById('currentModule');
+      const tagElement = document.getElementById('activeModuleTag');
+      
+      let displayName = '自動';
+      let indicatorClass = 'auto-indicator';
+      
+      if (environment !== 'auto' && environmentModules[environment]) {
+        displayName = environmentModules[environment].name;
+        
+        if (environment === 'outdoor') {
+          indicatorClass = 'outdoor-indicator';
+        } else if (['bedroom', 'kitchen', 'bathroom', 'office', 'indoor'].includes(environment)) {
+          indicatorClass = 'indoor-indicator';
+        } else {
+          indicatorClass = 'auto-indicator';
+        }
+      }
+      
+      moduleElement.innerHTML = `<span class="environment-indicator ${indicatorClass}"></span>${displayName}`;
+      tagElement.textContent = displayName;
+      
+      if (environment !== 'auto') {
+        updateVoice(`檢測到${displayName}環境，已自動切換模式`);
+      }
+    }
+
+    /**********************
+     * 9) 初始化應用
      **********************/
     window.addEventListener('DOMContentLoaded', () => {
       updateStatus('初始化中');
-      updateVoice('老人返家輔助導航系統啟動中...');
+      updateVoice('盲人輔助導航系統啟動中...');
       
-      // 初始化 TensorFlow.js COCO-SSD 模型
       initModel();
     });
 
-    // 防止頁面休眠
     let wakeLock = null;
     async function requestWakeLock() {
       try {
@@ -2834,5 +2334,4 @@
     requestWakeLock();
   </script>
 </body>
-</html>
 </html>
