@@ -18,7 +18,7 @@
       background: linear-gradient(135deg, #0ea5e9, #6366f1);
       color: white;
       height: 100vh;
-      padding: 10px;
+      padding: 0;
       overflow: hidden;
     }
     
@@ -26,26 +26,24 @@
       display: flex;
       flex-direction: column;
       height: 100%;
-      max-width: 500px;
-      margin: 0 auto;
-      gap: 10px;
+      gap: 0;
     }
     
     .header {
       text-align: center;
-      padding: 15px;
+      padding: 15px 10px;
       background: rgba(255,255,255,0.1);
-      border-radius: 20px;
       backdrop-filter: blur(10px);
+      flex-shrink: 0;
     }
     
     .header h1 {
-      font-size: 24px;
-      margin-bottom: 5px;
+      font-size: 18px;
+      margin-bottom: 3px;
     }
     
     .header .subtitle {
-      font-size: 14px;
+      font-size: 12px;
       opacity: 0.8;
     }
     
@@ -53,15 +51,17 @@
       flex: 1;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 5px;
+      padding: 5px;
     }
     
     .camera-view {
       flex: 1;
       background: #000;
-      border-radius: 15px;
+      border-radius: 10px;
       position: relative;
       overflow: hidden;
+      min-height: 40vh;
     }
     
     .camera-view video {
@@ -82,7 +82,7 @@
     .guidance-line {
       position: absolute;
       top: 50%;
-      height: 4px;
+      height: 3px;
       background: rgba(34, 197, 94, 0.6);
       width: 80%;
       left: 10%;
@@ -118,64 +118,68 @@
     
     .status-panel {
       background: rgba(255,255,255,0.1);
-      border-radius: 15px;
-      padding: 15px;
+      border-radius: 10px;
+      padding: 10px;
       backdrop-filter: blur(10px);
+      flex-shrink: 0;
     }
     
     .status-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 10px;
+      gap: 8px;
+      margin-bottom: 8px;
     }
     
     .status-item {
       text-align: center;
-      padding: 10px;
+      padding: 8px;
       background: rgba(255,255,255,0.1);
-      border-radius: 10px;
+      border-radius: 8px;
     }
     
     .status-label {
-      font-size: 12px;
+      font-size: 10px;
       opacity: 0.8;
-      margin-bottom: 5px;
+      margin-bottom: 3px;
     }
     
     .status-value {
-      font-size: 16px;
+      font-size: 14px;
       font-weight: bold;
     }
     
     .voice-alert {
       background: rgba(239, 68, 68, 0.2);
       border: 1px solid rgba(239, 68, 68, 0.5);
-      border-radius: 10px;
-      padding: 12px;
+      border-radius: 8px;
+      padding: 10px;
       text-align: center;
-      min-height: 50px;
+      min-height: 40px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
+      font-size: 12px;
+      flex-shrink: 0;
     }
     
     .controls {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;
+      gap: 8px;
+      flex-shrink: 0;
     }
     
     .btn {
-      padding: 18px;
+      padding: 16px 8px;
       border: none;
-      border-radius: 15px;
-      font-size: 16px;
+      border-radius: 12px;
+      font-size: 14px;
       font-weight: bold;
       color: white;
       cursor: pointer;
       transition: all 0.2s;
+      min-height: 50px;
     }
     
     .btn:active {
@@ -208,13 +212,13 @@
     
     .tracking-indicator {
       position: absolute;
-      top: 10px;
-      right: 10px;
+      top: 5px;
+      right: 5px;
       background: rgba(0,0,0,0.7);
       color: white;
-      padding: 8px 12px;
-      border-radius: 20px;
-      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 15px;
+      font-size: 10px;
       display: none;
     }
     
@@ -224,13 +228,13 @@
     
     .direction-arrow {
       position: absolute;
-      top: 10px;
-      left: 10px;
+      top: 5px;
+      left: 5px;
       background: rgba(0,0,0,0.7);
       color: white;
-      padding: 8px 12px;
-      border-radius: 20px;
-      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 15px;
+      font-size: 10px;
       display: none;
     }
     
@@ -240,13 +244,13 @@
     
     .distance-badge {
       position: absolute;
-      bottom: 10px;
-      left: 10px;
+      bottom: 5px;
+      left: 5px;
       background: rgba(0,0,0,0.7);
       color: white;
-      padding: 8px 12px;
-      border-radius: 20px;
-      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 15px;
+      font-size: 10px;
     }
     
     .laser-active {
@@ -267,10 +271,11 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.9);
       z-index: 1000;
       align-items: center;
       justify-content: center;
+      padding: 20px;
     }
     
     .modal.active {
@@ -280,34 +285,36 @@
     .modal-content {
       background: linear-gradient(135deg, #0ea5e9, #6366f1);
       padding: 20px;
-      border-radius: 20px;
-      width: 90%;
+      border-radius: 15px;
+      width: 100%;
       max-width: 400px;
       text-align: center;
     }
     
     .modal h2 {
       margin-bottom: 15px;
+      font-size: 18px;
     }
     
     .modal-buttons {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
-      margin-top: 20px;
+      margin-top: 15px;
     }
     
     .home-setup-steps {
       text-align: left;
-      margin: 15px 0;
-      padding: 15px;
+      margin: 12px 0;
+      padding: 12px;
       background: rgba(255,255,255,0.1);
-      border-radius: 10px;
+      border-radius: 8px;
+      font-size: 12px;
     }
     
     .step {
-      margin: 10px 0;
-      padding-left: 20px;
+      margin: 8px 0;
+      padding-left: 15px;
       position: relative;
     }
     
@@ -321,26 +328,27 @@
     .gps-status {
       padding: 10px;
       background: rgba(255,255,255,0.1);
-      border-radius: 10px;
+      border-radius: 8px;
       margin: 10px 0;
+      font-size: 12px;
     }
     
     .accuracy-display {
-      font-size: 12px;
+      font-size: 10px;
       opacity: 0.8;
-      margin-top: 5px;
+      margin-top: 3px;
     }
 
     /* 室內測試模式指示器 */
     .indoor-mode {
       position: absolute;
-      top: 50px;
-      right: 10px;
+      top: 40px;
+      right: 5px;
       background: rgba(59, 130, 246, 0.8);
       color: white;
-      padding: 8px 12px;
-      border-radius: 20px;
-      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 15px;
+      font-size: 10px;
       display: none;
     }
     
@@ -348,11 +356,60 @@
       display: block;
     }
 
-    .controls-2 {
+    /* 模式選擇按鈕 */
+    .mode-selector {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
       gap: 8px;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+    }
+
+    .mode-btn {
+      padding: 12px 8px;
+      border: none;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: bold;
+      color: white;
+      cursor: pointer;
+      background: rgba(255,255,255,0.2);
+    }
+
+    .mode-btn.active {
+      background: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
+    }
+
+    /* 底部控制欄 */
+    .bottom-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .large-btn {
+      padding: 18px 8px;
+      font-size: 16px;
+      min-height: 60px;
+    }
+
+    /* 緊急按鈕 */
+    .emergency-section {
       margin-top: 8px;
+      flex-shrink: 0;
+    }
+
+    .emergency-btn {
+      width: 100%;
+      padding: 15px;
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: bold;
     }
   </style>
 </head>
@@ -360,10 +417,17 @@
   <div class="container">
     <div class="header">
       <h1>🧭 盲人導航助手</h1>
-      <div class="subtitle">人員跟隨 · 室內避障 · GPS導航</div>
+      <div class="subtitle">簡單操作 · 智能導航</div>
     </div>
     
     <div class="main-content">
+      <!-- 模式選擇 -->
+      <div class="mode-selector">
+        <button class="mode-btn active" id="btnOutdoorMode">室外導航</button>
+        <button class="mode-btn" id="btnIndoorMode">室內避障</button>
+      </div>
+
+      <!-- 相機畫面 -->
       <div class="camera-view">
         <video id="video" autoplay playsinline muted></video>
         <div class="overlay">
@@ -386,6 +450,7 @@
         </div>
       </div>
       
+      <!-- 狀態資訊 -->
       <div class="status-panel">
         <div class="status-grid">
           <div class="status-item">
@@ -394,35 +459,34 @@
           </div>
           <div class="status-item">
             <div class="status-label">跟隨狀態</div>
-            <div class="status-value" id="followStatus">等待</div>
+            <div class="status-value" id="followStatus">--</div>
           </div>
           <div class="status-item">
             <div class="status-label">雷射測距</div>
             <div class="status-value" id="laserDistance">-- 公尺</div>
           </div>
           <div class="status-item">
-            <div class="status-label">障礙物數</div>
+            <div class="status-label">障礙物</div>
             <div class="status-value" id="obstacleCount">0</div>
           </div>
         </div>
         
         <div class="voice-alert" id="voiceAlert">
-          系統啟動完成，請先設定家的位置
+          請先設定家的位置
         </div>
       </div>
       
+      <!-- 主要控制按鈕 -->
       <div class="controls">
-        <button class="btn btn-primary" id="btnStart">開始導航</button>
-        <button class="btn btn-warning" id="btnFollow">人員跟隨</button>
+        <button class="btn btn-primary large-btn" id="btnStart">開始導航</button>
+        <button class="btn btn-warning large-btn" id="btnFollow">人員跟隨</button>
         <button class="btn btn-secondary" id="btnSetHome">設定家的位置</button>
         <button class="btn btn-danger" id="btnStop">停止</button>
       </div>
 
-      <!-- 新增第二排控制按鈕 -->
-      <div class="controls-2">
-        <button class="btn btn-info" id="btnIndoorTest">室內測試</button>
-        <button class="btn btn-secondary" id="btnVoice">語音開關</button>
-        <button class="btn btn-warning" id="btnEmergency">緊急求助</button>
+      <!-- 緊急求助 -->
+      <div class="emergency-section">
+        <button class="emergency-btn" id="btnEmergency">🆘 緊急求助</button>
       </div>
     </div>
   </div>
@@ -433,15 +497,14 @@
       <h2>🏠 設定家的位置</h2>
       
       <div class="home-setup-steps">
-        <div class="step">請走到您家的門口或指定位置</div>
-        <div class="step">確保GPS信號良好（室外最佳）</div>
-        <div class="step">點擊"確認設定"記錄當前位置</div>
+        <div class="step">請走到您家的門口</div>
+        <div class="step">確保在室外GPS信號良好</div>
+        <div class="step">點擊"確認設定"記錄位置</div>
       </div>
       
       <div class="gps-status">
         <div>GPS狀態: <span id="modalGpsStatus">搜尋中...</span></div>
         <div class="accuracy-display">定位精度: <span id="modalAccuracy">--</span></div>
-        <div>經緯度: <span id="modalCoordinates">--</span></div>
       </div>
       
       <div class="modal-buttons">
@@ -452,312 +515,58 @@
   </div>
 
   <script>
-    // 智能導航系統 - 增強版（包含室內避障）
-    class SmartNavigationSystem {
+    // 簡化版的智能導航系統
+    class SimpleNavigationSystem {
       constructor() {
         this.isNavigating = false;
         this.isFollowing = false;
-        this.isIndoorMode = false; // 新增室內模式
+        this.isIndoorMode = false;
         this.homePosition = null;
         this.currentPosition = null;
-        this.targetPerson = null;
-        this.lastGuidanceTime = 0;
-        this.laserDistance = null;
-        this.gpsWatchId = null;
-        this.homeSetupPosition = null;
         this.voiceEnabled = true;
-        this.obstacles = []; // 障礙物列表
-        
-        // 跟隨參數
-        this.followParams = {
-          minDistance: 2.0,
-          idealDistance: 3.0,
-          maxDistance: 8.0,
-          directionThreshold: 45
-        };
-
-        // 室內障礙物類型
-        this.indoorObstacles = [
-          '椅子', '桌子', '沙發', '床', '櫃子', '門', '樓梯', 
-          '盆栽', '電視', '冰箱', '垃圾桶', '箱子'
-        ];
-      }
-      
-      // 切換室內測試模式
-      toggleIndoorTest() {
-        this.isIndoorMode = !this.isIndoorMode;
-        
-        if (this.isIndoorMode) {
-          this.startIndoorMode();
-        } else {
-          this.stopIndoorMode();
-        }
-        
-        this.updateUI();
-      }
-      
-      // 開始室內模式
-      startIndoorMode() {
-        this.isIndoorMode = true;
-        this.showIndoorIndicator();
-        this.speak('室內避障模式啟動，開始檢測周圍障礙物');
-        
-        // 啟動室內障礙物檢測
-        this.startIndoorObstacleDetection();
-      }
-      
-      // 停止室內模式
-      stopIndoorMode() {
-        this.isIndoorMode = false;
-        this.hideIndoorIndicator();
-        this.obstacles = [];
-        this.speak('室內模式已關閉');
-      }
-      
-      // 開始室內障礙物檢測
-      startIndoorObstacleDetection() {
-        // 模擬障礙物檢測
-        setInterval(() => {
-          if (this.isIndoorMode && this.isNavigating) {
-            this.simulateIndoorObstacles();
-          }
-        }, 2000);
-      }
-      
-      // 模擬室內障礙物檢測
-      simulateIndoorObstacles() {
-        // 隨機生成障礙物
-        const obstacleCount = Math.floor(Math.random() * 4); // 0-3個障礙物
         this.obstacles = [];
         
-        for (let i = 0; i < obstacleCount; i++) {
-          const obstacleType = this.indoorObstacles[Math.floor(Math.random() * this.indoorObstacles.length)];
-          const distance = 0.5 + Math.random() * 5; // 0.5-5.5公尺
-          const position = ['left', 'center', 'right'][Math.floor(Math.random() * 3)];
-          
-          this.obstacles.push({
-            type: obstacleType,
-            distance: distance,
-            position: position,
-            danger: distance < 2 ? 'high' : distance < 4 ? 'medium' : 'low'
-          });
-        }
-        
-        this.updateObstacleDisplay();
-        this.provideIndoorGuidance();
+        this.loadHomePosition();
       }
       
-      // 更新障礙物顯示
-      updateObstacleDisplay() {
-        const countElement = document.getElementById('obstacleCount');
-        countElement.textContent = this.obstacles.length;
+      // 加載家的位置
+      loadHomePosition() {
+        const savedHome = localStorage.getItem('homePosition');
+        if (savedHome) {
+          this.homePosition = JSON.parse(savedHome);
+          this.updateHomeInfo();
+        }
+      }
+      
+      // 切換模式
+      switchMode(isIndoor) {
+        this.isIndoorMode = isIndoor;
         
-        // 更新雷射測距顯示為最近障礙物距離
-        if (this.obstacles.length > 0) {
-          const closest = this.obstacles.reduce((closest, obs) => 
-            obs.distance < closest.distance ? obs : closest
-          );
-          this.laserDistance = closest.distance;
-          this.updateLaserDisplay();
+        // 更新模式按鈕狀態
+        document.getElementById('btnOutdoorMode').classList.toggle('active', !isIndoor);
+        document.getElementById('btnIndoorMode').classList.toggle('active', isIndoor);
+        
+        if (isIndoor) {
+          this.speak('已切換到室內避障模式');
+          document.getElementById('indoorModeIndicator').classList.add('active');
+          document.getElementById('btnFollow').disabled = true;
         } else {
-          this.laserDistance = null;
-          this.updateLaserDisplay();
+          this.speak('已切換到室外導航模式');
+          document.getElementById('indoorModeIndicator').classList.remove('active');
+          document.getElementById('btnFollow').disabled = false;
         }
       }
       
-      // 提供室內導航指導
-      provideIndoorGuidance() {
-        if (!this.isIndoorMode || this.obstacles.length === 0) return;
-        
-        const now = Date.now();
-        if (now - this.lastGuidanceTime < 3000) return;
-        
-        const closestObstacle = this.obstacles.reduce((closest, obs) => 
-          obs.distance < closest.distance ? obs : closest
-        );
-        
-        let guidanceMessage = '';
-        
-        if (closestObstacle.distance < 1.0) {
-          guidanceMessage = `緊急！前方${closestObstacle.distance.toFixed(1)}公尺有${closestObstacle.type}，請立即停止`;
-        } else if (closestObstacle.distance < 2.0) {
-          guidanceMessage = `注意！前方${closestObstacle.distance.toFixed(1)}公尺有${closestObstacle.type}`;
-          
-          if (closestObstacle.position === 'left') {
-            guidanceMessage += '，建議向右避開';
-          } else if (closestObstacle.position === 'right') {
-            guidanceMessage += '，建議向左避開';
-          } else {
-            guidanceMessage += '，請繞行';
-          }
-        } else if (closestObstacle.distance < 3.0) {
-          guidanceMessage = `前方${closestObstacle.distance.toFixed(1)}公尺有${closestObstacle.type}，請注意`;
-        }
-        
-        if (guidanceMessage) {
-          this.speak(guidanceMessage);
-          this.lastGuidanceTime = now;
-        }
-      }
-      
-      // 顯示室內模式指示器
-      showIndoorIndicator() {
-        document.getElementById('indoorModeIndicator').classList.add('active');
-      }
-      
-      // 隱藏室內模式指示器
-      hideIndoorIndicator() {
-        document.getElementById('indoorModeIndicator').classList.remove('active');
-      }
-      
-      // 切換語音開關
-      toggleVoice() {
-        this.voiceEnabled = !this.voiceEnabled;
-        const btn = document.getElementById('btnVoice');
-        
-        if (this.voiceEnabled) {
-          btn.textContent = '語音開啟';
-          btn.classList.remove('btn-warning');
-          btn.classList.add('btn-secondary');
-          this.speak('語音提示已開啟');
+      // 開始/停止導航
+      toggleNavigation() {
+        if (this.isNavigating) {
+          this.stopNavigation();
         } else {
-          btn.textContent = '語音關閉';
-          btn.classList.remove('btn-secondary');
-          btn.classList.add('btn-warning');
-          window.speechSynthesis.cancel();
+          this.startNavigation();
         }
       }
       
-      // 緊急求助
-      emergencyAlert() {
-        this.speak('緊急求助！正在發送位置信息給緊急聯絡人');
-        
-        if (this.currentPosition) {
-          // 這裡可以添加實際的緊急求助邏輯
-          console.log('緊急位置:', this.currentPosition);
-        }
-        
-        // 按鈕閃爍效果
-        const btn = document.getElementById('btnEmergency');
-        btn.classList.add('btn-active');
-        setTimeout(() => {
-          btn.classList.remove('btn-active');
-        }, 3000);
-      }
-
-      // 其餘現有方法保持不變...
-      showHomeSetup() {
-        const modal = document.getElementById('homeSetupModal');
-        modal.classList.add('active');
-        this.startHomeSetupGPS();
-        this.speak('請走到您家的門口，等待GPS定位完成後確認設定');
-      }
-      
-      startHomeSetupGPS() {
-        if (!navigator.geolocation) {
-          this.updateModalGPSStatus('設備不支持GPS定位');
-          return;
-        }
-        
-        if (this.homeSetupWatchId) {
-          navigator.geolocation.clearWatch(this.homeSetupWatchId);
-        }
-        
-        this.homeSetupWatchId = navigator.geolocation.watchPosition(
-          (position) => {
-            this.homeSetupPosition = position.coords;
-            this.updateModalGPSInfo(position.coords);
-          },
-          (error) => {
-            this.handleGPSError(error);
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-          }
-        );
-      }
-      
-      updateModalGPSInfo(coords) {
-        const statusElement = document.getElementById('modalGpsStatus');
-        const accuracyElement = document.getElementById('modalAccuracy');
-        const coordinatesElement = document.getElementById('modalCoordinates');
-        
-        if (coords.accuracy < 10) {
-          statusElement.textContent = '✅ 定位精確';
-          statusElement.style.color = '#22c55e';
-        } else if (coords.accuracy < 30) {
-          statusElement.textContent = '⚠️ 定位良好';
-          statusElement.style.color = '#f59e0b';
-        } else {
-          statusElement.textContent = '❌ 定位不準';
-          statusElement.style.color = '#ef4444';
-        }
-        
-        accuracyElement.textContent = coords.accuracy ? coords.accuracy.toFixed(1) + ' 公尺' : '--';
-        coordinatesElement.textContent = `${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)}`;
-        
-        const confirmBtn = document.getElementById('btnConfirmHome');
-        confirmBtn.disabled = coords.accuracy > 50;
-      }
-      
-      handleGPSError(error) {
-        let errorMsg = 'GPS錯誤: ';
-        switch(error.code) {
-          case error.PERMISSION_DENIED:
-            errorMsg += '請允許位置權限';
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMsg += '位置資訊不可用';
-            break;
-          case error.TIMEOUT:
-            errorMsg += '定位超時';
-            break;
-          default:
-            errorMsg += '未知錯誤';
-        }
-        this.updateModalGPSStatus(errorMsg);
-      }
-      
-      updateModalGPSStatus(status) {
-        document.getElementById('modalGpsStatus').textContent = status;
-      }
-      
-      confirmHomeSetup() {
-        if (!this.homeSetupPosition) {
-          this.speak('尚未獲取到位置信息，請等待GPS定位');
-          return;
-        }
-        
-        if (this.homeSetupPosition.accuracy > 50) {
-          this.speak('定位精度不足，請移動到室外開闊地帶再試');
-          return;
-        }
-        
-        this.homePosition = {
-          lat: this.homeSetupPosition.latitude,
-          lng: this.homeSetupPosition.longitude,
-          accuracy: this.homeSetupPosition.accuracy,
-          timestamp: new Date().toLocaleString('zh-TW')
-        };
-        
-        localStorage.setItem('homePosition', JSON.stringify(this.homePosition));
-        this.hideHomeSetup();
-        this.updateHomeInfo();
-        this.speak(`家的位置設定成功！定位精度${this.homeSetupPosition.accuracy.toFixed(1)}公尺。現在可以開始導航回家了`);
-      }
-      
-      hideHomeSetup() {
-        const modal = document.getElementById('homeSetupModal');
-        modal.classList.remove('active');
-        
-        if (this.homeSetupWatchId) {
-          navigator.geolocation.clearWatch(this.homeSetupWatchId);
-          this.homeSetupWatchId = null;
-        }
-      }
-      
+      // 開始導航
       async startNavigation() {
         if (!this.homePosition && !this.isIndoorMode) {
           this.speak('請先設定家的位置');
@@ -765,73 +574,166 @@
           return;
         }
         
-        if (this.isNavigating) return;
-        
         this.isNavigating = true;
         this.updateSystemStatus('導航中');
         
-        if (this.isIndoorMode) {
-          this.speak('室內導航啟動，開始障礙物檢測');
-        } else {
-          this.speak('導航系統啟動，正在初始化傳感器');
+        try {
           await this.initializeCamera();
-          this.startGPSTracking();
+        } catch (error) {
+          console.log('相機初始化跳過');
         }
         
-        this.startLaserRanging();
+        this.startGPSTracking();
+        
+        if (this.isIndoorMode) {
+          this.speak('室內避障模式啟動');
+          this.startIndoorDetection();
+        } else {
+          this.speak('室外導航啟動');
+        }
+        
         this.updateUI();
       }
       
+      // 停止導航
       stopNavigation() {
         this.isNavigating = false;
         this.isFollowing = false;
-        this.stopFollowing();
-        
-        if (this.gpsWatchId) {
-          navigator.geolocation.clearWatch(this.gpsWatchId);
-          this.gpsWatchId = null;
-        }
-        
         this.updateSystemStatus('已停止');
-        this.speak('導航系統已停止');
+        this.speak('導航已停止');
         this.updateUI();
       }
       
+      // 切換人員跟隨
       togglePersonFollowing() {
-        if (!this.isNavigating) {
-          this.speak('請先啟動導航系統');
-          return;
-        }
-        
-        if (this.isIndoorMode) {
-          this.speak('室內模式下無法使用人員跟隨');
+        if (!this.isNavigating || this.isIndoorMode) {
+          this.speak('請先啟動室外導航');
           return;
         }
         
         this.isFollowing = !this.isFollowing;
         
         if (this.isFollowing) {
-          this.startFollowing();
+          this.speak('人員跟隨啟動，尋找引導者');
+          document.getElementById('trackingIndicator').classList.add('active');
         } else {
-          this.stopFollowing();
+          this.speak('人員跟隨停止');
+          document.getElementById('trackingIndicator').classList.remove('active');
         }
         
         this.updateUI();
       }
       
-      startFollowing() {
-        this.isFollowing = true;
-        this.showTrackingIndicator();
-        this.speak('人員跟隨模式啟動，正在尋找合適的引導者');
+      // 設定家的位置
+      showHomeSetup() {
+        document.getElementById('homeSetupModal').classList.add('active');
+        this.startHomeSetupGPS();
+        this.speak('請走到家門口，等待GPS定位');
       }
       
-      stopFollowing() {
-        this.isFollowing = false;
-        this.targetPerson = null;
-        this.hideTrackingIndicator();
-        this.speak('人員跟隨已停止');
+      // GPS相關功能
+      startHomeSetupGPS() {
+        if (!navigator.geolocation) {
+          this.updateModalGPSStatus('設備不支持GPS');
+          return;
+        }
+        
+        this.homeSetupWatchId = navigator.geolocation.watchPosition(
+          (position) => {
+            this.updateModalGPSInfo(position.coords);
+          },
+          (error) => {
+            this.updateModalGPSStatus('GPS信號弱');
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
       }
       
+      updateModalGPSInfo(coords) {
+        const statusElement = document.getElementById('modalGpsStatus');
+        const accuracyElement = document.getElementById('modalAccuracy');
+        
+        if (coords.accuracy < 10) {
+          statusElement.textContent = '✅ 精確';
+          statusElement.style.color = '#22c55e';
+        } else if (coords.accuracy < 30) {
+          statusElement.textContent = '⚠️ 良好';
+          statusElement.style.color = '#f59e0b';
+        } else {
+          statusElement.textContent = '❌ 不準';
+          statusElement.style.color = '#ef4444';
+        }
+        
+        accuracyElement.textContent = coords.accuracy.toFixed(1) + ' 公尺';
+        
+        document.getElementById('btnConfirmHome').disabled = coords.accuracy > 50;
+        this.homeSetupPosition = coords;
+      }
+      
+      confirmHomeSetup() {
+        if (!this.homeSetupPosition) {
+          this.speak('請等待GPS定位');
+          return;
+        }
+        
+        this.homePosition = {
+          lat: this.homeSetupPosition.latitude,
+          lng: this.homeSetupPosition.longitude,
+          accuracy: this.homeSetupPosition.accuracy
+        };
+        
+        localStorage.setItem('homePosition', JSON.stringify(this.homePosition));
+        this.hideHomeSetup();
+        this.updateHomeInfo();
+        this.speak('家的位置設定成功');
+      }
+      
+      hideHomeSetup() {
+        document.getElementById('homeSetupModal').classList.remove('active');
+        if (this.homeSetupWatchId) {
+          navigator.geolocation.clearWatch(this.homeSetupWatchId);
+        }
+      }
+      
+      // 室內障礙物檢測
+      startIndoorDetection() {
+        setInterval(() => {
+          if (this.isNavigating && this.isIndoorMode) {
+            this.simulateIndoorObstacles();
+          }
+        }, 3000);
+      }
+      
+      simulateIndoorObstacles() {
+        const obstacleCount = Math.floor(Math.random() * 3);
+        this.obstacles = [];
+        
+        for (let i = 0; i < obstacleCount; i++) {
+          this.obstacles.push({
+            distance: 1 + Math.random() * 4,
+            type: ['椅子', '桌子', '門', '樓梯'][Math.floor(Math.random() * 4)]
+          });
+        }
+        
+        document.getElementById('obstacleCount').textContent = this.obstacles.length;
+        
+        if (this.obstacles.length > 0) {
+          const closest = this.obstacles.reduce((a, b) => a.distance < b.distance ? a : b);
+          document.getElementById('laserDistance').textContent = closest.distance.toFixed(1) + ' 公尺';
+          
+          if (closest.distance < 1.5) {
+            this.speak(`注意！前方${closest.distance.toFixed(1)}公尺有${closest.type}`);
+          }
+        }
+      }
+      
+      // 緊急求助
+      emergencyAlert() {
+        this.speak('緊急求助已發送！');
+        // 這裡可以添加實際的求助邏輯
+      }
+      
+      // 工具方法
       async initializeCamera() {
         try {
           const video = document.getElementById('video');
@@ -839,202 +741,33 @@
             video: { facingMode: 'environment' }
           });
           video.srcObject = stream;
-          return true;
         } catch (error) {
-          console.warn('相機初始化失敗:', error);
-          this.speak('相機無法啟動，但導航功能仍可使用');
-          return false;
+          console.warn('相機不可用');
         }
       }
       
       startGPSTracking() {
-        if (!navigator.geolocation) {
-          this.speak('設備不支持GPS定位');
-          return;
-        }
+        if (!navigator.geolocation) return;
         
         this.gpsWatchId = navigator.geolocation.watchPosition(
           (position) => {
             this.currentPosition = position.coords;
-            this.updateGPSInfo();
-            if (!this.isIndoorMode) {
-              this.updateNavigationGuidance();
-            }
+            this.updateHomeInfo();
           },
-          (error) => {
-            this.speak('GPS信號不穩定');
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 5000
-          }
+          (error) => {},
+          { enableHighAccuracy: true, timeout: 10000 }
         );
       }
       
-      startLaserRanging() {
-        setInterval(() => {
-          if ((this.isFollowing && this.targetPerson) || (this.isIndoorMode && this.obstacles.length > 0)) {
-            this.updateLaserDisplay();
-          } else {
-            this.laserDistance = null;
-            this.updateLaserDisplay();
-          }
-        }, 500);
-      }
-      
-      updateNavigationGuidance() {
-        if (!this.isFollowing || !this.targetPerson || !this.homePosition) return;
-        
-        const now = Date.now();
-        if (now - this.lastGuidanceTime < 3000) return;
-        
-        const homeDirection = this.calculateHomeDirection();
-        const personDirection = this.targetPerson.direction;
-        const directionDiff = Math.abs(homeDirection - personDirection);
-        const isDirectionGood = directionDiff < this.followParams.directionThreshold;
-        
-        let guidanceMessage = '';
-        
-        if (!isDirectionGood) {
-          guidanceMessage = '當前跟隨者方向與回家路線不符，建議等待其他引導者';
-          this.speak(guidanceMessage);
-          this.lastGuidanceTime = now;
-          return;
-        }
-        
-        const distance = this.targetPerson.distance;
-        if (distance < this.followParams.minDistance) {
-          guidanceMessage = '跟隨目標太近，請放慢速度';
-        } else if (distance > this.followParams.maxDistance) {
-          guidanceMessage = '跟隨目標太遠，請加快腳步';
-        } else if (Math.abs(distance - this.followParams.idealDistance) < 0.5) {
-          guidanceMessage = '跟隨距離良好，請保持';
-        }
-        
-        if (this.targetPerson.position === 'left') {
-          guidanceMessage += '，目標偏左請稍向左調整';
-        } else if (this.targetPerson.position === 'right') {
-          guidanceMessage += '，目標偏右請稍向右調整';
-        } else {
-          guidanceMessage += '，方向正確請直行';
-        }
-        
-        if (guidanceMessage) {
-          this.speak(guidanceMessage);
-          this.lastGuidanceTime = now;
-        }
-      }
-      
-      calculateHomeDirection() {
-        if (!this.currentPosition || !this.homePosition) return 0;
-        
-        const dLng = this.homePosition.lng - this.currentPosition.longitude;
-        const dLat = this.homePosition.lat - this.currentPosition.latitude;
-        
-        let direction = Math.atan2(dLng, dLat) * 180 / Math.PI;
-        if (direction < 0) direction += 360;
-        
-        return direction;
-      }
-      
-      simulatePersonDetection() {
-        if (!this.isFollowing || this.isIndoorMode) return;
-        
-        const hasPerson = Math.random() > 0.4;
-        
-        if (hasPerson) {
-          const distance = 2 + Math.random() * 6;
-          const positions = ['left', 'center', 'right'];
-          const position = positions[Math.floor(Math.random() * positions.length)];
-          const direction = Math.random() * 360;
-          
-          this.targetPerson = {
-            distance: distance,
-            position: position,
-            direction: direction
-          };
-          
-          this.updateTrackingDisplay();
-          this.updateNavigationGuidance();
-        } else {
-          this.targetPerson = null;
-          this.updateFollowStatus('尋找中');
-        }
-      }
-      
-      updateUI() {
-        const startBtn = document.getElementById('btnStart');
-        const followBtn = document.getElementById('btnFollow');
-        const stopBtn = document.getElementById('btnStop');
-        const setHomeBtn = document.getElementById('btnSetHome');
-        const indoorBtn = document.getElementById('btnIndoorTest');
-        
-        startBtn.disabled = this.isNavigating;
-        followBtn.disabled = !this.isNavigating || this.isIndoorMode;
-        stopBtn.disabled = !this.isNavigating;
-        setHomeBtn.disabled = this.isNavigating;
-        
-        if (this.isIndoorMode) {
-          indoorBtn.textContent = '關閉室內模式';
-          indoorBtn.classList.add('btn-active');
-        } else {
-          indoorBtn.textContent = '室內測試';
-          indoorBtn.classList.remove('btn-active');
-        }
-        
-        if (this.isFollowing) {
-          followBtn.textContent = '停止跟隨';
-          followBtn.classList.add('btn-active');
-        } else {
-          followBtn.textContent = '人員跟隨';
-          followBtn.classList.remove('btn-active');
-        }
-      }
-      
-      updateSystemStatus(status) {
-        document.getElementById('systemStatus').textContent = status;
-      }
-      
-      updateFollowStatus(status) {
-        document.getElementById('followStatus').textContent = status;
-      }
-      
-      updateGPSInfo() {
-        if (this.currentPosition) {
-          document.getElementById('gpsAccuracy').textContent = 
-            this.currentPosition.accuracy ? this.currentPosition.accuracy.toFixed(1) + 'm' : '--';
-        }
-      }
-      
-      updateLaserDisplay() {
-        const laserElement = document.getElementById('laserDistance');
-        if (this.laserDistance) {
-          laserElement.textContent = this.laserDistance.toFixed(2) + ' 公尺';
-          laserElement.classList.add('laser-active');
-        } else {
-          laserElement.textContent = '-- 公尺';
-          laserElement.classList.remove('laser-active');
-        }
-      }
-      
       updateHomeInfo() {
-        if (this.homePosition) {
+        if (this.homePosition && this.currentPosition) {
+          const distance = this.calculateDistance(
+            this.currentPosition.latitude, this.currentPosition.longitude,
+            this.homePosition.lat, this.homePosition.lng
+          );
+          document.getElementById('homeDistance').textContent = distance.toFixed(0) + 'm';
           document.getElementById('distanceBadge').style.display = 'block';
           document.getElementById('directionArrow').classList.add('active');
-          
-          if (this.currentPosition) {
-            const distance = this.calculateDistance(
-              this.currentPosition.latitude, this.currentPosition.longitude,
-              this.homePosition.lat, this.homePosition.lng
-            );
-            document.getElementById('homeDistance').textContent = distance.toFixed(0) + 'm';
-            
-            const direction = this.calculateHomeDirection();
-            const directions = ['北', '東北', '東', '東南', '南', '西南', '西', '西北'];
-            const index = Math.round(direction / 45) % 8;
-            document.getElementById('homeDirection').textContent = directions[index];
-          }
         }
       }
       
@@ -1049,20 +782,24 @@
         return R * c;
       }
       
-      showTrackingIndicator() {
-        document.getElementById('trackingIndicator').classList.add('active');
+      updateSystemStatus(status) {
+        document.getElementById('systemStatus').textContent = status;
       }
       
-      hideTrackingIndicator() {
-        document.getElementById('trackingIndicator').classList.remove('active');
+      updateUI() {
+        const startBtn = document.getElementById('btnStart');
+        const followBtn = document.getElementById('btnFollow');
+        
+        startBtn.textContent = this.isNavigating ? '停止導航' : '開始導航';
+        startBtn.classList.toggle('btn-danger', this.isNavigating);
+        startBtn.classList.toggle('btn-primary', !this.isNavigating);
+        
+        followBtn.textContent = this.isFollowing ? '停止跟隨' : '人員跟隨';
+        followBtn.disabled = !this.isNavigating || this.isIndoorMode;
       }
       
-      updateTrackingDisplay() {
-        if (this.targetPerson) {
-          document.getElementById('trackingDistance').textContent = 
-            this.targetPerson.distance.toFixed(1) + 'm';
-          this.updateFollowStatus('跟隨中');
-        }
+      updateModalGPSStatus(status) {
+        document.getElementById('modalGpsStatus').textContent = status;
       }
       
       speak(message) {
@@ -1073,69 +810,55 @@
           utterance.rate = 0.8;
           window.speechSynthesis.speak(utterance);
         }
-        this.updateVoiceAlert(message);
-      }
-      
-      updateVoiceAlert(message) {
         document.getElementById('voiceAlert').textContent = message;
       }
     }
 
     // 初始化系統
-    const navigationSystem = new SmartNavigationSystem();
+    const navSystem = new SimpleNavigationSystem();
 
-    // 設置事件監聽器
-    document.getElementById('btnStart').addEventListener('click', () => {
-      navigationSystem.startNavigation();
+    // 事件監聽器
+    document.getElementById('btnOutdoorMode').addEventListener('click', () => {
+      navSystem.switchMode(false);
     });
     
-    document.getElementById('btnStop').addEventListener('click', () => {
-      navigationSystem.stopNavigation();
+    document.getElementById('btnIndoorMode').addEventListener('click', () => {
+      navSystem.switchMode(true);
+    });
+    
+    document.getElementById('btnStart').addEventListener('click', () => {
+      navSystem.toggleNavigation();
     });
     
     document.getElementById('btnFollow').addEventListener('click', () => {
-      navigationSystem.togglePersonFollowing();
+      navSystem.togglePersonFollowing();
     });
     
     document.getElementById('btnSetHome').addEventListener('click', () => {
-      navigationSystem.showHomeSetup();
+      navSystem.showHomeSetup();
     });
     
-    document.getElementById('btnIndoorTest').addEventListener('click', () => {
-      navigationSystem.toggleIndoorTest();
-    });
-    
-    document.getElementById('btnVoice').addEventListener('click', () => {
-      navigationSystem.toggleVoice();
+    document.getElementById('btnStop').addEventListener('click', () => {
+      navSystem.stopNavigation();
     });
     
     document.getElementById('btnEmergency').addEventListener('click', () => {
-      navigationSystem.emergencyAlert();
+      navSystem.emergencyAlert();
     });
     
     document.getElementById('btnConfirmHome').addEventListener('click', () => {
-      navigationSystem.confirmHomeSetup();
+      navSystem.confirmHomeSetup();
     });
     
     document.getElementById('btnCancelHome').addEventListener('click', () => {
-      navigationSystem.hideHomeSetup();
+      navSystem.hideHomeSetup();
     });
 
-    // 模擬人員檢測循環
-    setInterval(() => {
-      navigationSystem.simulatePersonDetection();
-    }, 2000);
-
-    // 加載保存的家的位置
+    // 初始語音提示
     window.addEventListener('DOMContentLoaded', () => {
-      const savedHome = localStorage.getItem('homePosition');
-      if (savedHome) {
-        navigationSystem.homePosition = JSON.parse(savedHome);
-        navigationSystem.updateHomeInfo();
-        navigationSystem.speak('系統啟動完成，家的位置已載入，可以開始導航');
-      } else {
-        navigationSystem.speak('系統啟動完成，請先設定家的位置');
-      }
+      setTimeout(() => {
+        navSystem.speak('盲人導航助手已準備就緒');
+      }, 1000);
     });
   </script>
 </body>
