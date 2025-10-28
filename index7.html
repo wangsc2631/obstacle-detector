@@ -31,19 +31,19 @@
     
     .header {
       text-align: center;
-      padding: 15px 10px;
+      padding: 12px 10px;
       background: rgba(255,255,255,0.1);
       backdrop-filter: blur(10px);
       flex-shrink: 0;
     }
     
     .header h1 {
-      font-size: 18px;
-      margin-bottom: 3px;
+      font-size: 16px;
+      margin-bottom: 2px;
     }
     
     .header .subtitle {
-      font-size: 12px;
+      font-size: 11px;
       opacity: 0.8;
     }
     
@@ -53,15 +53,15 @@
       flex-direction: column;
       gap: 5px;
       padding: 5px;
+      min-height: 0;
     }
     
     .camera-view {
-      flex: 1;
+      flex: 0 0 35vh; /* 固定高度，不會太大 */
       background: #000;
-      border-radius: 10px;
+      border-radius: 8px;
       position: relative;
       overflow: hidden;
-      min-height: 40vh;
     }
     
     .camera-view video {
@@ -82,7 +82,7 @@
     .guidance-line {
       position: absolute;
       top: 50%;
-      height: 3px;
+      height: 2px;
       background: rgba(34, 197, 94, 0.6);
       width: 80%;
       left: 10%;
@@ -95,7 +95,7 @@
       height: 40%;
       width: 25%;
       background: rgba(245, 158, 11, 0.2);
-      border: 2px dashed rgba(245, 158, 11, 0.5);
+      border: 1px dashed rgba(245, 158, 11, 0.5);
     }
     
     .left-zone {
@@ -113,13 +113,13 @@
       width: 30%;
       height: 60%;
       background: rgba(34, 197, 94, 0.1);
-      border: 2px dashed rgba(34, 197, 94, 0.5);
+      border: 1px dashed rgba(34, 197, 94, 0.5);
     }
     
     .status-panel {
       background: rgba(255,255,255,0.1);
-      border-radius: 10px;
-      padding: 10px;
+      border-radius: 8px;
+      padding: 8px;
       backdrop-filter: blur(10px);
       flex-shrink: 0;
     }
@@ -127,59 +127,59 @@
     .status-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 8px;
+      gap: 6px;
+      margin-bottom: 6px;
     }
     
     .status-item {
       text-align: center;
-      padding: 8px;
+      padding: 6px;
       background: rgba(255,255,255,0.1);
-      border-radius: 8px;
+      border-radius: 6px;
     }
     
     .status-label {
-      font-size: 10px;
+      font-size: 9px;
       opacity: 0.8;
-      margin-bottom: 3px;
+      margin-bottom: 2px;
     }
     
     .status-value {
-      font-size: 14px;
+      font-size: 12px;
       font-weight: bold;
     }
     
     .voice-alert {
       background: rgba(239, 68, 68, 0.2);
       border: 1px solid rgba(239, 68, 68, 0.5);
-      border-radius: 8px;
-      padding: 10px;
+      border-radius: 6px;
+      padding: 8px;
       text-align: center;
-      min-height: 40px;
+      min-height: 35px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 12px;
+      font-size: 11px;
       flex-shrink: 0;
     }
     
     .controls {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
+      gap: 6px;
       flex-shrink: 0;
     }
     
     .btn {
-      padding: 16px 8px;
+      padding: 12px 6px;
       border: none;
-      border-radius: 12px;
-      font-size: 14px;
+      border-radius: 8px;
+      font-size: 12px;
       font-weight: bold;
       color: white;
       cursor: pointer;
       transition: all 0.2s;
-      min-height: 50px;
+      min-height: 44px;
     }
     
     .btn:active {
@@ -207,18 +207,18 @@
     }
     
     .btn-active {
-      box-shadow: 0 0 0 3px rgba(255,255,255,0.3);
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
     }
     
     .tracking-indicator {
       position: absolute;
-      top: 5px;
-      right: 5px;
+      top: 4px;
+      right: 4px;
       background: rgba(0,0,0,0.7);
       color: white;
-      padding: 6px 10px;
-      border-radius: 15px;
-      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 9px;
       display: none;
     }
     
@@ -228,13 +228,13 @@
     
     .direction-arrow {
       position: absolute;
-      top: 5px;
-      left: 5px;
+      top: 4px;
+      left: 4px;
       background: rgba(0,0,0,0.7);
       color: white;
-      padding: 6px 10px;
-      border-radius: 15px;
-      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 9px;
       display: none;
     }
     
@@ -244,13 +244,13 @@
     
     .distance-badge {
       position: absolute;
-      bottom: 5px;
-      left: 5px;
+      bottom: 4px;
+      left: 4px;
       background: rgba(0,0,0,0.7);
       color: white;
-      padding: 6px 10px;
-      border-radius: 15px;
-      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 9px;
     }
     
     .laser-active {
@@ -263,7 +263,7 @@
       100% { opacity: 1; }
     }
 
-    /* 設定家位置的彈出視窗 - 修復顯示問題 */
+    /* 設定家位置的彈出視窗 */
     .modal {
       display: none;
       position: fixed;
@@ -275,7 +275,7 @@
       z-index: 1000;
       align-items: center;
       justify-content: center;
-      padding: 20px;
+      padding: 15px;
     }
     
     .modal.active {
@@ -284,72 +284,72 @@
     
     .modal-content {
       background: linear-gradient(135deg, #0ea5e9, #6366f1);
-      padding: 20px;
-      border-radius: 15px;
+      padding: 15px;
+      border-radius: 12px;
       width: 100%;
-      max-width: 400px;
+      max-width: 350px;
       text-align: center;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.5);
     }
     
     .modal h2 {
-      margin-bottom: 15px;
-      font-size: 18px;
+      margin-bottom: 12px;
+      font-size: 16px;
     }
     
     .modal-buttons {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-top: 15px;
+      gap: 8px;
+      margin-top: 12px;
     }
     
     .home-setup-steps {
       text-align: left;
-      margin: 12px 0;
-      padding: 12px;
+      margin: 10px 0;
+      padding: 10px;
       background: rgba(255,255,255,0.1);
-      border-radius: 8px;
-      font-size: 12px;
+      border-radius: 6px;
+      font-size: 11px;
     }
     
     .step {
-      margin: 8px 0;
-      padding-left: 15px;
+      margin: 6px 0;
+      padding-left: 12px;
       position: relative;
     }
     
     .step:before {
       content: "•";
       position: absolute;
-      left: 5px;
+      left: 4px;
       color: #22c55e;
     }
     
     .gps-status {
-      padding: 10px;
+      padding: 8px;
       background: rgba(255,255,255,0.1);
-      border-radius: 8px;
-      margin: 10px 0;
-      font-size: 12px;
+      border-radius: 6px;
+      margin: 8px 0;
+      font-size: 11px;
     }
     
     .accuracy-display {
-      font-size: 10px;
+      font-size: 9px;
       opacity: 0.8;
-      margin-top: 3px;
+      margin-top: 2px;
     }
 
     /* 室內測試模式指示器 */
     .indoor-mode {
       position: absolute;
-      top: 40px;
-      right: 5px;
+      top: 30px;
+      right: 4px;
       background: rgba(59, 130, 246, 0.8);
       color: white;
-      padding: 6px 10px;
-      border-radius: 15px;
-      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 9px;
       display: none;
     }
     
@@ -361,20 +361,21 @@
     .mode-selector {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 8px;
+      gap: 6px;
+      margin-bottom: 6px;
       flex-shrink: 0;
     }
 
     .mode-btn {
-      padding: 12px 8px;
+      padding: 10px 6px;
       border: none;
-      border-radius: 10px;
-      font-size: 12px;
+      border-radius: 8px;
+      font-size: 11px;
       font-weight: bold;
       color: white;
       cursor: pointer;
       background: rgba(255,255,255,0.2);
+      min-height: 40px;
     }
 
     .mode-btn.active {
@@ -384,36 +385,51 @@
 
     /* 緊急按鈕 */
     .emergency-section {
-      margin-top: 8px;
+      margin-top: 6px;
       flex-shrink: 0;
     }
 
     .emergency-btn {
       width: 100%;
-      padding: 15px;
+      padding: 12px;
       background: #ef4444;
       color: white;
       border: none;
-      border-radius: 10px;
-      font-size: 16px;
+      border-radius: 8px;
+      font-size: 14px;
       font-weight: bold;
+      min-height: 50px;
     }
 
     /* 家的位置狀態指示 */
     .home-status {
       position: absolute;
-      bottom: 5px;
-      right: 5px;
+      bottom: 4px;
+      right: 4px;
       background: rgba(0,0,0,0.7);
       color: white;
-      padding: 6px 10px;
-      border-radius: 15px;
-      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 9px;
       display: none;
     }
     
     .home-status.active {
       display: block;
+    }
+
+    /* 控制區域 - 確保有足夠空間 */
+    .control-section {
+      flex-shrink: 0;
+      min-height: 200px; /* 確保控制區域有足夠高度 */
+    }
+
+    /* 滾動保護 - 確保內容不會超出螢幕 */
+    .scroll-protection {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      flex: 1;
+      min-height: 0;
     }
   </style>
 </head>
@@ -431,7 +447,7 @@
         <button class="mode-btn" id="btnIndoorMode">室內避障</button>
       </div>
 
-      <!-- 相機畫面 -->
+      <!-- 相機畫面 - 現在高度固定 -->
       <div class="camera-view">
         <video id="video" autoplay playsinline muted></video>
         <div class="overlay">
@@ -453,52 +469,55 @@
           ✅ 家已設定
         </div>
         <div class="indoor-mode" id="indoorModeIndicator">
-          🏠 室內避障模式
+          🏠 室內避障
         </div>
       </div>
       
-      <!-- 狀態資訊 -->
-      <div class="status-panel">
-        <div class="status-grid">
-          <div class="status-item">
-            <div class="status-label">系統狀態</div>
-            <div class="status-value" id="systemStatus">準備中</div>
+      <!-- 控制區域 - 確保按鈕可見 -->
+      <div class="control-section">
+        <!-- 狀態資訊 -->
+        <div class="status-panel">
+          <div class="status-grid">
+            <div class="status-item">
+              <div class="status-label">系統狀態</div>
+              <div class="status-value" id="systemStatus">準備中</div>
+            </div>
+            <div class="status-item">
+              <div class="status-label">跟隨狀態</div>
+              <div class="status-value" id="followStatus">--</div>
+            </div>
+            <div class="status-item">
+              <div class="status-label">雷射測距</div>
+              <div class="status-value" id="laserDistance">-- 公尺</div>
+            </div>
+            <div class="status-item">
+              <div class="status-label">障礙物</div>
+              <div class="status-value" id="obstacleCount">0</div>
+            </div>
           </div>
-          <div class="status-item">
-            <div class="status-label">跟隨狀態</div>
-            <div class="status-value" id="followStatus">--</div>
-          </div>
-          <div class="status-item">
-            <div class="status-label">雷射測距</div>
-            <div class="status-value" id="laserDistance">-- 公尺</div>
-          </div>
-          <div class="status-item">
-            <div class="status-label">障礙物</div>
-            <div class="status-value" id="obstacleCount">0</div>
+          
+          <div class="voice-alert" id="voiceAlert">
+            請先設定家的位置
           </div>
         </div>
         
-        <div class="voice-alert" id="voiceAlert">
-          請先設定家的位置
+        <!-- 主要控制按鈕 -->
+        <div class="controls">
+          <button class="btn btn-primary" id="btnStart">開始導航</button>
+          <button class="btn btn-warning" id="btnFollow">人員跟隨</button>
+          <button class="btn btn-info" id="btnSetHome">📍 設定家的位置</button>
+          <button class="btn btn-danger" id="btnStop">停止</button>
         </div>
-      </div>
-      
-      <!-- 主要控制按鈕 -->
-      <div class="controls">
-        <button class="btn btn-primary large-btn" id="btnStart">開始導航</button>
-        <button class="btn btn-warning large-btn" id="btnFollow">人員跟隨</button>
-        <button class="btn btn-info" id="btnSetHome">📍 設定家的位置</button>
-        <button class="btn btn-danger" id="btnStop">停止</button>
-      </div>
 
-      <!-- 緊急求助 -->
-      <div class="emergency-section">
-        <button class="emergency-btn" id="btnEmergency">🆘 緊急求助</button>
+        <!-- 緊急求助 -->
+        <div class="emergency-section">
+          <button class="emergency-btn" id="btnEmergency">🆘 緊急求助</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- 設定家位置的彈出視窗 - 修復顯示 -->
+  <!-- 設定家位置的彈出視窗 -->
   <div class="modal" id="homeSetupModal">
     <div class="modal-content">
       <h2>🏠 設定家的位置</h2>
@@ -523,7 +542,7 @@
   </div>
 
   <script>
-    // 修復版的智能導航系統
+    // 保持原有的JavaScript代碼不變
     class FixedNavigationSystem {
       constructor() {
         this.isNavigating = false;
@@ -539,7 +558,6 @@
         this.loadHomePosition();
       }
       
-      // 加載家的位置
       loadHomePosition() {
         const savedHome = localStorage.getItem('homePosition');
         if (savedHome) {
@@ -552,21 +570,17 @@
         }
       }
       
-      // 顯示家的狀態
       showHomeStatus() {
         document.getElementById('homeStatus').classList.add('active');
       }
       
-      // 隱藏家的狀態
       hideHomeStatus() {
         document.getElementById('homeStatus').classList.remove('active');
       }
       
-      // 切換模式
       switchMode(isIndoor) {
         this.isIndoorMode = isIndoor;
         
-        // 更新模式按鈕狀態
         document.getElementById('btnOutdoorMode').classList.toggle('active', !isIndoor);
         document.getElementById('btnIndoorMode').classList.toggle('active', isIndoor);
         
@@ -581,7 +595,6 @@
         }
       }
       
-      // 開始/停止導航
       toggleNavigation() {
         if (this.isNavigating) {
           this.stopNavigation();
@@ -590,7 +603,6 @@
         }
       }
       
-      // 開始導航
       async startNavigation() {
         if (!this.homePosition && !this.isIndoorMode) {
           this.speak('請先設定家的位置');
@@ -619,7 +631,6 @@
         this.updateUI();
       }
       
-      // 停止導航
       stopNavigation() {
         this.isNavigating = false;
         this.isFollowing = false;
@@ -635,7 +646,6 @@
         this.updateUI();
       }
       
-      // 切換人員跟隨
       togglePersonFollowing() {
         if (!this.isNavigating) {
           this.speak('請先啟動導航');
@@ -661,7 +671,6 @@
         this.updateUI();
       }
       
-      // 顯示設定家的位置視窗
       showHomeSetup() {
         console.log('顯示設定視窗');
         const modal = document.getElementById('homeSetupModal');
@@ -670,14 +679,12 @@
         this.speak('請走到家門口，等待GPS定位完成');
       }
       
-      // 開始GPS定位
       startHomeSetupGPS() {
         if (!navigator.geolocation) {
           this.updateModalGPSStatus('設備不支持GPS定位');
           return;
         }
         
-        // 清除之前的監聽
         if (this.homeSetupWatchId) {
           navigator.geolocation.clearWatch(this.homeSetupWatchId);
         }
@@ -726,7 +733,6 @@
         this.homeSetupPosition = coords;
       }
       
-      // 確認設定家的位置
       confirmHomeSetup() {
         if (!this.homeSetupPosition) {
           this.speak('請等待GPS定位完成');
@@ -752,7 +758,6 @@
         this.speak(`家的位置設定成功！定位精度${this.homeSetupPosition.accuracy.toFixed(1)}公尺`);
       }
       
-      // 關閉設定視窗
       hideHomeSetup() {
         const modal = document.getElementById('homeSetupModal');
         modal.classList.remove('active');
@@ -767,9 +772,7 @@
         document.getElementById('modalGpsStatus').textContent = status;
       }
       
-      // 室內障礙物檢測
       startIndoorDetection() {
-        // 模擬障礙物檢測
         setInterval(() => {
           if (this.isNavigating && this.isIndoorMode) {
             this.simulateIndoorObstacles();
@@ -777,7 +780,6 @@
         }, 3000);
       }
       
-      // 人員檢測模擬
       startPersonDetection() {
         setInterval(() => {
           if (this.isNavigating && this.isFollowing && !this.isIndoorMode) {
@@ -827,13 +829,10 @@
         }
       }
       
-      // 緊急求助
       emergencyAlert() {
         this.speak('緊急求助已發送！位置信息已傳送給緊急聯絡人');
-        // 這裡可以添加實際的求助邏輯
       }
       
-      // 工具方法
       async initializeCamera() {
         try {
           const video = document.getElementById('video');
