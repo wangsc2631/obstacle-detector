@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0ea5e9" />
+  <meta name="description" content="盲人輔助導航系統 - 即時障礙物檢測與人員跟隨" />
+  <title>🧭 盲人輔助導航系統</title>
+  
+  <style>
+    :root {
+      --bg1: #0ea5e9;
+      --bg2: #6366f1;
+      --glass: rgba(255,255,255,0.12);
+      --glass-strong: rgba(255,255,255,0.22);
+      --text: #fff;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --muted: #cbd5e1;
+      --shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+    
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+      color: var(--text);
+      background: linear-gradient(135deg, var(--bg1), var(--bg2));
+      touch-action: manipulation;
+    }
+    
+    body {
+      padding: 10px;
+      padding-bottom: env(safe-area-inset-bottom, 10px);
+    }
+    
+    .app {
+      max-width: 100%;
+      margin: 0 auto;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr;
+    }
+    
+    @media (min-width: 920px) {
+      .app {
+        grid-template-columns: 6fr 4fr;
+      }
+    }
+    
+    .card {
+      background: var(--glass);
+      backdrop-filter: blur(12px);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    
+    header.card {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    
+    header h1 {
+      font-size: clamp(18px, 5vw, 24px);
+      margin: 0;
+      font-weight: 700;
+    }
+    
+    .camera {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #000;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+    
+    .camera video, .camera canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 12px;
+    }
+    
+    .panel {
+      padding: 16px;
+    }
+    
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    @media (min-width: 480px) {
+      .controls {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+    
+    button.btn {
+      padding: 16px 12px;
+      border: none;
+      border-radius: 14px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      min-height: 54px;
+      user-select: none;
+    }
+    
+    button.btn:active {
+      transform: translateY(2px) scale(0.98);
+    }
+    
+    .primary {
+      background: var(--good);
+      color: #fff;
+    }
+    
+    .warning {
+      background: var(--warn);
+      color: #fff;
+    }
+    
+    .danger {
+      background: var(--bad);
+      color: #fff;
+    }
+    
+    .secondary {
+      background: var(--glass-strong);
+      color: var(--text);
+    }
+    
+    .status {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(2, 1fr);
+      margin-bottom: 12px;
+    }
+    
+    @media (min-width: 480px) {
+      .status {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+    
+    .status-item {
+      background: var(--glass-strong);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+    }
+    
+    .status-item .k {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    
+    .status-item .v {
+      font-weight: 800;
+      font-size: clamp(14px, 4vw, 16px);
+    }
+    
+    .voice-alert {
+      margin: 12px 0;
+      background: rgba(239,68,68,0.15);
+      border: 1px solid rgba(239,68,68,0.35);
+      color: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    
+    .list {
+      max-height: 200px;
+      overflow-y: auto;
+      display: grid;
+      gap: 6px;
+      padding-right: 4px;
+    }
+    
+    .chip {
+      background: var(--glass-strong);
+      padding: 10px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    
+    footer {
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      padding: 8px;
+      margin-top: 10px;
+    }
+    
+    .loading {
+      background: linear-gradient(90deg, var(--bg1), var(--bg2), var(--bg1));
+      background-size: 200% 100%;
+      animation: loading 2s infinite;
+    }
+    
+    @keyframes loading {
+      0% {
+        background-position: 200% 0;
+      }
+      100% {
+        background-position: -200% 0;
+      }
+    }
+
+    /* 人員跟隨指示器 */
+    .person-tracker {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 25;
+      display: none;
+    }
+    
+    .person-tracker.active {
+      display: block;
+    }
+    
+    .tracking-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      margin-right: 5px;
+      animation: trackingPulse 1.5s infinite;
+    }
+    
+    @keyframes trackingPulse {
+      0% {
+        transform: scale(1);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(1.2);
+        opacity: 0.7;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .camera-placeholder {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .debug-info {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body class="no-select">
+  <div class="app">
+    <header class="card">
+      <h1>🧭 盲人輔助導航</h1>
+      <div class="tips">安全出行 · 人員跟隨 · 智能導航</div>
+    </header>
+
+    <section class="card camera" id="cameraContainer">
+      <div class="camera-placeholder" id="cameraPlaceholder">
+        <div>相機初始化中...</div>
+        <div class="debug-info" id="cameraDebug"></div>
+      </div>
+      <video id="video" autoplay playsinline muted style="display: none;"></video>
+      <canvas id="canvas" style="display: none;"></canvas>
+      
+      <!-- 人員跟隨指示器 -->
+      <div id="personTracker" class="person-tracker">
+        <span class="tracking-indicator"></span>
+        <span id="trackingStatus">人員跟隨中</span>
+      </div>
+    </section>
+
+    <section class="card panel">
+      <div id="voiceAlert" class="voice-alert loading">系統初始化中…</div>
+      
+      <!-- 主要控制按鈕 -->
+      <div class="controls">
+        <button id="btnStart" class="btn primary" disabled>開始檢測</button>
+        <button id="btnVoice" class="btn secondary" disabled>語音開啟</button>
+        <button id="btnFollowPerson" class="btn warning" disabled>人員跟隨</button>
+        <button id="btnStop" class="btn danger" disabled>停止</button>
+      </div>
+      
+      <!-- 狀態資訊 -->
+      <div class="status">
+        <div class="status-item">
+          <div class="k">系統狀態</div>
+          <div class="v" id="status">初始化中</div>
+        </div>
+        <div class="status-item">
+          <div class="k">偵測速度</div>
+          <div class="v" id="fps">—</div>
+        </div>
+        <div class="status-item">
+          <div class="k">障礙物數</div>
+          <div class="v" id="obstacleCount">0</div>
+        </div>
+        <div class="status-item">
+          <div class="k">最近距離</div>
+          <div class="v" id="closestDistance">— 公尺</div>
+        </div>
+      </div>
+      
+      <!-- 人員跟隨狀態 -->
+      <div id="personFollowingStatus" class="status-item" style="display: none;">
+        <div class="k">跟隨狀態</div>
+        <div class="v" id="followingStatus">--</div>
+      </div>
+    </section>
+
+    <aside class="card panel">
+      <h3 style="margin:0 0 12px 0; font-size:16px;">
+        即時偵測 <span id="activeModuleTag" class="module-tag">準備中</span>
+      </h3>
+      <div id="detectionList" class="list">
+        <div class="chip" style="text-align:center; color:var(--muted);">
+          系統初始化中…
+        </div>
+      </div>
+      <footer>
+        專為視障朋友設計 · 人員跟隨導航<br>
+        跟隨前方行人走安全路線回家
+      </footer>
+    </aside>
+  </div>
+
+  <script>
+    // 簡單的人員跟隨系統
+    class SimplePersonFollower {
+      constructor() {
+        this.isFollowing = false;
+        this.targetPerson = null;
+        this.lastGuidanceTime = 0;
+        this.guidanceCooldown = 5000; // 5秒導航冷卻
+      }
+
+      startFollowing() {
+        this.isFollowing = true;
+        this.showTrackingIndicator();
+        this.speak('人員跟隨模式已啟動，正在尋找可跟隨的行人');
+      }
+
+      stopFollowing() {
+        this.isFollowing = false;
+        this.targetPerson = null;
+        this.hideTrackingIndicator();
+        this.speak('人員跟隨模式已停止');
+      }
+
+      updatePersonFollowing(persons) {
+        if (!this.isFollowing) return;
+
+        if (persons.length === 0) {
+          if (this.targetPerson) {
+            this.speak('跟隨目標丟失，請在原地等待');
+            this.targetPerson = null;
+          }
+          this.updateFollowingStatus('尋找中');
+          return;
+        }
+
+        // 選擇最近的行人
+        const closestPerson = persons.reduce((closest, person) => {
+          return person.distance < closest.distance ? person : closest;
+        });
+
+        this.targetPerson = closestPerson;
+        this.provideGuidance(closestPerson);
+        this.updateFollowingStatus(`跟隨中 ${closestPerson.distance.toFixed(1)}m`);
+      }
+
+      provideGuidance(person) {
+        const now = Date.now();
+        if (now - this.lastGuidanceTime < this.guidanceCooldown) return;
+
+        let message = '';
+        const distance = person.distance;
+
+        if (distance < 2) {
+          message = '跟隨目標很近，請放慢速度保持安全距離';
+        } else if (distance < 5) {
+          message = '跟隨距離良好，請保持當前速度';
+        } else {
+          message = '跟隨目標較遠，請適當加快腳步';
+        }
+
+        this.speak(message);
+        this.lastGuidanceTime = now;
+      }
+
+      showTrackingIndicator() {
+        const tracker = document.getElementById('personTracker');
+        const statusElement = document.getElementById('personFollowingStatus');
+        if (tracker) tracker.classList.add('active');
+        if (statusElement) statusElement.style.display = 'block';
+      }
+
+      hideTrackingIndicator() {
+        const tracker = document.getElementById('personTracker');
+        const statusElement = document.getElementById('personFollowingStatus');
+        if (tracker) tracker.classList.remove('active');
+        if (statusElement) statusElement.style.display = 'none';
+      }
+
+      updateFollowingStatus(status) {
+        const statusElement = document.getElementById('followingStatus');
+        const trackerStatus = document.getElementById('trackingStatus');
+        
+        if (statusElement) statusElement.textContent = status;
+        if (trackerStatus) trackerStatus.textContent = status;
+      }
+
+      speak(message) {
+        if (window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(message);
+          utterance.lang = 'zh-TW';
+          utterance.rate = 0.8;
+          window.speechSynthesis.speak(utterance);
+        }
+        this.updateVoiceAlert(message);
+      }
+
+      updateVoiceAlert(message) {
+        const voiceAlert = document.getElementById('voiceAlert');
+        if (voiceAlert) {
+          voiceAlert.textContent = message;
+          voiceAlert.classList.remove('loading');
+        }
+      }
+    }
+
+    // 模擬檢測系統
+    class SimulationDetector {
+      constructor() {
+        this.isDetecting = false;
+        this.lastDetectionTime = 0;
+        this.detectionInterval = 1000; // 1秒檢測間隔
+        this.personFollower = new SimplePersonFollower();
+      }
+
+      async startDetection() {
+        this.isDetecting = true;
+        this.updateStatus('模擬檢測中');
+        this.speak('模擬檢測模式啟動，開始人員跟隨檢測');
+        this.enableControls();
+        this.startSimulationLoop();
+      }
+
+      stopDetection() {
+        this.isDetecting = false;
+        this.updateStatus('已停止');
+        this.speak('檢測已停止');
+        this.personFollower.stopFollowing();
+      }
+
+      startSimulationLoop() {
+        if (!this.isDetecting) return;
+
+        const now = Date.now();
+        if (now - this.lastDetectionTime < this.detectionInterval) {
+          requestAnimationFrame(() => this.startSimulationLoop());
+          return;
+        }
+
+        this.lastDetectionTime = now;
+
+        // 模擬檢測結果
+        this.simulateDetection();
+        
+        // 更新FPS顯示
+        this.updateFPS();
+
+        requestAnimationFrame(() => this.startSimulationLoop());
+      }
+
+      simulateDetection() {
+        // 隨機生成模擬檢測結果
+        const hasPerson = Math.random() > 0.3; // 70% 機率檢測到行人
+        const persons = [];
+
+        if (hasPerson) {
+          const distance = 2 + Math.random() * 8; // 2-10公尺
+          persons.push({
+            class: 'person',
+            distance: distance,
+            score: 0.7 + Math.random() * 0.3
+          });
+        }
+
+        // 更新顯示
+        this.updateDetectionDisplay(persons);
+
+        // 更新人員跟隨
+        if (this.personFollower.isFollowing) {
+          this.personFollower.updatePersonFollowing(persons);
+        }
+      }
+
+      updateDetectionDisplay(persons) {
+        const obstacleCount = persons.length;
+        const list = document.getElementById('detectionList');
+        const countElement = document.getElementById('obstacleCount');
+        const distanceElement = document.getElementById('closestDistance');
+
+        countElement.textContent = obstacleCount;
+
+        if (obstacleCount > 0) {
+          const closest = persons.reduce((closest, person) => 
+            person.distance < closest.distance ? person : closest
+          );
+          
+          distanceElement.textContent = closest.distance.toFixed(1) + ' 公尺';
+          
+          list.innerHTML = persons.map(person => `
+            <div class="chip" style="border-left: 4px solid var(--warn)">
+              <strong>行人</strong><br>
+              距離: ${person.distance.toFixed(1)}公尺 | 置信度: ${(person.score * 100).toFixed(0)}%
+            </div>
+          `).join('');
+        } else {
+          distanceElement.textContent = '— 公尺';
+          list.innerHTML = '<div class="chip" style="text-align:center; color:var(--muted);">未偵測到行人</div>';
+        }
+      }
+
+      updateFPS() {
+        // 模擬FPS顯示
+        document.getElementById('fps').textContent = '8-12fps';
+      }
+
+      updateStatus(status) {
+        document.getElementById('status').textContent = status;
+      }
+
+      speak(message) {
+        if (window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(message);
+          utterance.lang = 'zh-TW';
+          utterance.rate = 0.8;
+          window.speechSynthesis.speak(utterance);
+        }
+        this.updateVoiceAlert(message);
+      }
+
+      updateVoiceAlert(message) {
+        const voiceAlert = document.getElementById('voiceAlert');
+        if (voiceAlert) {
+          voiceAlert.textContent = message;
+          voiceAlert.classList.remove('loading');
+        }
+      }
+
+      enableControls() {
+        document.getElementById('btnStart').disabled = true;
+        document.getElementById('btnStop').disabled = false;
+        document.getElementById('btnVoice').disabled = false;
+        document.getElementById('btnFollowPerson').disabled = false;
+      }
+    }
+
+    // 全局變數
+    let detector = new SimulationDetector();
+    let isInitialized = false;
+
+    // 初始化函數
+    function initializeApp() {
+      if (isInitialized) return;
+      
+      updateVoiceAlert('系統啟動中，請稍候...');
+      
+      // 初始化語音合成
+      initializeSpeechSynthesis();
+      
+      // 設置事件監聽器
+      setupEventListeners();
+      
+      // 嘗試初始化相機（但使用模擬模式作為後備）
+      initializeCamera().then(success => {
+        if (success) {
+          updateVoiceAlert('相機初始化成功，系統準備就緒');
+        } else {
+          updateVoiceAlert('使用模擬檢測模式，系統準備就緒');
+        }
+        
+        enableStartButton();
+        updateStatus('準備就緒');
+        isInitialized = true;
+      });
+    }
+
+    function initializeSpeechSynthesis() {
+      if (!window.speechSynthesis) {
+        console.warn('語音合成不支持');
+        return;
+      }
+      
+      // 測試語音合成
+      const utterance = new SpeechSynthesisUtterance(' ');
+      utterance.lang = 'zh-TW';
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function setupEventListeners() {
+      document.getElementById('btnStart').addEventListener('click', () => {
+        detector.startDetection();
+      });
+      
+      document.getElementById('btnStop').addEventListener('click', () => {
+        detector.stopDetection();
+      });
+      
+      document.getElementById('btnVoice').addEventListener('click', toggleVoice);
+      
+      document.getElementById('btnFollowPerson').addEventListener('click', togglePersonFollowing);
+    }
+
+    function toggleVoice() {
+      const button = document.getElementById('btnVoice');
+      const voiceEnabled = button.textContent === '語音關閉';
+      
+      if (voiceEnabled) {
+        button.textContent = '語音開啟';
+        button.classList.remove('secondary');
+        button.classList.add('warning');
+        window.speechSynthesis.cancel();
+      } else {
+        button.textContent = '語音關閉';
+        button.classList.remove('warning');
+        button.classList.add('secondary');
+        detector.speak('語音提示已開啟');
+      }
+    }
+
+    function togglePersonFollowing() {
+      const button = document.getElementById('btnFollowPerson');
+      
+      if (detector.personFollower.isFollowing) {
+        detector.personFollower.stopFollowing();
+        button.textContent = '人員跟隨';
+        button.classList.remove('gps-active');
+      } else {
+        detector.personFollower.startFollowing();
+        button.textContent = '停止跟隨';
+        button.classList.add('gps-active');
+      }
+    }
+
+    async function initializeCamera() {
+      const video = document.getElementById('video');
+      const placeholder = document.getElementById('cameraPlaceholder');
+      const debugInfo = document.getElementById('cameraDebug');
+      
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('相機API不支持');
+        }
+        
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'environment',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          } 
+        });
+        
+        video.srcObject = stream;
+        video.style.display = 'block';
+        placeholder.style.display = 'none';
+        
+        debugInfo.textContent = '相機初始化成功';
+        return true;
+        
+      } catch (error) {
+        console.warn('相機初始化失敗:', error);
+        debugInfo.textContent = `相機不可用: ${error.message}`;
+        return false;
+      }
+    }
+
+    function enableStartButton() {
+      document.getElementById('btnStart').disabled = false;
+    }
+
+    function updateVoiceAlert(message) {
+      const voiceAlert = document.getElementById('voiceAlert');
+      if (voiceAlert) {
+        voiceAlert.textContent = message;
+        voiceAlert.classList.remove('loading');
+      }
+    }
+
+    function updateStatus(status) {
+      document.getElementById('status').textContent = status;
+    }
+
+    // 啟動應用
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        initializeApp();
+      }, 1000);
+    });
+
+    // 防止頁面休眠
+    let wakeLock = null;
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.log('Wake Lock 失敗:', err.message);
+      }
+    }
+
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState === 'visible') {
+        await requestWakeLock();
+      }
+    });
+
+    requestWakeLock();
+  </script>
+</body>
+</html>
