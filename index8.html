@@ -458,7 +458,13 @@
 
       async loadModel() {
         try {
-          // 使用 ONNX Runtime Web 載入 ONNX 模型
+          // 1. 檢查模型文件是否存在
+          const response = await fetch(this.modelPath, { method: 'HEAD' });
+          if (!response.ok) {
+            throw new Error(`模型文件 ${this.modelPath} 不存在或無法訪問`);
+          }
+
+          // 2. 使用 ONNX Runtime Web 載入 ONNX 模型
           this.session = await ort.InferenceSession.create(this.modelPath, {
             executionProviders: ['webgl'], // 優先使用 WebGL 以加速計算
             freeDimensionOverrides: { input_size: MODEL_INPUT_SIZE },
@@ -468,7 +474,7 @@
           return true;
         } catch (error) {
           console.error('YOLOv8 模型載入失敗:', error);
-          return false;
+          throw error; // 拋出錯誤以便外部處理
         }
       }
 
@@ -654,19 +660,19 @@
       // 載入模型並更新狀態
       async initializeSystem() {
         this.updateSystemStatus('載入 AI 模型...');
-        const success = await this.yoloDetector.loadModel();
-        
-        if (success) {
+        try {
+            await this.yoloDetector.loadModel();
             this.updateSystemStatus('準備就緒');
             document.getElementById('voiceAlert').textContent = 'AI 模型載入成功，請點擊開始導航';
             document.getElementById('avoidanceIndicator').textContent = '✅ AI 視覺準備就緒';
             document.getElementById('avoidanceIndicator').classList.add('active');
             document.getElementById('btnStart').disabled = false;
             document.getElementById('btnStop').disabled = false;
-        } else {
+        } catch (error) {
             this.updateSystemStatus('模型載入失敗');
-            document.getElementById('voiceAlert').textContent = 'AI 模型載入失敗，請檢查檔案路徑 (yolov8n.onnx)';
+            document.getElementById('voiceAlert').textContent = `AI 模型載入失敗: ${error.message}`;
             document.getElementById('avoidanceIndicator').textContent = '❌ AI 視覺錯誤';
+            console.error('模型載入失敗:', error);
         }
       }
 
