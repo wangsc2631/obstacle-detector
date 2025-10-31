@@ -10,7 +10,6 @@
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
   
   <style>
-    /* CSS 樣式保持不變或略微簡化，以確保與新 JS 邏輯兼容 */
     * {
       margin: 0;
       padding: 0;
@@ -457,24 +456,54 @@
       }
 
       async loadModel() {
-        try {
-          // 1. 檢查模型文件是否存在
-          const response = await fetch(this.modelPath, { method: 'HEAD' });
-          if (!response.ok) {
-            throw new Error(`模型文件 ${this.modelPath} 不存在或無法訪問`);
+        document.getElementById('systemStatus').textContent = '嘗試載入 AI 模型...';
+        document.getElementById('voiceAlert').textContent = `正在從 ${this.modelPath} 載入模型...`;
+        
+        // 優先使用 webgl，如果失敗則回退到 wasm
+        const providers = ['webgl', 'wasm']; 
+        let success = false;
+        let finalProvider = '';
+
+        for (const provider of providers) {
+          try {
+            // 1. 檢查 ONNX Runtime 是否可用
+            if (typeof ort === 'undefined' || !ort.InferenceSession) {
+                throw new Error("ONNX Runtime Web 函式庫未載入。");
+            }
+
+            // 2. 創建推理會話
+            this.session = await ort.InferenceSession.create(this.modelPath, {
+              executionProviders: [provider], 
+              freeDimensionOverrides: { input_size: MODEL_INPUT_SIZE },
+              logLevel: 'error' 
+            });
+            success = true;
+            finalProvider = provider;
+            break; 
+          } catch (e) {
+            console.warn(`嘗試使用 ${provider} 失敗:`, e.message);
+            if (provider === 'wasm') {
+               // WebGL 和 WASM 都失敗了
+               throw new Error(`所有加速器均無法載入。詳情：${e.message}`);
+            }
           }
+        }
 
-          // 2. 使用 ONNX Runtime Web 載入 ONNX 模型
-          this.session = await ort.InferenceSession.create(this.modelPath, {
-            executionProviders: ['webgl'], // 優先使用 WebGL 以加速計算
-            freeDimensionOverrides: { input_size: MODEL_INPUT_SIZE },
-          });
-
+        if (success) {
           this.isReady = true;
+          document.getElementById('systemStatus').textContent = `AI 視覺準備就緒 (${finalProvider})`;
+          document.getElementById('voiceAlert').textContent = `AI 模型載入成功，當前使用 ${finalProvider} 加速。`;
+          document.getElementById('avoidanceIndicator').textContent = `✅ AI 視覺準備就緒 (${finalProvider})`;
+          document.getElementById('avoidanceIndicator').classList.add('active');
+          document.getElementById('btnStart').disabled = false;
+          document.getElementById('btnStop').disabled = false;
           return true;
-        } catch (error) {
-          console.error('YOLOv8 模型載入失敗:', error);
-          throw error; // 拋出錯誤以便外部處理
+        } else {
+          const errorMessage = 'AI 核心錯誤: WebGL/WASM 加速器啟動失敗。';
+          document.getElementById('systemStatus').textContent = 'AI 視覺錯誤';
+          document.getElementById('voiceAlert').textContent = errorMessage; 
+          document.getElementById('avoidanceIndicator').textContent = '❌ AI 錯誤';
+          return false;
         }
       }
 
@@ -655,24 +684,14 @@
         document.getElementById('btnStop').disabled = true;
       }
 
-      // ... (其他方法保持不變)
-
       // 載入模型並更新狀態
       async initializeSystem() {
         this.updateSystemStatus('載入 AI 模型...');
-        try {
-            await this.yoloDetector.loadModel();
+        const success = await this.yoloDetector.loadModel();
+        
+        if (success) {
             this.updateSystemStatus('準備就緒');
             document.getElementById('voiceAlert').textContent = 'AI 模型載入成功，請點擊開始導航';
-            document.getElementById('avoidanceIndicator').textContent = '✅ AI 視覺準備就緒';
-            document.getElementById('avoidanceIndicator').classList.add('active');
-            document.getElementById('btnStart').disabled = false;
-            document.getElementById('btnStop').disabled = false;
-        } catch (error) {
-            this.updateSystemStatus('模型載入失敗');
-            document.getElementById('voiceAlert').textContent = `AI 模型載入失敗: ${error.message}`;
-            document.getElementById('avoidanceIndicator').textContent = '❌ AI 視覺錯誤';
-            console.error('模型載入失敗:', error);
         }
       }
 
@@ -817,8 +836,6 @@
         document.getElementById('arrowForward').classList.remove('active');
       }
 
-      // ... (其他導航控制方法 - startNavigation, stopNavigation 等)
-
       async startNavigation() {
         if (!this.homePosition && !this.isIndoorMode) {
           this.speak('請先設定家的位置');
@@ -865,8 +882,6 @@
         this.updateUI();
       }
 
-      // ... (省略未修改的輔助方法: initializeCamera, startGPSTracking, calculateDistance, speak, updateUI 等)
-      
       // 載入家的位置
       loadHomePosition() {
         const savedHome = localStorage.getItem('homePosition');
@@ -993,6 +1008,71 @@
           Math.sin(dLon/2) * Math.sin(dLon/2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         return R * c;
+      }
+
+      // 初始化相機
+      async initializeCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('您的瀏覽器不支援相機功能');
+        }
+        
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'environment', // 優先使用後置相機
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            }
+          });
+          
+          const video = document.getElementById('video');
+          video.srcObject = stream;
+          
+          return new Promise((resolve) => {
+            video.onloadedmetadata = () => {
+              video.play();
+              resolve();
+            };
+          });
+        } catch (error) {
+          throw new Error(`無法啟動相機: ${error.message}`);
+        }
+      }
+
+      // 啟動 GPS 追蹤
+      startGPSTracking() {
+        if (!navigator.geolocation) {
+          this.speak('您的裝置不支援 GPS 定位');
+          return;
+        }
+        
+        this.gpsWatchId = navigator.geolocation.watchPosition(
+          (position) => {
+            this.currentPosition = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude
+            };
+            
+            if (this.homePosition) {
+              const distance = this.calculateDistance(
+                this.currentPosition.lat, this.currentPosition.lng,
+                this.homePosition.lat, this.homePosition.lng
+              );
+              
+              document.getElementById('homeDistance').textContent = distance.toFixed(1) + ' 公尺';
+              this.updateHomeInfo();
+            }
+          },
+          (error) => {
+            console.error('GPS 錯誤:', error);
+            this.speak('GPS 定位失敗');
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 30000
+          }
+        );
       }
     }
 
