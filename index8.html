@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#0ea5e9" />
   <title>🧭 盲人導航助手 - 智能跟隨模式</title>
   <style>
+    /* 保持原有的CSS樣式不變 */
     * {
       margin: 0;
       padding: 0;
@@ -341,6 +342,49 @@
       border-left: 1px solid #22c55e;
       border-right: 1px solid #22c55e;
     }
+
+    /* 新增：相機控制 */
+    .camera-controls {
+      position: absolute;
+      bottom: 5px;
+      right: 5px;
+      display: flex;
+      gap: 5px;
+    }
+    
+    .camera-btn {
+      background: rgba(0,0,0,0.7);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    
+    .permission-prompt {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      text-align: center;
+      z-index: 100;
+    }
+    
+    .permission-prompt.hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -353,7 +397,19 @@
     <div class="main-content">
       <!-- 相機畫面 -->
       <div class="camera-view">
+        <!-- 相機權限提示 -->
+        <div class="permission-prompt" id="permissionPrompt">
+          <div style="margin-bottom: 15px;">📷</div>
+          <div style="margin-bottom: 10px; font-size: 14px;">需要相機權限以啟用智能跟隨功能</div>
+          <button class="btn btn-primary" id="btnEnableCamera">啟用相機</button>
+        </div>
+        
         <video id="video" autoplay playsinline muted></video>
+        
+        <!-- 相機控制 -->
+        <div class="camera-controls">
+          <button class="camera-btn" id="btnSwitchCamera" title="切換相機">🔄</button>
+        </div>
         
         <!-- 跟隨模式專用疊加層 -->
         <div class="following-mode" id="followingMode">
@@ -411,23 +467,23 @@
           </div>
           
           <div class="voice-alert" id="voiceAlert">
-            點擊「開始跟隨」啟動人員跟隨模式
+            點擊「啟用相機」開始使用智能跟隨功能
           </div>
         </div>
         
         <!-- 主要控制按鈕 -->
         <div class="controls">
-          <button class="btn btn-primary" id="btnStartFollow">開始跟隨</button>
-          <button class="btn btn-follow" id="btnSmartFollow">智能跟隨</button>
-          <button class="btn btn-warning" id="btnScanWalls">掃描牆壁</button>
-          <button class="btn btn-danger" id="btnStop">停止</button>
+          <button class="btn btn-primary" id="btnStartFollow" disabled>開始跟隨</button>
+          <button class="btn btn-follow" id="btnSmartFollow" disabled>智能跟隨</button>
+          <button class="btn btn-warning" id="btnScanWalls" disabled>掃描牆壁</button>
+          <button class="btn btn-danger" id="btnStop" disabled>停止</button>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    // 智能人員跟隨系統 - 改進版
+    // 智能人員跟隨系統 - 改進版（含真實相機功能）
     class AdvancedPersonFollowingSystem {
       constructor() {
         this.isFollowing = false;
@@ -442,15 +498,28 @@
         this.lastGuidanceTime = 0;
         this.guidanceCooldown = 3000;
         
+        // 相機相關變量
+        this.videoStream = null;
+        this.isCameraActive = false;
+        this.currentFacingMode = 'environment'; // 後置相機
+        
         this.initializeSystem();
       }
       
       initializeSystem() {
         this.setupEventListeners();
-        this.startEnvironmentScanning();
+        this.showCameraPermissionPrompt();
       }
       
       setupEventListeners() {
+        document.getElementById('btnEnableCamera').addEventListener('click', () => {
+          this.enableCamera();
+        });
+        
+        document.getElementById('btnSwitchCamera').addEventListener('click', () => {
+          this.switchCamera();
+        });
+        
         document.getElementById('btnStartFollow').addEventListener('click', () => {
           this.startBasicFollowing();
         });
@@ -468,8 +537,110 @@
         });
       }
       
+      // 啟用相機
+      async enableCamera() {
+        try {
+          this.speak('正在啟動相機...');
+          
+          const constraints = {
+            video: {
+              facingMode: this.currentFacingMode,
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          };
+          
+          this.videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+          const videoElement = document.getElementById('video');
+          videoElement.srcObject = this.videoStream;
+          
+          this.isCameraActive = true;
+          document.getElementById('permissionPrompt').classList.add('hidden');
+          this.enableControls();
+          
+          this.speak('相機啟動成功，現在可以開始使用跟隨功能');
+          
+          // 開始基本的環境分析
+          this.startEnvironmentAnalysis();
+          
+        } catch (error) {
+          console.error('無法訪問相機:', error);
+          this.speak('無法啟動相機，請檢查相機權限設定');
+          document.getElementById('permissionPrompt').innerHTML = `
+            <div style="margin-bottom: 15px;">❌</div>
+            <div style="margin-bottom: 10px; font-size: 14px;">無法訪問相機</div>
+            <div style="margin-bottom: 15px; font-size: 12px; opacity: 0.8;">請確保已授予相機權限並重新整理頁面</div>
+            <button class="btn btn-primary" onclick="location.reload()">重新整理</button>
+          `;
+        }
+      }
+      
+      // 切換相機
+      async switchCamera() {
+        if (!this.isCameraActive) return;
+        
+        this.currentFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
+        
+        // 停止當前串流
+        this.videoStream.getTracks().forEach(track => track.stop());
+        
+        // 重新啟用相機
+        await this.enableCamera();
+        
+        this.speak(`已切換到${this.currentFacingMode === 'user' ? '前置' : '後置'}相機`);
+      }
+      
+      // 啟用控制按鈕
+      enableControls() {
+        document.getElementById('btnStartFollow').disabled = false;
+        document.getElementById('btnSmartFollow').disabled = false;
+        document.getElementById('btnScanWalls').disabled = false;
+        document.getElementById('btnStop').disabled = false;
+      }
+      
+      // 顯示相機權限提示
+      showCameraPermissionPrompt() {
+        document.getElementById('permissionPrompt').classList.remove('hidden');
+      }
+      
+      // 開始環境分析
+      startEnvironmentAnalysis() {
+        // 這裡可以添加真實的計算機視覺分析
+        // 目前使用模擬數據
+        setInterval(() => {
+          if (this.isCameraActive) {
+            this.analyzeEnvironment();
+          }
+        }, 1000);
+      }
+      
+      // 分析環境（模擬真實分析）
+      analyzeEnvironment() {
+        // 模擬從相機畫面分析環境
+        // 在真實應用中，這裡會使用TensorFlow.js、OpenCV.js等進行圖像分析
+        
+        // 模擬檢測結果
+        const hasPerson = Math.random() > 0.3;
+        const distance = hasPerson ? (2 + Math.random() * 3) : null;
+        
+        if (hasPerson && this.isFollowing) {
+          this.updatePersonTracking(distance);
+        }
+        
+        // 模擬牆壁檢測
+        if (this.isSmartFollowing) {
+          this.detectWallsAndObstacles();
+        }
+      }
+      
       // 開始基本跟隨
       startBasicFollowing() {
+        if (!this.isCameraActive) {
+          this.speak('請先啟用相機');
+          return;
+        }
+        
         if (this.isFollowing) return;
         
         this.isFollowing = true;
@@ -477,12 +648,17 @@
         this.showFollowingMode();
         this.speak('基本跟隨模式啟動，正在尋找前方行人');
         
-        this.simulatePersonDetection();
+        this.startPersonTracking();
         this.updateUI();
       }
       
       // 開始智能跟隨
       startSmartFollowing() {
+        if (!this.isCameraActive) {
+          this.speak('請先啟用相機');
+          return;
+        }
+        
         if (this.isFollowing) return;
         
         this.isFollowing = true;
@@ -491,7 +667,7 @@
         this.speak('智能跟隨模式啟動，開始環境掃描和牆壁檢測');
         
         this.scanEnvironment();
-        this.simulatePersonDetection();
+        this.startPersonTracking();
         this.updateUI();
       }
       
@@ -518,8 +694,28 @@
         document.getElementById('wallWarningRight').classList.remove('active');
       }
       
+      // 開始人員追蹤
+      startPersonTracking() {
+        // 模擬人員追蹤
+        this.simulatePersonDetection();
+      }
+      
+      // 更新人員追蹤
+      updatePersonTracking(distance) {
+        document.getElementById('targetDistance').textContent = distance.toFixed(1) + ' 公尺';
+        document.getElementById('trackingDistance').textContent = distance.toFixed(1) + 'm';
+        
+        const status = distance < 3 ? '跟隨中' : distance < 5 ? '距離正常' : '距離過遠';
+        document.getElementById('followStatus').textContent = status;
+      }
+      
       // 掃描牆壁
       scanWalls() {
+        if (!this.isCameraActive) {
+          this.speak('請先啟用相機');
+          return;
+        }
+        
         this.speak('開始掃描周圍牆壁和障礙物');
         
         // 模擬牆壁掃描過程
@@ -781,7 +977,7 @@
     // 初始提示
     window.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => {
-        followingSystem.speak('智能人員跟隨系統已就緒，請選擇跟隨模式');
+        followingSystem.speak('智能人員跟隨系統已就緒，請啟用相機開始使用');
       }, 1000);
     });
   </script>
