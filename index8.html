@@ -6,8 +6,9 @@
   <meta name="theme-color" content="#0ea5e9" />
   <title>🧭 盲人導航助手 - AI 避障</title>
   
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  <!-- 使用更穩定的 TensorFlow.js 版本 -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
   
   <style>
     * {
@@ -73,6 +74,7 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
+      transform: scaleX(-1); /* 鏡像翻轉，讓畫面更自然 */
     }
     
     .overlay {
@@ -354,6 +356,30 @@
       z-index: 20;
       display: none;
     }
+
+    .camera-permission {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 30;
+      display: none;
+    }
+
+    .permission-btn {
+      margin-top: 10px;
+      padding: 10px 20px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -393,6 +419,12 @@
           ⚠️ AI 模型載入中...
         </div>
         <div class="debug-info" id="debugInfo"></div>
+        
+        <div class="camera-permission" id="cameraPermission">
+          <h3>📷 需要相機權限</h3>
+          <p>請允許使用相機以啟用 AI 視覺避障功能</p>
+          <button class="permission-btn" id="btnRequestCamera">允許相機</button>
+        </div>
       </div>
       
       <div class="control-section">
@@ -436,30 +468,29 @@
   </div>
 
   <script>
-    // YOLOv8 物件類別名稱 (COCO dataset)
+    // 使用 COCO-SSD 的類別名稱
     const CLASS_NAMES = [
-      'person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 
-      'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 
-      'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 
-      'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 
-      'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 
-      'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 
-      'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 
-      'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 
-      'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 
-      'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+      'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 
+      'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 
+      'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 
+      'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 
+      'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 
+      'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 
+      'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 
+      'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 
+      'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 
+      'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 
+      'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 
+      'toothbrush'
     ];
-    
-    const MODEL_INPUT_SIZE = 640;
 
     /**
-     * @class YOLOv8Detector
-     * 修復版 YOLOv8 檢測器 - 完全使用真實模型
+     * @class CocoSSDDetector
+     * 使用 TensorFlow.js COCO-SSD 模型的物件檢測器
      */
-    class YOLOv8Detector {
-      constructor(modelPath = 'yolov8n.onnx') {
-        this.modelPath = modelPath;
-        this.session = null;
+    class CocoSSDDetector {
+      constructor() {
+        this.model = null;
         this.isReady = false;
         this.videoElement = document.getElementById('video');
         this.canvasElement = document.getElementById('bboxCanvas');
@@ -467,209 +498,168 @@
         this.lastInferenceTime = Date.now();
         this.frameCount = 0;
         this.fps = 0;
-        
-        // 禁用模擬模式，強制使用真實模型
-        this.useSimulation = false;
+        this.cameraInitialized = false;
       }
 
       async loadModel() {
-        document.getElementById('systemStatus').textContent = '嘗試載入 AI 模型...';
-        document.getElementById('voiceAlert').textContent = `正在從 ${this.modelPath} 載入模型...`;
+        document.getElementById('systemStatus').textContent = '載入 COCO-SSD 模型...';
+        document.getElementById('voiceAlert').textContent = '正在載入 AI 模型，請稍候...';
         
         try {
-          if (typeof ort === 'undefined' || !ort.InferenceSession) {
-            throw new Error("ONNX Runtime Web 函式庫未載入。");
-          }
-
-          // 嘗試使用 WebGL 加速
-          this.session = await ort.InferenceSession.create(this.modelPath, {
-            executionProviders: ['webgl', 'wasm'],
-            graphOptimizationLevel: 'all'
-          });
-
-          console.log('YOLOv8 模型載入成功');
-          console.log('輸入名稱:', this.session.inputNames);
-          console.log('輸出名稱:', this.session.outputNames);
+          // 使用 COCO-SSD 模型
+          this.model = await cocoSsd.load();
           
+          console.log('COCO-SSD 模型載入成功');
           this.isReady = true;
-          document.getElementById('systemStatus').textContent = 'AI 視覺準備就緒';
-          document.getElementById('voiceAlert').textContent = 'AI 模型載入成功，可以開始導航';
-          document.getElementById('avoidanceIndicator').textContent = '✅ AI 視覺準備就緒';
+          
+          document.getElementById('systemStatus').textContent = 'COCO-SSD 模型就緒';
+          document.getElementById('voiceAlert').textContent = 'AI 模型載入成功，請初始化相機';
+          document.getElementById('avoidanceIndicator').textContent = '✅ COCO-SSD 就緒';
           document.getElementById('avoidanceIndicator').classList.add('active');
-          document.getElementById('btnStart').disabled = false;
-          document.getElementById('btnStop').disabled = false;
+          
+          // 顯示相機權限請求
+          this.showCameraPermission();
           
           return true;
           
         } catch (error) {
-          console.error('模型載入失敗:', error);
-          document.getElementById('systemStatus').textContent = 'AI 模型載入失敗';
+          console.error('COCO-SSD 模型載入失敗:', error);
+          document.getElementById('systemStatus').textContent = '模型載入失敗';
           document.getElementById('voiceAlert').textContent = 'AI 模型載入失敗: ' + error.message;
-          document.getElementById('avoidanceIndicator').textContent = '❌ AI 模型錯誤';
           return false;
         }
       }
 
-      async detect(video) {
-        if (!this.isReady || !this.session) {
-          console.log('模型未準備好');
+      showCameraPermission() {
+        const permissionDiv = document.getElementById('cameraPermission');
+        permissionDiv.style.display = 'block';
+        
+        document.getElementById('btnRequestCamera').onclick = () => {
+          this.initializeCamera();
+        };
+      }
+
+      hideCameraPermission() {
+        const permissionDiv = document.getElementById('cameraPermission');
+        permissionDiv.style.display = 'none';
+      }
+
+      async initializeCamera() {
+        document.getElementById('systemStatus').textContent = '初始化相機...';
+        document.getElementById('voiceAlert').textContent = '正在初始化相機...';
+        
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('您的瀏覽器不支援相機功能');
+          }
+
+          // 嘗試不同的相機配置
+          const constraints = {
+            video: {
+              facingMode: 'environment', // 優先使用後置相機
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              frameRate: { ideal: 30 }
+            }
+          };
+
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          
+          this.videoElement.srcObject = stream;
+          
+          return new Promise((resolve, reject) => {
+            this.videoElement.onloadedmetadata = () => {
+              this.videoElement.play().then(() => {
+                console.log('相機初始化完成，解析度:', this.videoElement.videoWidth, 'x', this.videoElement.videoHeight);
+                this.cameraInitialized = true;
+                this.hideCameraPermission();
+                document.getElementById('systemStatus').textContent = '相機就緒';
+                document.getElementById('voiceAlert').textContent = '相機初始化成功，可以開始導航';
+                document.getElementById('btnStart').disabled = false;
+                document.getElementById('btnStop').disabled = false;
+                resolve();
+              }).catch(reject);
+            };
+            
+            this.videoElement.onerror = reject;
+          });
+          
+        } catch (error) {
+          console.error('相機初始化失敗:', error);
+          let errorMessage = '無法啟動相機';
+          
+          if (error.name === 'NotAllowedError') {
+            errorMessage = '相機權限被拒絕，請允許相機權限後重新整理頁面';
+          } else if (error.name === 'NotFoundError') {
+            errorMessage = '找不到可用的相機設備';
+          } else if (error.name === 'NotSupportedError') {
+            errorMessage = '您的瀏覽器不支援相機功能';
+          }
+          
+          document.getElementById('systemStatus').textContent = '相機錯誤';
+          document.getElementById('voiceAlert').textContent = errorMessage;
+          throw new Error(errorMessage);
+        }
+      }
+
+      async detect() {
+        if (!this.isReady || !this.model || !this.cameraInitialized) {
           return [];
         }
 
         const startTime = performance.now();
 
         try {
-          // 1. 圖像預處理 - 修復張量轉換邏輯
-          const inputTensor = this.preprocessImage(video);
+          // 使用 COCO-SSD 進行檢測
+          const predictions = await this.model.detect(this.videoElement);
+          const detections = this.processPredictions(predictions);
           
-          // 2. 模型推理
-          const feeds = {};
-          feeds[this.session.inputNames[0]] = inputTensor;
-          
-          const results = await this.session.run(feeds);
-          const outputTensor = results[this.session.outputNames[0]];
-          
-          // 3. 後處理
-          const detections = this.postprocessOutput(outputTensor, video.videoWidth, video.videoHeight);
-          
-          // 4. 計算 FPS
-          const endTime = performance.now();
-          const inferenceTime = endTime - startTime;
-          this.updateFPS(inferenceTime);
+          // 更新 FPS
+          this.updateFPS(performance.now() - startTime);
           
           return detections;
           
         } catch (error) {
-          console.error('檢測過程中發生錯誤:', error);
+          console.error('檢測錯誤:', error);
           return [];
         }
       }
 
-      preprocessImage(video) {
-        return tf.tidy(() => {
-          // 1. 從影片元素獲取張量
-          let tensor = tf.browser.fromPixels(video);
-          
-          // 2. 調整大小到 640x640
-          tensor = tf.image.resizeBilinear(tensor, [MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
-          
-          // 3. 歸一化: [0, 255] -> [0, 1]
-          tensor = tensor.div(255.0);
-          
-          // 4. 變換通道: (H, W, C) -> (C, H, W)
-          tensor = tensor.transpose([2, 0, 1]);
-          
-          // 5. 增加 Batch 維度: (C, H, W) -> (1, C, H, W)
-          tensor = tensor.expandDims(0);
-          
-          // 6. 確保數據類型為 float32
-          const data = tensor.dataSync();
-          
-          return new ort.Tensor('float32', data, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
-        });
-      }
-
-      postprocessOutput(outputTensor, originalWidth, originalHeight, confThreshold = 0.25, iouThreshold = 0.45) {
+      processPredictions(predictions) {
         const detections = [];
-        const outputData = outputTensor.data;
-        const outputDims = outputTensor.dims;
         
-        console.log('輸出維度:', outputDims);
-        console.log('輸出數據長度:', outputData.length);
-        
-        // YOLOv8 輸出格式通常是 [1, 84, 8400]
-        if (outputDims.length === 3 && outputDims[0] === 1) {
-          const numClasses = outputDims[1] - 4; // 84 - 4 = 80 classes
-          const numBoxes = outputDims[2]; // 8400 boxes
+        predictions.forEach(prediction => {
+          const { bbox, class: className, score } = prediction;
+          const [x, y, width, height] = bbox;
           
-          for (let i = 0; i < numBoxes; i++) {
-            const classScores = [];
-            let maxScore = -1;
-            let classId = -1;
-            
-            // 獲取類別分數
-            for (let j = 0; j < numClasses; j++) {
-              const score = outputData[(j + 4) * numBoxes + i];
-              classScores.push(score);
-              if (score > maxScore) {
-                maxScore = score;
-                classId = j;
-              }
-            }
-            
-            // 應用信心度門檻
-            if (maxScore > confThreshold) {
-              // 獲取邊界框座標
-              const cx = outputData[0 * numBoxes + i] * originalWidth / MODEL_INPUT_SIZE;
-              const cy = outputData[1 * numBoxes + i] * originalHeight / MODEL_INPUT_SIZE;
-              const w = outputData[2 * numBoxes + i] * originalWidth / MODEL_INPUT_SIZE;
-              const h = outputData[3 * numBoxes + i] * originalHeight / MODEL_INPUT_SIZE;
-              
-              const x1 = cx - w / 2;
-              const y1 = cy - h / 2;
-              const x2 = cx + w / 2;
-              const y2 = cy + h / 2;
-              
-              detections.push({
-                x1: Math.max(0, x1),
-                y1: Math.max(0, y1),
-                x2: Math.min(originalWidth, x2),
-                y2: Math.min(originalHeight, y2),
-                w: w,
-                h: h,
-                score: maxScore,
-                classId: classId,
-                className: CLASS_NAMES[classId],
-                distance: this.estimateDistance(h, originalHeight)
-              });
-            }
-          }
-        }
-        
-        // 應用 NMS (非極大值抑制)
-        const nmsDetections = this.nonMaxSuppression(detections, iouThreshold);
-        
-        console.log(`檢測到 ${nmsDetections.length} 個物件`);
-        return nmsDetections.slice(0, 10); // 返回前10個檢測結果
-      }
-
-      nonMaxSuppression(detections, iouThreshold) {
-        detections.sort((a, b) => b.score - a.score);
-        const selected = [];
-        
-        while (detections.length > 0) {
-          const best = detections[0];
-          selected.push(best);
-          detections = detections.slice(1);
+          // 計算距離（簡化估計）
+          const distance = this.estimateDistance(height);
           
-          detections = detections.filter(det => {
-            const iou = this.calculateIOU(best, det);
-            return iou < iouThreshold;
+          detections.push({
+            x1: x,
+            y1: y,
+            x2: x + width,
+            y2: y + height,
+            w: width,
+            h: height,
+            score: score,
+            classId: CLASS_NAMES.indexOf(className),
+            className: className,
+            distance: distance
           });
-        }
+        });
         
-        return selected;
+        return detections;
       }
 
-      calculateIOU(box1, box2) {
-        const x1 = Math.max(box1.x1, box2.x1);
-        const y1 = Math.max(box1.y1, box2.y1);
-        const x2 = Math.min(box1.x2, box2.x2);
-        const y2 = Math.min(box1.y2, box2.y2);
-        
-        const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-        const area1 = (box1.x2 - box1.x1) * (box1.y2 - box1.y1);
-        const area2 = (box2.x2 - box2.x1) * (box2.y2 - box2.y1);
-        const union = area1 + area2 - intersection;
-        
-        return intersection / union;
-      }
-
-      estimateDistance(height, imageHeight) {
+      estimateDistance(height) {
         if (height <= 0) return 999;
+        const imageHeight = this.videoElement.videoHeight || 480;
         const normalizedHeight = height / imageHeight;
+        
         // 簡化的距離估計：物體越大，距離越近
-        return Math.min(20, 3 / normalizedHeight);
+        // 調整這個公式以獲得更好的距離估計
+        return Math.min(20, 5 / normalizedHeight);
       }
 
       updateFPS(inferenceTime) {
@@ -690,15 +680,17 @@
         const width = this.videoElement.videoWidth || 640;
         const height = this.videoElement.videoHeight || 480;
         
+        // 設置 canvas 尺寸與影片一致
         this.canvasElement.width = width;
         this.canvasElement.height = height;
         this.canvasCtx.clearRect(0, 0, width, height);
 
         // 顯示除錯資訊
         const debugInfo = document.getElementById('debugInfo');
-        debugInfo.textContent = `解析度: ${width}x${height}\n檢測到: ${detections.length} 個物件`;
+        debugInfo.textContent = `COCO-SSD\n解析度: ${width}x${height}\n檢測到: ${detections.length} 個物件`;
         debugInfo.style.display = 'block';
 
+        // 繪製檢測結果
         detections.forEach((box, index) => {
           const { x1, y1, w, h, className, distance, score } = box;
           
@@ -718,6 +710,7 @@
           const label = `${className} ${distance.toFixed(1)}m (${score.toFixed(2)})`;
           const textWidth = this.canvasCtx.measureText(label).width;
           
+          // 確保標籤不會超出畫面
           const labelY = y1 > 20 ? y1 - 5 : y1 + h + 15;
           this.canvasCtx.fillRect(x1, labelY - 15, textWidth + 10, 18);
           
@@ -731,7 +724,7 @@
     // --- 智能避障導航系統 ---
     class ObstacleAvoidanceSystem {
       constructor() {
-        this.yoloDetector = new YOLOv8Detector('yolov8n.onnx');
+        this.detector = new CocoSSDDetector();
         this.detectionLoopId = null;
         this.voiceEnabled = true;
         this.isNavigating = false;
@@ -756,13 +749,13 @@
       }
 
       async initializeSystem() {
-        this.updateSystemStatus('載入 AI 模型...');
-        const success = await this.yoloDetector.loadModel();
+        this.updateSystemStatus('初始化系統...');
+        const success = await this.detector.loadModel();
         
         if (success) {
-          this.updateSystemStatus('準備就緒');
+          this.updateSystemStatus('等待相機初始化');
         } else {
-          this.updateSystemStatus('載入失敗');
+          this.updateSystemStatus('系統初始化失敗');
         }
       }
 
@@ -778,7 +771,7 @@
           document.getElementById('btnFollow').disabled = true;
           
           // 如果正在導航，重新啟動 AI 檢測
-          if (this.isNavigating) {
+          if (this.isNavigating && this.detector.cameraInitialized) {
             this.startAIDetection();
           }
         } else {
@@ -800,18 +793,15 @@
         console.log('啟動 AI 檢測循環...');
 
         const detectFrame = async () => {
-          if (!this.isNavigating || !this.isIndoorMode || !this.yoloDetector.isReady) {
+          if (!this.isNavigating || !this.isIndoorMode || !this.detector.isReady || !this.detector.cameraInitialized) {
             this.detectionLoopId = requestAnimationFrame(detectFrame);
             return;
           }
 
           try {
-            // 確保影片元素已準備好
-            if (this.yoloDetector.videoElement.readyState === 4) {
-              const detections = await this.yoloDetector.detect(this.yoloDetector.videoElement);
-              this.yoloDetector.draw(detections);
-              this.provideAvoidanceGuidance(detections);
-            }
+            const detections = await this.detector.detect();
+            this.detector.draw(detections);
+            this.provideAvoidanceGuidance(detections);
           } catch (error) {
             console.error('檢測循環錯誤:', error);
           }
@@ -827,12 +817,11 @@
           cancelAnimationFrame(this.detectionLoopId);
           this.detectionLoopId = null;
         }
-        if (this.yoloDetector.canvasCtx) {
-          const canvas = this.yoloDetector.canvasElement;
-          this.yoloDetector.canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        if (this.detector.canvasCtx) {
+          const canvas = this.detector.canvasElement;
+          this.detector.canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
         }
         
-        // 隱藏除錯資訊
         document.getElementById('debugInfo').style.display = 'none';
       }
 
@@ -844,7 +833,7 @@
         let safeDirection = 'forward';
         this.hideAllArrows();
 
-        const width = this.yoloDetector.videoElement.videoWidth || 640;
+        const width = this.detector.videoElement.videoWidth || 640;
         const leftArea = width * 0.3;
         const rightArea = width * 0.7;
 
@@ -855,10 +844,12 @@
         detections.forEach(box => {
           const centerX = (box.x1 + box.x2) / 2;
           
+          // 更新最近障礙物距離
           if (box.distance < closestDistance) {
             closestDistance = box.distance;
           }
 
+          // 只考慮 4 公尺內的障礙物
           if (box.distance < 4.0) {
             if (centerX < leftArea) {
               dangerLeft = Math.min(dangerLeft, box.distance);
@@ -870,16 +861,19 @@
           }
         });
 
+        // 更新 UI 顯示
         document.getElementById('closestObstacle').textContent = 
           closestDistance !== Infinity ? closestDistance.toFixed(1) + ' 公尺' : '-- 公尺';
 
         const STOP_THRESHOLD = 1.0;
         const YIELD_THRESHOLD = 2.0;
 
+        // 避障邏輯
         if (closestDistance < STOP_THRESHOLD) {
           advice = '緊急！前方有障礙物，請立即停止！';
           safeDirection = 'stop';
         } else if (dangerFront < YIELD_THRESHOLD) {
+          // 前方有障礙物，判斷左邊或右邊較安全
           if (dangerLeft > dangerRight + 0.5) {
             advice = `前方障礙物 ${dangerFront.toFixed(1)}m，請向左`;
             safeDirection = 'left';
@@ -938,7 +932,10 @@
         this.updateSystemStatus('導航中');
         
         try {
-          await this.initializeCamera();
+          if (this.isIndoorMode && !this.detector.cameraInitialized) {
+            await this.detector.initializeCamera();
+          }
+          
           if (this.isIndoorMode) {
             this.speak('室內避障模式啟動，開始 AI 視覺分析');
             this.startAIDetection();
@@ -1072,35 +1069,6 @@
           Math.sin(dLon/2) * Math.sin(dLon/2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         return R * c;
-      }
-
-      async initializeCamera() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error('您的瀏覽器不支援相機功能');
-        }
-        
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: 'environment',
-              width: { ideal: 640 },
-              height: { ideal: 480 }
-            }
-          });
-          
-          const video = document.getElementById('video');
-          video.srcObject = stream;
-          
-          return new Promise((resolve) => {
-            video.onloadedmetadata = () => {
-              video.play();
-              console.log('相機初始化完成，解析度:', video.videoWidth, 'x', video.videoHeight);
-              resolve();
-            };
-          });
-        } catch (error) {
-          throw new Error(`無法啟動相機: ${error.message}`);
-        }
       }
 
       startGPSTracking() {
