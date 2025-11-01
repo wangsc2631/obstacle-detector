@@ -4,13 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0ea5e9" />
-  <title>🧭 盲人導航助手 - AI 避障</title>
-  
-  <!-- 使用更穩定的 TensorFlow.js 版本 -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
-  
+  <title>🧭 盲人導航助手 - YOLO智能跟隨</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
   <style>
+    /* 保持原有的CSS樣式 */
     * {
       margin: 0;
       padding: 0;
@@ -59,7 +57,6 @@
       gap: 5px;
       padding: 5px;
       min-height: 0;
-      overflow-y: auto;
     }
     
     .camera-view {
@@ -74,7 +71,14 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transform: scaleX(-1); /* 鏡像翻轉，讓畫面更自然 */
+    }
+    
+    .camera-view canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
     }
     
     .overlay {
@@ -86,26 +90,110 @@
       pointer-events: none;
     }
     
-    .obstacle-marker {
+    /* YOLO檢測結果顯示 */
+    .detection-box {
       position: absolute;
-      background: rgba(255, 255, 0, 0.8);
-      border-radius: 4px;
-      border: 2px solid #ff0000;
-      color: #000;
-      font-size: 10px;
-      padding: 2px 4px;
-      text-align: center;
-      box-sizing: border-box;
-      white-space: nowrap;
-      transform: translate(-50%, -50%);
-      animation: markerPulse 1.5s infinite;
-      z-index: 10;
+      border: 2px solid #22c55e;
+      background: rgba(34, 197, 94, 0.2);
+      pointer-events: none;
     }
     
-    @keyframes markerPulse {
-      0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
-      70% { box-shadow: 0 0 0 8px rgba(255, 0, 0, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+    .detection-label {
+      position: absolute;
+      background: rgba(34, 197, 94, 0.9);
+      color: white;
+      padding: 2px 6px;
+      font-size: 10px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+    
+    .following-mode {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+    }
+    
+    .following-mode.active {
+      display: block;
+    }
+    
+    .target-person {
+      position: absolute;
+      width: 60px;
+      height: 100px;
+      background: rgba(34, 197, 94, 0.3);
+      border: 2px solid #22c55e;
+      border-radius: 8px;
+      transform: translate(-50%, -50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    
+    .safety-bubble {
+      position: absolute;
+      width: 120px;
+      height: 180px;
+      border: 2px dashed rgba(34, 197, 94, 0.5);
+      border-radius: 15px;
+      transform: translate(-50%, -50%);
+      background: rgba(34, 197, 94, 0.1);
+    }
+    
+    .wall-detection {
+      position: absolute;
+      background: rgba(239, 68, 68, 0.4);
+      border: 1px solid rgba(239, 68, 68, 0.8);
+      transition: all 0.3s ease;
+    }
+    
+    .wall-left {
+      left: 0;
+      top: 20%;
+      width: 15%;
+      height: 60%;
+    }
+    
+    .wall-right {
+      right: 0;
+      top: 20%;
+      width: 15%;
+      height: 60%;
+    }
+    
+    .obstacle-marker {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: rgba(239, 68, 68, 0.8);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      animation: obstaclePulse 2s infinite;
+    }
+    
+    .guidance-text {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 15px;
+      font-size: 12px;
+      text-align: center;
+      max-width: 90%;
+    }
+    
+    @keyframes obstaclePulse {
+      0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      50% { transform: translate(-50%, -50%) scale(1.2); opacity: 0.7; }
+      100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
     }
     
     .status-panel {
@@ -153,7 +241,6 @@
       justify-content: center;
       font-size: 11px;
       flex-shrink: 0;
-      overflow-wrap: break-word;
     }
     
     .controls {
@@ -161,7 +248,6 @@
       grid-template-columns: 1fr 1fr;
       gap: 6px;
       flex-shrink: 0;
-      margin-bottom: 6px;
     }
     
     .btn {
@@ -192,825 +278,630 @@
       background: #ef4444;
     }
     
-    .btn-secondary {
-      background: rgba(255,255,255,0.2);
-    }
-    
-    .btn-info {
-      background: #3b82f6;
+    .btn-follow {
+      background: #8b5cf6;
     }
     
     .btn-active {
       box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
     }
     
-    .tracking-indicator, .direction-arrow, .distance-badge {
+    .tracking-indicator {
       position: absolute;
+      top: 4px;
+      right: 4px;
       background: rgba(0,0,0,0.7);
       color: white;
       padding: 4px 8px;
       border-radius: 12px;
       font-size: 9px;
-      z-index: 5;
-    }
-
-    .tracking-indicator {
-      top: 4px;
-      right: 4px;
       display: none;
     }
     
     .tracking-indicator.active {
       display: block;
     }
-
-    .direction-arrow {
+    
+    .following-stats {
+      position: absolute;
       top: 4px;
       left: 4px;
-      display: none;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 9px;
     }
     
-    .direction-arrow.active {
-      display: block;
-    }
-
-    .distance-badge {
-      bottom: 4px;
-      left: 4px;
-    }
-    
-    .mode-selector {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6px;
-      margin-bottom: 6px;
-      flex-shrink: 0;
-    }
-
-    .mode-btn {
-      padding: 10px 6px;
-      border: none;
-      border-radius: 8px;
-      font-size: 11px;
-      font-weight: bold;
-      color: white;
-      cursor: pointer;
-      background: rgba(255,255,255,0.2);
-      min-height: 40px;
-    }
-
-    .mode-btn.active {
-      background: #3b82f6;
-      box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
-    }
-
-    .emergency-section {
-      margin-top: 6px;
-      flex-shrink: 0;
-    }
-
-    .emergency-btn {
-      width: 100%;
-      padding: 12px;
-      background: #ef4444;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: bold;
-      min-height: 50px;
-    }
-
-    .avoidance-indicator {
+    .wall-warning {
       position: absolute;
-      bottom: 4px;
-      right: 4px;
-      background: #f59e0b;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(239, 68, 68, 0.8);
       color: white;
-      padding: 6px 12px;
+      padding: 6px 10px;
       border-radius: 15px;
       font-size: 10px;
       display: none;
-      z-index: 5;
     }
     
-    .avoidance-indicator.active {
+    .wall-warning.left {
+      left: 10px;
+    }
+    
+    .wall-warning.right {
+      right: 10px;
+    }
+    
+    .wall-warning.active {
       display: block;
     }
-
-    .path-arrow {
+    
+    .safe-path {
       position: absolute;
-      font-size: 40px;
-      color: #22c55e;
-      text-shadow: 0 0 10px #22c55e;
-      font-weight: 900;
-      opacity: 0;
-      transition: opacity 0.3s;
-      z-index: 10;
-    }
-    
-    .path-arrow.active {
-      opacity: 1;
-    }
-    
-    .path-arrow.left {
-      left: 15%;
-      top: 50%;
-      transform: translateY(-50%) rotate(180deg);
-    }
-    
-    .path-arrow.right {
-      right: 15%;
-      top: 50%;
-      transform: translateY(-50%) rotate(0deg);
-    }
-    
-    .path-arrow.forward {
-      left: 50%;
-      top: 20%;
-      transform: translateX(-50%) rotate(0deg);
+      top: 25%;
+      height: 50%;
+      width: 40%;
+      left: 30%;
+      background: linear-gradient(90deg, 
+        transparent 0%, 
+        rgba(34, 197, 94, 0.3) 50%, 
+        transparent 100%);
+      border-left: 1px solid #22c55e;
+      border-right: 1px solid #22c55e;
     }
 
-    #bboxCanvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 2;
-    }
-
-    .control-section {
-      flex-shrink: 0;
-    }
-
-    .debug-info {
+    .camera-controls {
       position: absolute;
-      top: 10px;
-      left: 10px;
+      bottom: 5px;
+      right: 5px;
+      display: flex;
+      gap: 5px;
+    }
+    
+    .camera-btn {
       background: rgba(0,0,0,0.7);
       color: white;
-      padding: 8px;
-      border-radius: 6px;
-      font-size: 10px;
-      z-index: 20;
+      border: none;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    
+    .permission-prompt {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      text-align: center;
+      z-index: 100;
+    }
+    
+    .permission-prompt.hidden {
       display: none;
     }
 
-    .camera-permission {
+    .loading-indicator {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
       background: rgba(0,0,0,0.8);
       color: white;
-      padding: 20px;
+      padding: 10px 15px;
       border-radius: 10px;
-      text-align: center;
-      z-index: 30;
+      font-size: 12px;
       display: none;
     }
-
-    .permission-btn {
-      margin-top: 10px;
-      padding: 10px 20px;
-      background: #3b82f6;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
+    
+    .loading-indicator.active {
+      display: block;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>🧭 盲人導航助手</h1>
-      <div class="subtitle">智能避障 · AI 視覺分析</div>
+      <h1>🧭 YOLO智能人員跟隨模式</h1>
+      <div class="subtitle">基於TensorFlow.js + COCO-SSD實時檢測</div>
     </div>
     
     <div class="main-content">
-      <div class="mode-selector">
-        <button class="mode-btn active" id="btnOutdoorMode">室外導航 (GPS)</button>
-        <button class="mode-btn" id="btnIndoorMode">室內避障 (AI 視覺)</button>
-      </div>
-
+      <!-- 相機畫面 -->
       <div class="camera-view">
+        <!-- 相機權限提示 -->
+        <div class="permission-prompt" id="permissionPrompt">
+          <div style="margin-bottom: 15px;">📷</div>
+          <div style="margin-bottom: 10px; font-size: 14px;">需要相機權限以啟用YOLO智能跟隨</div>
+          <button class="btn btn-primary" id="btnEnableCamera">啟用相機</button>
+        </div>
+
+        <!-- 模型加載提示 -->
+        <div class="loading-indicator" id="modelLoading">
+          🧠 加載AI模型中...
+        </div>
+        
         <video id="video" autoplay playsinline muted></video>
-        <canvas id="bboxCanvas"></canvas>
-        <div class="overlay">
+        <canvas id="canvas"></canvas>
+        
+        <!-- 相機控制 -->
+        <div class="camera-controls">
+          <button class="camera-btn" id="btnSwitchCamera" title="切換相機">🔄</button>
+        </div>
+        
+        <!-- 跟隨模式專用疊加層 -->
+        <div class="following-mode" id="followingMode">
+          <div class="safe-path"></div>
+          <div class="target-person" id="targetPerson">👤</div>
+          <div class="safety-bubble" id="safetyBubble"></div>
+          <div class="wall-detection wall-left" id="wallLeft"></div>
+          <div class="wall-detection wall-right" id="wallRight"></div>
           <div id="obstacleMarkers"></div>
-          
-          <div class="path-arrow left" id="arrowLeft">👈</div>
-          <div class="path-arrow right" id="arrowRight">👉</div>
-          <div class="path-arrow forward" id="arrowForward">👆</div>
+          <div class="wall-warning left" id="wallWarningLeft">⚠️ 左側牆壁</div>
+          <div class="wall-warning right" id="wallWarningRight">⚠️ 右側牆壁</div>
+          <div class="guidance-text" id="guidanceText">YOLO模型加載中...</div>
         </div>
         
         <div class="tracking-indicator" id="trackingIndicator">
-          👤 跟隨中 <span id="trackingDistance">0m</span>
+          👤 YOLO跟隨中 <span id="trackingDistance">0m</span>
         </div>
-        <div class="direction-arrow" id="directionArrow">
-          🏠 <span id="homeDirection">--</span>
-        </div>
-        <div class="distance-badge" id="distanceBadge">
-          📍 距家: <span id="homeDistance">--</span>
-        </div>
-        <div class="avoidance-indicator" id="avoidanceIndicator">
-          ⚠️ AI 模型載入中...
-        </div>
-        <div class="debug-info" id="debugInfo"></div>
-        
-        <div class="camera-permission" id="cameraPermission">
-          <h3>📷 需要相機權限</h3>
-          <p>請允許使用相機以啟用 AI 視覺避障功能</p>
-          <button class="permission-btn" id="btnRequestCamera">允許相機</button>
+        <div class="following-stats" id="followingStats">
+          檢測置信度: <span id="detectionConfidence">--%</span>
         </div>
       </div>
       
+      <!-- 控制區域 -->
       <div class="control-section">
+        <!-- 狀態資訊 -->
         <div class="status-panel">
           <div class="status-grid">
             <div class="status-item">
-              <div class="status-label">系統狀態</div>
-              <div class="status-value" id="systemStatus">載入模型中...</div>
+              <div class="status-label">跟隨狀態</div>
+              <div class="status-value" id="followStatus">等待中</div>
             </div>
             <div class="status-item">
-              <div class="status-label">避障建議</div>
-              <div class="status-value" id="avoidanceAdvice">--</div>
+              <div class="status-label">目標距離</div>
+              <div class="status-value" id="targetDistance">-- 公尺</div>
             </div>
             <div class="status-item">
-              <div class="status-label">最近障礙物</div>
-              <div class="status-value" id="closestObstacle">-- 公尺</div>
+              <div class="status-label">檢測目標</div>
+              <div class="status-value" id="detectedObject">--</div>
             </div>
             <div class="status-item">
-              <div class="status-label">AI 幀率</div>
-              <div class="status-value" id="safetyScore">-- FPS</div>
+              <div class="status-label">FPS</div>
+              <div class="status-value" id="fpsCounter">--</div>
             </div>
           </div>
           
           <div class="voice-alert" id="voiceAlert">
-            AI 模型載入中，請稍候...
+            點擊「啟用相機」開始YOLO智能跟隨
           </div>
         </div>
         
+        <!-- 主要控制按鈕 -->
         <div class="controls">
-          <button class="btn btn-primary" id="btnStart" disabled>開始導航</button>
-          <button class="btn btn-warning" id="btnFollow" disabled>人員跟隨</button>
-          <button class="btn btn-info" id="btnSetHome">📍 設定家的位置</button>
+          <button class="btn btn-primary" id="btnStartFollow" disabled>開始跟隨</button>
+          <button class="btn btn-follow" id="btnSmartFollow" disabled>智能跟隨</button>
+          <button class="btn btn-warning" id="btnScanWalls" disabled>環境掃描</button>
           <button class="btn btn-danger" id="btnStop" disabled>停止</button>
-        </div>
-
-        <div class="emergency-section">
-          <button class="emergency-btn" id="btnEmergency">🆘 緊急求助</button>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    // 使用 COCO-SSD 的類別名稱
-    const CLASS_NAMES = [
-      'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 
-      'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 
-      'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 
-      'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 
-      'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 
-      'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 
-      'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 
-      'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 
-      'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 
-      'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 
-      'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 
-      'toothbrush'
-    ];
-
-    /**
-     * @class CocoSSDDetector
-     * 使用 TensorFlow.js COCO-SSD 模型的物件檢測器
-     */
-    class CocoSSDDetector {
+    // YOLO智能人員跟隨系統
+    class YOLOPersonFollowingSystem {
       constructor() {
+        this.isFollowing = false;
+        this.isSmartFollowing = false;
+        this.isCameraActive = false;
+        this.currentFacingMode = 'environment';
+        this.videoStream = null;
         this.model = null;
-        this.isReady = false;
-        this.videoElement = document.getElementById('video');
-        this.canvasElement = document.getElementById('bboxCanvas');
-        this.canvasCtx = this.canvasElement.getContext('2d');
-        this.lastInferenceTime = Date.now();
+        this.detections = [];
+        this.targetPerson = null;
+        
+        // 性能監控
         this.frameCount = 0;
         this.fps = 0;
-        this.cameraInitialized = false;
-      }
-
-      async loadModel() {
-        document.getElementById('systemStatus').textContent = '載入 COCO-SSD 模型...';
-        document.getElementById('voiceAlert').textContent = '正在載入 AI 模型，請稍候...';
+        this.lastFpsUpdate = Date.now();
         
+        // 跟隨參數
+        this.followingConfig = {
+          targetClass: 'person',
+          minConfidence: 0.6,
+          maxDistance: 8.0,
+          safetyDistance: 2.0
+        };
+        
+        this.initializeSystem();
+      }
+      
+      async initializeSystem() {
+        await this.loadModel();
+        this.setupEventListeners();
+        this.showCameraPermissionPrompt();
+      }
+      
+      // 加載COCO-SSD模型（TensorFlow.js版本的YOLO）
+      async loadModel() {
         try {
-          // 使用 COCO-SSD 模型
+          document.getElementById('modelLoading').classList.add('active');
+          this.speak('正在加載人工智能模型，請稍候');
+          
+          // 加載COCO-SSD模型
           this.model = await cocoSsd.load();
           
-          console.log('COCO-SSD 模型載入成功');
-          this.isReady = true;
-          
-          document.getElementById('systemStatus').textContent = 'COCO-SSD 模型就緒';
-          document.getElementById('voiceAlert').textContent = 'AI 模型載入成功，請初始化相機';
-          document.getElementById('avoidanceIndicator').textContent = '✅ COCO-SSD 就緒';
-          document.getElementById('avoidanceIndicator').classList.add('active');
-          
-          // 顯示相機權限請求
-          this.showCameraPermission();
-          
-          return true;
+          document.getElementById('modelLoading').classList.remove('active');
+          this.speak('AI模型加載完成，準備進行實時檢測');
+          console.log('COCO-SSD模型加載成功');
           
         } catch (error) {
-          console.error('COCO-SSD 模型載入失敗:', error);
-          document.getElementById('systemStatus').textContent = '模型載入失敗';
-          document.getElementById('voiceAlert').textContent = 'AI 模型載入失敗: ' + error.message;
-          return false;
+          console.error('模型加載失敗:', error);
+          this.speak('AI模型加載失敗，請檢查網絡連接');
+          document.getElementById('modelLoading').textContent = '❌ 模型加載失敗';
         }
       }
-
-      showCameraPermission() {
-        const permissionDiv = document.getElementById('cameraPermission');
-        permissionDiv.style.display = 'block';
+      
+      setupEventListeners() {
+        document.getElementById('btnEnableCamera').addEventListener('click', () => {
+          this.enableCamera();
+        });
         
-        document.getElementById('btnRequestCamera').onclick = () => {
-          this.initializeCamera();
-        };
-      }
-
-      hideCameraPermission() {
-        const permissionDiv = document.getElementById('cameraPermission');
-        permissionDiv.style.display = 'none';
-      }
-
-      async initializeCamera() {
-        document.getElementById('systemStatus').textContent = '初始化相機...';
-        document.getElementById('voiceAlert').textContent = '正在初始化相機...';
+        document.getElementById('btnSwitchCamera').addEventListener('click', () => {
+          this.switchCamera();
+        });
         
+        document.getElementById('btnStartFollow').addEventListener('click', () => {
+          this.startBasicFollowing();
+        });
+        
+        document.getElementById('btnSmartFollow').addEventListener('click', () => {
+          this.startSmartFollowing();
+        });
+        
+        document.getElementById('btnScanWalls').addEventListener('click', () => {
+          this.scanEnvironment();
+        });
+        
+        document.getElementById('btnStop').addEventListener('click', () => {
+          this.stopFollowing();
+        });
+      }
+      
+      // 啟用相機
+      async enableCamera() {
         try {
-          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('您的瀏覽器不支援相機功能');
-          }
-
-          // 嘗試不同的相機配置
+          this.speak('正在啟動相機並初始化YOLO檢測');
+          
           const constraints = {
             video: {
-              facingMode: 'environment', // 優先使用後置相機
+              facingMode: this.currentFacingMode,
               width: { ideal: 640 },
-              height: { ideal: 480 },
-              frameRate: { ideal: 30 }
-            }
+              height: { ideal: 480 }
+            },
+            audio: false
           };
-
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
           
-          this.videoElement.srcObject = stream;
+          this.videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+          const videoElement = document.getElementById('video');
+          videoElement.srcObject = this.videoStream;
           
-          return new Promise((resolve, reject) => {
-            this.videoElement.onloadedmetadata = () => {
-              this.videoElement.play().then(() => {
-                console.log('相機初始化完成，解析度:', this.videoElement.videoWidth, 'x', this.videoElement.videoHeight);
-                this.cameraInitialized = true;
-                this.hideCameraPermission();
-                document.getElementById('systemStatus').textContent = '相機就緒';
-                document.getElementById('voiceAlert').textContent = '相機初始化成功，可以開始導航';
-                document.getElementById('btnStart').disabled = false;
-                document.getElementById('btnStop').disabled = false;
-                resolve();
-              }).catch(reject);
+          // 等待視頻準備好
+          await new Promise((resolve) => {
+            videoElement.onloadedmetadata = () => {
+              videoElement.play();
+              resolve();
             };
-            
-            this.videoElement.onerror = reject;
           });
           
-        } catch (error) {
-          console.error('相機初始化失敗:', error);
-          let errorMessage = '無法啟動相機';
+          this.isCameraActive = true;
+          document.getElementById('permissionPrompt').classList.add('hidden');
+          this.enableControls();
           
-          if (error.name === 'NotAllowedError') {
-            errorMessage = '相機權限被拒絕，請允許相機權限後重新整理頁面';
-          } else if (error.name === 'NotFoundError') {
-            errorMessage = '找不到可用的相機設備';
-          } else if (error.name === 'NotSupportedError') {
-            errorMessage = '您的瀏覽器不支援相機功能';
-          }
+          this.speak('相機啟動成功，開始實時YOLO目標檢測');
           
-          document.getElementById('systemStatus').textContent = '相機錯誤';
-          document.getElementById('voiceAlert').textContent = errorMessage;
-          throw new Error(errorMessage);
-        }
-      }
-
-      async detect() {
-        if (!this.isReady || !this.model || !this.cameraInitialized) {
-          return [];
-        }
-
-        const startTime = performance.now();
-
-        try {
-          // 使用 COCO-SSD 進行檢測
-          const predictions = await this.model.detect(this.videoElement);
-          const detections = this.processPredictions(predictions);
-          
-          // 更新 FPS
-          this.updateFPS(performance.now() - startTime);
-          
-          return detections;
+          // 開始檢測循環
+          this.startDetectionLoop();
           
         } catch (error) {
-          console.error('檢測錯誤:', error);
-          return [];
-        }
-      }
-
-      processPredictions(predictions) {
-        const detections = [];
-        
-        predictions.forEach(prediction => {
-          const { bbox, class: className, score } = prediction;
-          const [x, y, width, height] = bbox;
-          
-          // 計算距離（簡化估計）
-          const distance = this.estimateDistance(height);
-          
-          detections.push({
-            x1: x,
-            y1: y,
-            x2: x + width,
-            y2: y + height,
-            w: width,
-            h: height,
-            score: score,
-            classId: CLASS_NAMES.indexOf(className),
-            className: className,
-            distance: distance
-          });
-        });
-        
-        return detections;
-      }
-
-      estimateDistance(height) {
-        if (height <= 0) return 999;
-        const imageHeight = this.videoElement.videoHeight || 480;
-        const normalizedHeight = height / imageHeight;
-        
-        // 簡化的距離估計：物體越大，距離越近
-        // 調整這個公式以獲得更好的距離估計
-        return Math.min(20, 5 / normalizedHeight);
-      }
-
-      updateFPS(inferenceTime) {
-        this.frameCount++;
-        const now = Date.now();
-        
-        if (now - this.lastInferenceTime >= 1000) {
-          this.fps = this.frameCount;
-          this.frameCount = 0;
-          this.lastInferenceTime = now;
-          document.getElementById('safetyScore').textContent = this.fps + ' FPS';
-        }
-      }
-
-      draw(detections) {
-        if (!this.canvasElement || !this.canvasCtx) return;
-        
-        const width = this.videoElement.videoWidth || 640;
-        const height = this.videoElement.videoHeight || 480;
-        
-        // 設置 canvas 尺寸與影片一致
-        this.canvasElement.width = width;
-        this.canvasElement.height = height;
-        this.canvasCtx.clearRect(0, 0, width, height);
-
-        // 顯示除錯資訊
-        const debugInfo = document.getElementById('debugInfo');
-        debugInfo.textContent = `COCO-SSD\n解析度: ${width}x${height}\n檢測到: ${detections.length} 個物件`;
-        debugInfo.style.display = 'block';
-
-        // 繪製檢測結果
-        detections.forEach((box, index) => {
-          const { x1, y1, w, h, className, distance, score } = box;
-          
-          // 根據距離設置顏色
-          let color = '#22c55e'; // 綠色 (遠)
-          if (distance < 3.0) color = '#f59e0b'; // 黃色 (中)
-          if (distance < 1.5) color = '#ef4444'; // 紅色 (近)
-
-          // 繪製邊界框
-          this.canvasCtx.strokeStyle = color;
-          this.canvasCtx.lineWidth = 3;
-          this.canvasCtx.strokeRect(x1, y1, w, h);
-
-          // 繪製標籤背景
-          this.canvasCtx.fillStyle = color;
-          this.canvasCtx.font = '14px Arial';
-          const label = `${className} ${distance.toFixed(1)}m (${score.toFixed(2)})`;
-          const textWidth = this.canvasCtx.measureText(label).width;
-          
-          // 確保標籤不會超出畫面
-          const labelY = y1 > 20 ? y1 - 5 : y1 + h + 15;
-          this.canvasCtx.fillRect(x1, labelY - 15, textWidth + 10, 18);
-          
-          // 繪製文字
-          this.canvasCtx.fillStyle = '#000';
-          this.canvasCtx.fillText(label, x1 + 5, labelY);
-        });
-      }
-    }
-
-    // --- 智能避障導航系統 ---
-    class ObstacleAvoidanceSystem {
-      constructor() {
-        this.detector = new CocoSSDDetector();
-        this.detectionLoopId = null;
-        this.voiceEnabled = true;
-        this.isNavigating = false;
-        this.isFollowing = false;
-        this.isIndoorMode = false;
-        this.homePosition = null;
-        this.currentPosition = null;
-        this.gpsWatchId = null;
-        
-        this.lastSpeakTime = 0;
-        this.speakCooldown = 3000;
-        this.lastSpokenAdvice = '';
-        
-        this.loadHomePosition();
-        this.initButtons();
-      }
-
-      initButtons() {
-        document.getElementById('btnStart').disabled = true;
-        document.getElementById('btnFollow').disabled = true;
-        document.getElementById('btnStop').disabled = true;
-      }
-
-      async initializeSystem() {
-        this.updateSystemStatus('初始化系統...');
-        const success = await this.detector.loadModel();
-        
-        if (success) {
-          this.updateSystemStatus('等待相機初始化');
-        } else {
-          this.updateSystemStatus('系統初始化失敗');
-        }
-      }
-
-      switchMode(isIndoor) {
-        this.isIndoorMode = isIndoor;
-        
-        document.getElementById('btnOutdoorMode').classList.toggle('active', !isIndoor);
-        document.getElementById('btnIndoorMode').classList.toggle('active', isIndoor);
-        
-        if (isIndoor) {
-          this.speak('已切換到室內避障模式');
-          document.getElementById('avoidanceIndicator').classList.add('active');
-          document.getElementById('btnFollow').disabled = true;
-          
-          // 如果正在導航，重新啟動 AI 檢測
-          if (this.isNavigating && this.detector.cameraInitialized) {
-            this.startAIDetection();
-          }
-        } else {
-          this.speak('已切換到室外導航模式');
-          document.getElementById('avoidanceIndicator').classList.remove('active');
-          this.stopAIDetection();
-          this.hideAllArrows();
-        }
-        this.updateUI();
-      }
-
-      startAIDetection() {
-        // 清除現有的檢測循環
-        if (this.detectionLoopId) {
-          cancelAnimationFrame(this.detectionLoopId);
-          this.detectionLoopId = null;
-        }
-
-        console.log('啟動 AI 檢測循環...');
-
-        const detectFrame = async () => {
-          if (!this.isNavigating || !this.isIndoorMode || !this.detector.isReady || !this.detector.cameraInitialized) {
-            this.detectionLoopId = requestAnimationFrame(detectFrame);
-            return;
-          }
-
-          try {
-            const detections = await this.detector.detect();
-            this.detector.draw(detections);
-            this.provideAvoidanceGuidance(detections);
-          } catch (error) {
-            console.error('檢測循環錯誤:', error);
-          }
-
-          this.detectionLoopId = requestAnimationFrame(detectFrame);
-        };
-
-        this.detectionLoopId = requestAnimationFrame(detectFrame);
-      }
-
-      stopAIDetection() {
-        if (this.detectionLoopId) {
-          cancelAnimationFrame(this.detectionLoopId);
-          this.detectionLoopId = null;
-        }
-        if (this.detector.canvasCtx) {
-          const canvas = this.detector.canvasElement;
-          this.detector.canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-        
-        document.getElementById('debugInfo').style.display = 'none';
-      }
-
-      provideAvoidanceGuidance(detections) {
-        if (!this.isNavigating || !this.isIndoorMode) return;
-        
-        let closestDistance = Infinity;
-        let advice = '路徑安全，請直行';
-        let safeDirection = 'forward';
-        this.hideAllArrows();
-
-        const width = this.detector.videoElement.videoWidth || 640;
-        const leftArea = width * 0.3;
-        const rightArea = width * 0.7;
-
-        let dangerLeft = 999;
-        let dangerRight = 999;
-        let dangerFront = 999;
-
-        detections.forEach(box => {
-          const centerX = (box.x1 + box.x2) / 2;
-          
-          // 更新最近障礙物距離
-          if (box.distance < closestDistance) {
-            closestDistance = box.distance;
-          }
-
-          // 只考慮 4 公尺內的障礙物
-          if (box.distance < 4.0) {
-            if (centerX < leftArea) {
-              dangerLeft = Math.min(dangerLeft, box.distance);
-            } else if (centerX > rightArea) {
-              dangerRight = Math.min(dangerRight, box.distance);
-            } else {
-              dangerFront = Math.min(dangerFront, box.distance);
-            }
-          }
-        });
-
-        // 更新 UI 顯示
-        document.getElementById('closestObstacle').textContent = 
-          closestDistance !== Infinity ? closestDistance.toFixed(1) + ' 公尺' : '-- 公尺';
-
-        const STOP_THRESHOLD = 1.0;
-        const YIELD_THRESHOLD = 2.0;
-
-        // 避障邏輯
-        if (closestDistance < STOP_THRESHOLD) {
-          advice = '緊急！前方有障礙物，請立即停止！';
-          safeDirection = 'stop';
-        } else if (dangerFront < YIELD_THRESHOLD) {
-          // 前方有障礙物，判斷左邊或右邊較安全
-          if (dangerLeft > dangerRight + 0.5) {
-            advice = `前方障礙物 ${dangerFront.toFixed(1)}m，請向左`;
-            safeDirection = 'left';
-          } else if (dangerRight > dangerLeft + 0.5) {
-            advice = `前方障礙物 ${dangerFront.toFixed(1)}m，請向右`;
-            safeDirection = 'right';
-          } else {
-            advice = `前方有障礙物 ${dangerFront.toFixed(1)}m，請稍候`;
-            safeDirection = 'stop';
-          }
-        } else if (dangerLeft < YIELD_THRESHOLD && dangerLeft < dangerRight) {
-          advice = `左側障礙物 ${dangerLeft.toFixed(1)}m，請向右`;
-          safeDirection = 'right';
-        } else if (dangerRight < YIELD_THRESHOLD && dangerRight < dangerLeft) {
-          advice = `右側障礙物 ${dangerRight.toFixed(1)}m，請向左`;
-          safeDirection = 'left';
-        } else {
-          advice = '路徑安全，請直行';
-          safeDirection = 'forward';
-        }
-        
-        document.getElementById('avoidanceAdvice').textContent = advice;
-        
-        // 顯示方向箭頭
-        document.getElementById('arrowLeft').classList.toggle('active', safeDirection === 'left');
-        document.getElementById('arrowRight').classList.toggle('active', safeDirection === 'right');
-        document.getElementById('arrowForward').classList.toggle('active', safeDirection === 'forward');
-
-        // 語音頻率控制
-        const now = Date.now();
-        let shouldSpeak = false;
-
-        if (safeDirection === 'stop' && closestDistance < STOP_THRESHOLD) {
-          shouldSpeak = true;
-        } else if (safeDirection !== 'forward' && closestDistance < YIELD_THRESHOLD) {
-          if (now - this.lastSpeakTime > this.speakCooldown || this.lastSpokenAdvice !== advice) {
-            shouldSpeak = true;
-          }
-        }
-
-        if (shouldSpeak) {
-          this.speak(advice);
-          this.lastSpeakTime = now;
-          this.lastSpokenAdvice = advice;
+          console.error('無法訪問相機:', error);
+          this.speak('無法啟動相機，請檢查相機權限設定');
         }
       }
       
-      hideAllArrows() {
-        document.getElementById('arrowLeft').classList.remove('active');
-        document.getElementById('arrowRight').classList.remove('active');
-        document.getElementById('arrowForward').classList.remove('active');
-      }
-
-      async startNavigation() {
-        this.isNavigating = true;
-        this.updateSystemStatus('導航中');
+      // 切換相機
+      async switchCamera() {
+        if (!this.isCameraActive) return;
         
-        try {
-          if (this.isIndoorMode && !this.detector.cameraInitialized) {
-            await this.detector.initializeCamera();
+        this.currentFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
+        
+        // 停止當前串流
+        this.videoStream.getTracks().forEach(track => track.stop());
+        
+        // 重新啟用相機
+        await this.enableCamera();
+        
+        this.speak(`已切換到${this.currentFacingMode === 'user' ? '前置' : '後置'}相機`);
+      }
+      
+      // 開始檢測循環
+      async startDetectionLoop() {
+        if (!this.isCameraActive || !this.model) return;
+        
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 設置canvas尺寸
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        const detectFrame = async () => {
+          if (!this.isCameraActive) return;
+          
+          // 更新FPS計數
+          this.updateFPS();
+          
+          // 執行YOLO檢測
+          if (this.model) {
+            try {
+              this.detections = await this.model.detect(video);
+              this.processDetections();
+              this.drawDetections(ctx);
+              
+              if (this.isFollowing) {
+                this.updateFollowingLogic();
+              }
+            } catch (error) {
+              console.error('檢測錯誤:', error);
+            }
           }
           
-          if (this.isIndoorMode) {
-            this.speak('室內避障模式啟動，開始 AI 視覺分析');
-            this.startAIDetection();
-          } else {
-            this.speak('室外導航啟動');
-            this.startGPSTracking();
-          }
-        } catch (error) {
-          console.warn('導航啟動失敗:', error);
-          this.speak('啟動失敗: ' + error.message);
-          this.isNavigating = false;
-          this.updateSystemStatus('啟動失敗');
+          requestAnimationFrame(detectFrame);
+        };
+        
+        detectFrame();
+      }
+      
+      // 處理檢測結果
+      processDetections() {
+        // 尋找最適合跟隨的人員
+        this.targetPerson = null;
+        
+        const people = this.detections.filter(det => 
+          det.class === this.followingConfig.targetClass && 
+          det.score >= this.followingConfig.minConfidence
+        );
+        
+        if (people.length > 0) {
+          // 選擇置信度最高且位於畫面中央區域的人員
+          this.targetPerson = people.reduce((prev, current) => 
+            (prev.score > current.score) ? prev : current
+          );
+        }
+      }
+      
+      // 繪製檢測框
+      drawDetections(ctx) {
+        const canvas = document.getElementById('canvas');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        this.detections.forEach(detection => {
+          const [x, y, width, height] = detection.bbox;
+          const isTarget = detection === this.targetPerson;
+          
+          // 繪製邊框
+          ctx.strokeStyle = isTarget ? '#22c55e' : '#3b82f6';
+          ctx.lineWidth = isTarget ? 3 : 2;
+          ctx.strokeRect(x, y, width, height);
+          
+          // 繪製標籤背景
+          ctx.fillStyle = isTarget ? '#22c55e' : '#3b82f6';
+          const text = `${detection.class} ${Math.round(detection.score * 100)}%`;
+          const textWidth = ctx.measureText(text).width;
+          ctx.fillRect(x, y - 20, textWidth + 10, 20);
+          
+          // 繪製標籤文字
+          ctx.fillStyle = 'white';
+          ctx.font = '14px Arial';
+          ctx.fillText(text, x + 5, y - 5);
+        });
+      }
+      
+      // 更新跟隨邏輯
+      updateFollowingLogic() {
+        if (!this.targetPerson) {
+          document.getElementById('followStatus').textContent = '未檢測到目標';
+          document.getElementById('detectedObject').textContent = '--';
+          return;
         }
         
+        const [x, y, width, height] = this.targetPerson.bbox;
+        const centerX = x + width / 2;
+        const centerY = y + height / 2;
+        
+        // 更新目標顯示
+        const personElement = document.getElementById('targetPerson');
+        const bubbleElement = document.getElementById('safetyBubble');
+        
+        const screenX = (centerX / document.getElementById('canvas').width) * 100;
+        const screenY = (centerY / document.getElementById('canvas').height) * 100;
+        
+        personElement.style.left = screenX + '%';
+        personElement.style.top = screenY + '%';
+        bubbleElement.style.left = screenX + '%';
+        bubbleElement.style.top = screenY + '%';
+        
+        // 計算距離（基於人物在畫面中的大小，簡單估算）
+        const distance = this.estimateDistance(width, height);
+        
+        // 更新UI
+        document.getElementById('targetDistance').textContent = distance.toFixed(1) + ' 公尺';
+        document.getElementById('trackingDistance').textContent = distance.toFixed(1) + 'm';
+        document.getElementById('detectedObject').textContent = '人員';
+        document.getElementById('detectionConfidence').textContent = 
+          Math.round(this.targetPerson.score * 100) + '%';
+        
+        // 更新跟隨狀態
+        let status = '跟隨中';
+        if (distance > this.followingConfig.maxDistance) {
+          status = '目標過遠';
+        } else if (distance < this.followingConfig.safetyDistance) {
+          status = '距離過近';
+        }
+        
+        document.getElementById('followStatus').textContent = status;
+        
+        // 提供語音指導
+        this.provideGuidance(distance, screenX);
+      }
+      
+      // 估算距離（簡單的基於像素的估算）
+      estimateDistance(width, height) {
+        const avgSize = (width + height) / 2;
+        // 簡單的距離估算公式（需要根據實際情況調整）
+        const distance = Math.max(1, 10 - (avgSize / 100));
+        return Math.min(distance, this.followingConfig.maxDistance);
+      }
+      
+      // 提供指導
+      provideGuidance(distance, screenX) {
+        const now = Date.now();
+        
+        if (distance > this.followingConfig.maxDistance) {
+          this.speak('目標距離過遠，請靠近一些');
+        } else if (distance < this.followingConfig.safetyDistance) {
+          this.speak('距離目標太近，請保持安全距離');
+        } else if (screenX < 30) {
+          this.speak('目標偏左，請注意左側');
+        } else if (screenX > 70) {
+          this.speak('目標偏右，請注意右側');
+        }
+        
+        // 更新指導文字
+        let guidance = `跟隨目標，距離 ${distance.toFixed(1)} 公尺`;
+        if (screenX < 40) guidance += '，目標偏左';
+        else if (screenX > 60) guidance += '，目標偏右';
+        
+        document.getElementById('guidanceText').textContent = guidance;
+      }
+      
+      // 開始基本跟隨
+      startBasicFollowing() {
+        if (!this.isCameraActive) {
+          this.speak('請先啟用相機');
+          return;
+        }
+        
+        this.isFollowing = true;
+        this.isSmartFollowing = false;
+        this.showFollowingMode();
+        this.speak('YOLO跟隨模式啟動，開始檢測前方人員');
         this.updateUI();
       }
-
-      stopNavigation() {
-        this.isNavigating = false;
+      
+      // 開始智能跟隨
+      startSmartFollowing() {
+        if (!this.isCameraActive) {
+          this.speak('請先啟用相機');
+          return;
+        }
+        
+        this.isFollowing = true;
+        this.isSmartFollowing = true;
+        this.showFollowingMode();
+        this.speak('智能跟隨模式啟動，開始環境分析和障礙物檢測');
+        this.updateUI();
+      }
+      
+      // 停止跟隨
+      stopFollowing() {
         this.isFollowing = false;
-        
-        if (this.gpsWatchId) {
-          navigator.geolocation.clearWatch(this.gpsWatchId);
-          this.gpsWatchId = null;
-        }
-        
-        this.stopAIDetection();
-        this.updateSystemStatus('已停止');
-        this.speak('導航已停止');
-        this.hideTrackingIndicator();
-        this.hideAllArrows();
+        this.isSmartFollowing = false;
+        this.hideFollowingMode();
+        this.speak('跟隨模式已停止');
         this.updateUI();
       }
-
-      loadHomePosition() {
-        const savedHome = localStorage.getItem('homePosition');
-        if (savedHome) {
-          this.homePosition = JSON.parse(savedHome);
-          this.updateHomeInfo();
-        }
+      
+      // 環境掃描
+      scanEnvironment() {
+        this.speak('開始環境掃描，檢測周圍障礙物');
+        // 這裡可以添加更複雜的環境分析邏輯
       }
-
-      updateSystemStatus(status) {
-        document.getElementById('systemStatus').textContent = status;
-      }
-
-      updateHomeInfo() {
-        // 簡化的家庭位置更新
-      }
-
-      showTrackingIndicator() {
+      
+      // 顯示/隱藏跟隨模式
+      showFollowingMode() {
+        document.getElementById('followingMode').classList.add('active');
         document.getElementById('trackingIndicator').classList.add('active');
       }
-
-      hideTrackingIndicator() {
+      
+      hideFollowingMode() {
+        document.getElementById('followingMode').classList.remove('active');
         document.getElementById('trackingIndicator').classList.remove('active');
       }
-
-      updateUI() {
-        const startBtn = document.getElementById('btnStart');
-        const followBtn = document.getElementById('btnFollow');
-        const stopBtn = document.getElementById('btnStop');
-        
-        startBtn.textContent = this.isNavigating ? '停止導航' : '開始導航';
-        startBtn.classList.toggle('btn-danger', this.isNavigating);
-        startBtn.classList.toggle('btn-primary', !this.isNavigating);
-        
-        followBtn.textContent = this.isFollowing ? '停止跟隨' : '人員跟隨';
-        followBtn.disabled = !this.isNavigating || this.isIndoorMode;
-
-        stopBtn.disabled = !this.isNavigating;
+      
+      // 啟用控制按鈕
+      enableControls() {
+        document.getElementById('btnStartFollow').disabled = false;
+        document.getElementById('btnSmartFollow').disabled = false;
+        document.getElementById('btnScanWalls').disabled = false;
+        document.getElementById('btnStop').disabled = false;
       }
       
+      // 顯示相機權限提示
+      showCameraPermissionPrompt() {
+        document.getElementById('permissionPrompt').classList.remove('hidden');
+      }
+      
+      // 更新FPS計數
+      updateFPS() {
+        this.frameCount++;
+        const now = Date.now();
+        if (now - this.lastFpsUpdate >= 1000) {
+          this.fps = this.frameCount;
+          this.frameCount = 0;
+          this.lastFpsUpdate = now;
+          document.getElementById('fpsCounter').textContent = this.fps;
+        }
+      }
+      
+      // 更新UI
+      updateUI() {
+        const startBtn = document.getElementById('btnStartFollow');
+        const smartBtn = document.getElementById('btnSmartFollow');
+        
+        if (this.isFollowing) {
+          startBtn.textContent = '停止跟隨';
+          startBtn.classList.add('btn-danger');
+          startBtn.classList.remove('btn-primary');
+          smartBtn.disabled = true;
+        } else {
+          startBtn.textContent = '開始跟隨';
+          startBtn.classList.remove('btn-danger');
+          startBtn.classList.add('btn-primary');
+          smartBtn.disabled = false;
+        }
+        
+        smartBtn.classList.toggle('btn-active', this.isSmartFollowing);
+      }
+      
+      // 語音提示
       speak(message) {
-        if (this.voiceEnabled && window.speechSynthesis) {
+        if (window.speechSynthesis) {
           window.speechSynthesis.cancel();
           const utterance = new SpeechSynthesisUtterance(message);
           utterance.lang = 'zh-TW';
@@ -1019,103 +910,16 @@
         }
         document.getElementById('voiceAlert').textContent = message;
       }
-      
-      toggleNavigation() {
-        if (this.isNavigating) {
-          this.stopNavigation();
-        } else {
-          this.startNavigation();
-        }
-      }
-
-      togglePersonFollowing() {
-        if (!this.isNavigating) {
-          this.speak('請先啟動導航');
-          return;
-        }
-        
-        if (this.isIndoorMode) {
-          this.speak('室內模式下無法使用人員跟隨');
-          return;
-        }
-        
-        this.isFollowing = !this.isFollowing;
-        
-        if (this.isFollowing) {
-          this.speak('人員跟隨啟動');
-          this.showTrackingIndicator();
-        } else {
-          this.speak('人員跟隨停止');
-          this.hideTrackingIndicator();
-        }
-        
-        this.updateUI();
-      }
-
-      emergencyAlert() {
-        this.speak('緊急求助已發送！位置信息已傳送給緊急聯絡人');
-      }
-
-      showHomeSetup() {
-        this.speak('設定家的位置功能');
-      }
-
-      calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371000;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-          Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
-      }
-
-      startGPSTracking() {
-        if (!navigator.geolocation) {
-          this.speak('您的裝置不支援 GPS 定位');
-          return;
-        }
-        
-        this.speak('GPS 定位已啟動');
-      }
     }
 
-    // 初始化系統
-    const navSystem = new ObstacleAvoidanceSystem();
+    // 初始化YOLO跟隨系統
+    const yoloSystem = new YOLOPersonFollowingSystem();
 
-    // 事件監聽器
-    document.getElementById('btnOutdoorMode').addEventListener('click', () => {
-      navSystem.switchMode(false);
-    });
-    
-    document.getElementById('btnIndoorMode').addEventListener('click', () => {
-      navSystem.switchMode(true);
-    });
-    
-    document.getElementById('btnStart').addEventListener('click', () => {
-      navSystem.toggleNavigation();
-    });
-    
-    document.getElementById('btnFollow').addEventListener('click', () => {
-      navSystem.togglePersonFollowing();
-    });
-    
-    document.getElementById('btnSetHome').addEventListener('click', () => {
-      navSystem.showHomeSetup();
-    });
-    
-    document.getElementById('btnStop').addEventListener('click', () => {
-      navSystem.stopNavigation();
-    });
-    
-    document.getElementById('btnEmergency').addEventListener('click', () => {
-      navSystem.emergencyAlert();
-    });
-
-    // 啟動模型載入
+    // 初始提示
     window.addEventListener('DOMContentLoaded', () => {
-      navSystem.initializeSystem();
+      setTimeout(() => {
+        yoloSystem.speak('YOLO智能跟隨系統已就緒，請啟用相機開始使用');
+      }, 1000);
     });
   </script>
 </body>
