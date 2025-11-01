@@ -92,7 +92,7 @@
       max-height: 400px;
       background: #000;
       object-fit: cover;
-      transform: scaleX(1); /* 取消鏡像效果 */
+      transform: scaleX(1);
     }
     
     #canvas {
@@ -283,6 +283,12 @@
       font-style: italic;
     }
     
+    .status-info {
+      font-size: 0.8rem;
+      color: #666;
+      margin: 5px 0;
+    }
+    
     @media (max-height: 700px) {
       #video {
         height: 40vh;
@@ -330,6 +336,11 @@
     <div class="word-display" id="wordDisplay">
       準備中...
     </div>
+    
+    <!-- 狀態資訊 -->
+    <div class="status-info" id="statusInfo">
+      偵測中...
+    </div>
 
     <!-- 控制按鈕 -->
     <div class="controls">
@@ -371,6 +382,8 @@
     let currentTarget = '';
     let collectedWords = JSON.parse(localStorage.getItem('collectedWords')) || [];
     let lastSpokenWord = '';
+    let isSpeaking = false;
+    let detectionFrameCount = 0;
 
     // DOM 元素
     const video = document.getElementById('video');
@@ -386,35 +399,73 @@
     const clearVocab = document.getElementById('clearVocab');
     const objectModeBtn = document.getElementById('objectModeBtn');
     const ocrModeBtn = document.getElementById('ocrModeBtn');
+    const statusInfo = document.getElementById('statusInfo');
 
-    // COCO-SSD 與資料庫 key 對應表
+    // 擴展的 COCO-SSD 與資料庫 key 對應表
     const cocoToYourKey = {
       'cell phone': 'smartphone',
-      'hair drier': 'hair dryer'
+      'hair drier': 'hair dryer',
+      'tv': 'television',
+      'remote': 'remote control',
+      'mouse': 'computer mouse',
+      'keyboard': 'computer keyboard',
+      'laptop': 'notebook computer',
+      'sports ball': 'ball',
+      'baseball bat': 'bat',
+      'baseball glove': 'glove',
+      'tennis racket': 'racket',
+      'wine glass': 'glass',
+      'hot dog': 'hotdog',
+      'potted plant': 'plant',
+      'dining table': 'table',
+      'parking meter': 'meter',
+      'stop sign': 'sign',
+      'fire hydrant': 'hydrant',
+      'traffic light': 'trafficlight'
     };
 
     // 從 itemDatabase 查詢單字資訊
     function getWordInfo(label) {
       const key = cocoToYourKey[label] || label;
-      const zh = itemNames[key] || '未知物品';
-      const en = label.charAt(0).toUpperCase() + label.slice(1);
+      const zh = itemNames[key] || label;
+      const en = key.charAt(0).toUpperCase() + key.slice(1);
       return { en, zh, key };
     }
 
-    // 語音朗讀功能
+    // iOS 兼容的語音朗讀功能
     function speak(text, lang = 'en-US') {
-      if (lastSpokenWord === text) return;
+      if (isSpeaking || lastSpokenWord === text) return;
       
       lastSpokenWord = text;
+      isSpeaking = true;
+      
+      // iOS 需要用戶交互才能播放聲音
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = lang;
-      utter.rate = 0.9;
-      utter.pitch = 1;
-      speechSynthesis.speak(utter);
+      utter.rate = 0.8;  // 降低速度提高清晰度
+      utter.pitch = 1.1; // 提高音調更適合兒童
+      utter.volume = 1.0;
       
-      setTimeout(() => {
+      // 確保在iOS上能正常播放
+      if (speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+      }
+      
+      utter.onend = () => {
+        isSpeaking = false;
         lastSpokenWord = '';
-      }, 3000);
+      };
+      
+      utter.onerror = () => {
+        isSpeaking = false;
+        lastSpokenWord = '';
+        console.log('語音播放失敗');
+      };
+      
+      // 短暫延遲確保iOS能正常處理
+      setTimeout(() => {
+        speechSynthesis.speak(utter);
+      }, 100);
     }
 
     // 語言切換
@@ -422,12 +473,15 @@
       isEnglish = true;
       langBtnEn.classList.add('active');
       langBtnZh.classList.remove('active');
+      // iOS 需要用戶交互觸發聲音
+      speak('English mode', 'en-US');
     });
     
     langBtnZh.addEventListener('click', () => {
       isEnglish = false;
       langBtnZh.classList.add('active');
       langBtnEn.classList.remove('active');
+      speak('中文模式', 'zh-TW');
     });
 
     // 模式切換
@@ -436,6 +490,7 @@
       objectModeBtn.classList.add('active');
       ocrModeBtn.classList.remove('active');
       wordDisplay.textContent = '物品辨識模式 - 對準物品開始學習';
+      speak('物品辨識模式', 'zh-TW');
     });
     
     ocrModeBtn.addEventListener('click', () => {
@@ -443,6 +498,7 @@
       ocrModeBtn.classList.add('active');
       objectModeBtn.classList.remove('active');
       wordDisplay.textContent = '字母辨識模式 - 對準英文字母開始學習';
+      speak('字母辨識模式', 'zh-TW');
     });
 
     // 遊戲模式
@@ -559,7 +615,7 @@
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
-            facingMode: 'environment', // 使用後置鏡頭
+            facingMode: 'environment',
             width: { ideal: 640 }, 
             height: { ideal: 480 } 
           } 
@@ -568,7 +624,6 @@
         
         video.onloadedmetadata = () => {
           video.play();
-          // 設定 canvas 尺寸與影片一致
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
           detectFrame();
@@ -581,11 +636,14 @@
 
     let lastLabel = '';
     let lastOCRTime = 0;
+    let lastDetectionTime = 0;
+    const DETECTION_INTERVAL = 500; // 降低檢測頻率提高性能
 
     async function detectFrame() {
+      const now = Date.now();
+      
       // OCR 模式
       if (isOCRMode) {
-        const now = Date.now();
         if (now - lastOCRTime > 2000) {
           lastOCRTime = now;
           await performOCR();
@@ -594,19 +652,31 @@
         return;
       }
       
-      // 物品辨識模式
+      // 物品辨識模式 - 降低檢測頻率
+      if (now - lastDetectionTime < DETECTION_INTERVAL) {
+        requestAnimationFrame(detectFrame);
+        return;
+      }
+      
+      lastDetectionTime = now;
+      
       try {
         const predictions = await net.detect(video);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (predictions.length > 0) {
-          const pred = predictions[0];
-          const { class: label, score, bbox } = pred;
+          // 顯示所有檢測到的物品，但只處理置信度最高的幾個
+          const validPredictions = predictions
+            .filter(pred => pred.score > 0.5)
+            .slice(0, 3); // 只處理前3個
 
-          if (score > 0.7) {
+          if (validPredictions.length > 0) {
+            const bestPred = validPredictions[0];
+            const { class: label, score, bbox } = bestPred;
             const { en, zh, key } = getWordInfo(label);
 
             wordDisplay.innerHTML = `<strong>${en}</strong><br><span class="zh">${zh}</span>`;
+            statusInfo.textContent = `偵測到: ${zh} (${Math.round(score * 100)}%)`;
 
             if (!isInGameMode) {
               if (lastLabel !== label) {
@@ -615,27 +685,42 @@
                 if (isEnglish) speak(en, 'en-US');
                 else speak(zh, 'zh-TW');
               }
-            } else if (label === currentTarget) {
+            } else if (label === currentTarget || key === currentTarget) {
               speak(`答對了！這是 ${zh}`, 'zh-TW');
               setTimeout(startNewGame, 1500);
             }
 
-            // 畫框
-            const [x, y, w, h] = bbox;
-            ctx.strokeStyle = '#e74c3c';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(x, y, w, h);
-            ctx.fillStyle = 'rgba(231, 76, 60, 0.5)';
-            ctx.fillRect(x, y, w, 20);
-            ctx.fillStyle = 'white';
-            ctx.font = '12px Arial';
-            ctx.fillText(`${en} (${score.toFixed(2)})`, x + 5, y + 15);
+            // 畫出所有檢測到的物品框
+            validPredictions.forEach(pred => {
+              const [x, y, w, h] = pred.bbox;
+              const isBest = pred === bestPred;
+              
+              ctx.strokeStyle = isBest ? '#e74c3c' : '#3498db';
+              ctx.lineWidth = isBest ? 3 : 2;
+              ctx.strokeRect(x, y, w, h);
+              ctx.fillStyle = isBest ? 'rgba(231, 76, 60, 0.5)' : 'rgba(52, 152, 219, 0.5)';
+              ctx.fillRect(x, y, w, 20);
+              ctx.fillStyle = 'white';
+              ctx.font = '10px Arial';
+              const displayText = `${pred.class} (${pred.score.toFixed(2)})`;
+              ctx.fillText(displayText, x + 5, y + 15);
+            });
           }
         } else {
-          wordDisplay.textContent = '未偵測到物品';
+          wordDisplay.textContent = '對準物品開始學習';
+          statusInfo.textContent = '未偵測到物品';
         }
       } catch (error) {
         console.error('偵測錯誤:', error);
+        statusInfo.textContent = '偵測錯誤';
+      }
+
+      detectionFrameCount++;
+      if (detectionFrameCount % 10 === 0) {
+        // 每10幀清理一次記憶體
+        if (tf && tf.memory) {
+          tf.memory();
+        }
       }
 
       requestAnimationFrame(detectFrame);
@@ -645,19 +730,46 @@
     async function loadModel() {
       try {
         wordDisplay.textContent = '載入AI模型中...';
-        net = await cocoSsd.load();
+        statusInfo.textContent = '請稍候...';
+        
+        // 使用輕量級模型提高性能
+        net = await cocoSsd.load({
+          base: 'lite_mobilenet_v2' // 使用更輕量的模型
+        });
+        
         console.log('✅ COCO-SSD 模型載入完成');
         wordDisplay.textContent = '模型載入完成！對準物品開始學習';
+        statusInfo.textContent = '準備就緒';
+        
+        // iOS 語音初始化 - 通過用戶交互觸發
+        speak('歡迎使用英文學習系統', 'zh-TW');
+        
         setupCamera();
       } catch (error) {
         console.error('模型載入失敗:', error);
         wordDisplay.textContent = '模型載入失敗，請重新整理頁面';
+        statusInfo.textContent = '載入失敗';
       }
     }
 
+    // 頁面可見性變化處理
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) {
+        // 頁面隱藏時暫停語音
+        if (speechSynthesis.speaking) {
+          speechSynthesis.cancel();
+        }
+      }
+    });
+
     // 初始化
     renderVocabList();
-    loadModel();
+    
+    // 等待用戶交互後再載入模型（iOS要求）
+    document.addEventListener('click', function init() {
+      loadModel();
+      document.removeEventListener('click', init);
+    }, { once: true });
   </script>
 </body>
 </html>
