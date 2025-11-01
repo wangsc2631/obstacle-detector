@@ -381,7 +381,7 @@
   <script>
     // --- YOLOv8 專用設定 ---
     const MODEL_INPUT_SIZE = 640;
-    const CONF_THRESHOLD = 0.3; // 預設信心度門檻 (從 0.25 調整到 0.3，確保品質)
+    const CONF_THRESHOLD = 0.6; // 預設信心度門檻 (從 0.25 調整到 0.3，確保品質)
     const IOU_THRESHOLD = 0.45; // NMS IOU 門檻
     // 標準 COCO 80 類別
     const CLASS_NAMES = [
@@ -915,7 +915,7 @@
                 setTimeout(startNewGame, 2000);
               }
               
-              objectCooldown = 20; // 設置冷卻時間，避免頻繁朗讀
+              objectCooldown = 32; // 設置冷卻時間，避免頻繁朗讀
             }
 
             statusInfo.textContent = `YOLOv8 偵測到: ${zh} (${Math.round(score * 100)}%)`;
