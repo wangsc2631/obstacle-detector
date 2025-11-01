@@ -483,7 +483,7 @@
 
           // 嘗試使用 WebGL 加速
           this.session = await ort.InferenceSession.create(this.modelPath, {
-            executionProviders: ['webgl'],
+            executionProviders: ['webgl', 'wasm'],
             graphOptimizationLevel: 'all'
           });
 
