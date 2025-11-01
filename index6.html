@@ -289,6 +289,19 @@
       margin: 5px 0;
     }
     
+    .ocr-focus-area {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 200px;
+      height: 80px;
+      border: 3px solid #00ff00;
+      background: rgba(0, 255, 0, 0.1);
+      pointer-events: none;
+      display: none;
+    }
+    
     @media (max-height: 700px) {
       #video {
         height: 40vh;
@@ -330,6 +343,7 @@
     <div class="video-container">
       <video id="video" autoplay muted playsinline></video>
       <canvas id="canvas"></canvas>
+      <div class="ocr-focus-area" id="ocrFocusArea"></div>
     </div>
 
     <!-- 單字顯示 -->
@@ -384,6 +398,8 @@
     let lastSpokenWord = '';
     let isSpeaking = false;
     let detectionFrameCount = 0;
+    let lastSpokenTime = 0;
+    let ocrWorker = null;
 
     // DOM 元素
     const video = document.getElementById('video');
@@ -400,6 +416,7 @@
     const objectModeBtn = document.getElementById('objectModeBtn');
     const ocrModeBtn = document.getElementById('ocrModeBtn');
     const statusInfo = document.getElementById('statusInfo');
+    const ocrFocusArea = document.getElementById('ocrFocusArea');
 
     // 擴展的 COCO-SSD 與資料庫 key 對應表
     const cocoToYourKey = {
@@ -434,35 +451,36 @@
 
     // iOS 兼容的語音朗讀功能
     function speak(text, lang = 'en-US') {
-      if (isSpeaking || lastSpokenWord === text) return;
+      if (isSpeaking) return;
+      
+      const now = Date.now();
+      // 防止重複朗讀：同一文字3秒內不重複，不同文字1秒內不重複
+      if (now - lastSpokenTime < (text === lastSpokenWord ? 3000 : 1000)) {
+        return;
+      }
       
       lastSpokenWord = text;
+      lastSpokenTime = now;
       isSpeaking = true;
       
-      // iOS 需要用戶交互才能播放聲音
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = lang;
-      utter.rate = 0.8;  // 降低速度提高清晰度
-      utter.pitch = 1.1; // 提高音調更適合兒童
+      utter.rate = 0.8;
+      utter.pitch = 1.1;
       utter.volume = 1.0;
       
-      // 確保在iOS上能正常播放
       if (speechSynthesis.speaking) {
         speechSynthesis.cancel();
       }
       
       utter.onend = () => {
         isSpeaking = false;
-        lastSpokenWord = '';
       };
       
       utter.onerror = () => {
         isSpeaking = false;
-        lastSpokenWord = '';
-        console.log('語音播放失敗');
       };
       
-      // 短暫延遲確保iOS能正常處理
       setTimeout(() => {
         speechSynthesis.speak(utter);
       }, 100);
@@ -473,7 +491,6 @@
       isEnglish = true;
       langBtnEn.classList.add('active');
       langBtnZh.classList.remove('active');
-      // iOS 需要用戶交互觸發聲音
       speak('English mode', 'en-US');
     });
     
@@ -490,6 +507,7 @@
       objectModeBtn.classList.add('active');
       ocrModeBtn.classList.remove('active');
       wordDisplay.textContent = '物品辨識模式 - 對準物品開始學習';
+      ocrFocusArea.style.display = 'none';
       speak('物品辨識模式', 'zh-TW');
     });
     
@@ -498,6 +516,7 @@
       ocrModeBtn.classList.add('active');
       objectModeBtn.classList.remove('active');
       wordDisplay.textContent = '字母辨識模式 - 對準英文字母開始學習';
+      ocrFocusArea.style.display = 'block';
       speak('字母辨識模式', 'zh-TW');
     });
 
@@ -569,44 +588,104 @@
       }
     });
 
-    // OCR 功能
+    // OCR 功能 - 改進版
+    let lastOCRText = '';
+    let ocrCooldown = 0;
+
     async function performOCR() {
+      if (ocrCooldown > 0) {
+        ocrCooldown--;
+        return;
+      }
+
       try {
-        // 將影片畫面繪製到 canvas
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // 只取畫面中央區域進行OCR，避免雜訊
+        const focusWidth = 200;
+        const focusHeight = 80;
+        const centerX = (canvas.width - focusWidth) / 2;
+        const centerY = (canvas.height - focusHeight) / 2;
+
+        // 創建臨時canvas用於OCR
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCanvas.width = focusWidth;
+        tempCanvas.height = focusHeight;
         
-        const { data: { text } } = await Tesseract.recognize(
-          canvas,
-          'eng',
-          { 
-            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-          }
+        // 只繪製中央區域
+        tempCtx.drawImage(
+          video, 
+          centerX, centerY, focusWidth, focusHeight,
+          0, 0, focusWidth, focusHeight
         );
+
+        // 圖像預處理：提高對比度
+        const imageData = tempCtx.getImageData(0, 0, focusWidth, focusHeight);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          // 簡單的二值化處理
+          const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+          const value = avg > 128 ? 255 : 0;
+          data[i] = value;     // R
+          data[i + 1] = value; // G
+          data[i + 2] = value; // B
+        }
+        tempCtx.putImageData(imageData, 0, 0);
+
+        if (!ocrWorker) {
+          ocrWorker = Tesseract.createWorker();
+          await ocrWorker.load();
+          await ocrWorker.loadLanguage('eng');
+          await ocrWorker.initialize('eng');
+          // 設定只識別字母
+          await ocrWorker.setParameters({
+            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+            tessedit_pageseg_mode: '7' // 單行文字模式
+          });
+        }
+
+        const { data: { text } } = await ocrWorker.recognize(tempCanvas);
         
+        // 清理文字：只保留字母，取第一個有效的字母
         const cleanText = text.replace(/[^A-Za-z]/g, '');
         
         if (cleanText.length > 0) {
+          // 只取第一個字母，避免識別到整個單字
           const letter = cleanText.charAt(0).toUpperCase();
           
-          wordDisplay.innerHTML = `<strong>${letter}</strong>`;
-          
-          if (isEnglish) {
-            speak(letter, 'en-US');
+          // 只有在字母變化時才更新顯示和朗讀
+          if (letter !== lastOCRText) {
+            lastOCRText = letter;
+            wordDisplay.innerHTML = `<strong>${letter}</strong>`;
+            
+            if (isEnglish) {
+              speak(letter, 'en-US');
+            }
+            
+            // 在畫面上標示識別區域和結果
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(centerX, centerY, focusWidth, focusHeight);
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+            ctx.fillRect(centerX, centerY, focusWidth, focusHeight);
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText(`字母: ${letter}`, centerX + 10, centerY - 10);
+            
+            // 設置冷卻時間，避免頻繁變化
+            ocrCooldown = 10;
           }
-          
-          // 畫框標示識別區域
-          ctx.strokeStyle = '#00ff00';
-          ctx.lineWidth = 3;
-          ctx.strokeRect(canvas.width/2 - 40, canvas.height/2 - 40, 80, 80);
-          ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
-          ctx.fillRect(canvas.width/2 - 40, canvas.height/2 - 40, 80, 80);
-          ctx.fillStyle = 'white';
-          ctx.font = '16px Arial';
-          ctx.fillText(`字母: ${letter}`, canvas.width/2 - 35, canvas.height/2 - 15);
+        } else if (lastOCRText !== '') {
+          // 如果沒有識別到文字，清空顯示
+          lastOCRText = '';
+          wordDisplay.innerHTML = '對準字母開始學習';
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
+        
+        statusInfo.textContent = `OCR: ${cleanText || '未識別到字母'}`;
       } catch (error) {
         console.error('OCR 錯誤:', error);
+        statusInfo.textContent = 'OCR錯誤';
       }
     }
 
@@ -635,24 +714,30 @@
     }
 
     let lastLabel = '';
-    let lastOCRTime = 0;
     let lastDetectionTime = 0;
-    const DETECTION_INTERVAL = 500; // 降低檢測頻率提高性能
+    const DETECTION_INTERVAL = 800; // 增加檢測間隔
+    let objectCooldown = 0;
 
     async function detectFrame() {
       const now = Date.now();
       
       // OCR 模式
       if (isOCRMode) {
-        if (now - lastOCRTime > 2000) {
-          lastOCRTime = now;
+        if (now - lastDetectionTime > 1000) { // OCR 1秒檢測一次
+          lastDetectionTime = now;
           await performOCR();
         }
         requestAnimationFrame(detectFrame);
         return;
       }
       
-      // 物品辨識模式 - 降低檢測頻率
+      // 物品辨識模式
+      if (objectCooldown > 0) {
+        objectCooldown--;
+        requestAnimationFrame(detectFrame);
+        return;
+      }
+      
       if (now - lastDetectionTime < DETECTION_INTERVAL) {
         requestAnimationFrame(detectFrame);
         return;
@@ -665,32 +750,36 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (predictions.length > 0) {
-          // 顯示所有檢測到的物品，但只處理置信度最高的幾個
           const validPredictions = predictions
-            .filter(pred => pred.score > 0.5)
-            .slice(0, 3); // 只處理前3個
+            .filter(pred => pred.score > 0.6) // 提高置信度門檻
+            .slice(0, 2); // 只處理前2個
 
           if (validPredictions.length > 0) {
             const bestPred = validPredictions[0];
             const { class: label, score, bbox } = bestPred;
             const { en, zh, key } = getWordInfo(label);
 
-            wordDisplay.innerHTML = `<strong>${en}</strong><br><span class="zh">${zh}</span>`;
-            statusInfo.textContent = `偵測到: ${zh} (${Math.round(score * 100)}%)`;
-
-            if (!isInGameMode) {
-              if (lastLabel !== label) {
-                lastLabel = label;
+            // 只有在物品變化時才更新顯示
+            if (label !== lastLabel) {
+              lastLabel = label;
+              wordDisplay.innerHTML = `<strong>${en}</strong><br><span class="zh">${zh}</span>`;
+              
+              if (!isInGameMode) {
                 addToVocab(en, zh, key);
                 if (isEnglish) speak(en, 'en-US');
                 else speak(zh, 'zh-TW');
+              } else if (label === currentTarget || key === currentTarget) {
+                speak(`答對了！這是 ${zh}`, 'zh-TW');
+                setTimeout(startNewGame, 2000);
               }
-            } else if (label === currentTarget || key === currentTarget) {
-              speak(`答對了！這是 ${zh}`, 'zh-TW');
-              setTimeout(startNewGame, 1500);
+              
+              // 設置冷卻時間
+              objectCooldown = 20;
             }
 
-            // 畫出所有檢測到的物品框
+            statusInfo.textContent = `偵測到: ${zh} (${Math.round(score * 100)}%)`;
+
+            // 畫出檢測框
             validPredictions.forEach(pred => {
               const [x, y, w, h] = pred.bbox;
               const isBest = pred === bestPred;
@@ -701,7 +790,7 @@
               ctx.fillStyle = isBest ? 'rgba(231, 76, 60, 0.5)' : 'rgba(52, 152, 219, 0.5)';
               ctx.fillRect(x, y, w, 20);
               ctx.fillStyle = 'white';
-              ctx.font = '10px Arial';
+              ctx.font = '12px Arial';
               const displayText = `${pred.class} (${pred.score.toFixed(2)})`;
               ctx.fillText(displayText, x + 5, y + 15);
             });
@@ -709,18 +798,11 @@
         } else {
           wordDisplay.textContent = '對準物品開始學習';
           statusInfo.textContent = '未偵測到物品';
+          lastLabel = '';
         }
       } catch (error) {
         console.error('偵測錯誤:', error);
         statusInfo.textContent = '偵測錯誤';
-      }
-
-      detectionFrameCount++;
-      if (detectionFrameCount % 10 === 0) {
-        // 每10幀清理一次記憶體
-        if (tf && tf.memory) {
-          tf.memory();
-        }
       }
 
       requestAnimationFrame(detectFrame);
@@ -732,16 +814,14 @@
         wordDisplay.textContent = '載入AI模型中...';
         statusInfo.textContent = '請稍候...';
         
-        // 使用輕量級模型提高性能
         net = await cocoSsd.load({
-          base: 'lite_mobilenet_v2' // 使用更輕量的模型
+          base: 'lite_mobilenet_v2'
         });
         
         console.log('✅ COCO-SSD 模型載入完成');
         wordDisplay.textContent = '模型載入完成！對準物品開始學習';
         statusInfo.textContent = '準備就緒';
         
-        // iOS 語音初始化 - 通過用戶交互觸發
         speak('歡迎使用英文學習系統', 'zh-TW');
         
         setupCamera();
@@ -755,17 +835,25 @@
     // 頁面可見性變化處理
     document.addEventListener('visibilitychange', function() {
       if (document.hidden) {
-        // 頁面隱藏時暫停語音
         if (speechSynthesis.speaking) {
           speechSynthesis.cancel();
         }
       }
     });
 
+    // 清理資源
+    window.addEventListener('beforeunload', function() {
+      if (ocrWorker) {
+        ocrWorker.terminate();
+      }
+      if (speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+      }
+    });
+
     // 初始化
     renderVocabList();
     
-    // 等待用戶交互後再載入模型（iOS要求）
     document.addEventListener('click', function init() {
       loadModel();
       document.removeEventListener('click', init);
