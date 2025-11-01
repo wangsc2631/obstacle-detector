@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
   <title>羅乙程寶貝專用 - 神奇寶貝英文學習</title>
   <style>
+    /* CSS 樣式請保留您 index6.html 的內容 */
     :root {
       --pokemon-yellow: #ffcc00;
       --pokemon-blue: #3b4cca;
@@ -294,8 +295,8 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 200px;
-      height: 80px;
+      width: 250px; /* 調整大小以符合優化後的 OCR 區域 */
+      height: 100px;
       border: 3px solid #00ff00;
       background: rgba(0, 255, 0, 0.1);
       pointer-events: none;
@@ -328,42 +329,35 @@
     <h1><span class="pokeball"></span> 羅乙程寶貝英文學習 <span class="pokeball"></span></h1>
     <div class="subtitle">對準物品或字母開始學習</div>
     
-    <!-- 模式選擇 -->
     <div class="mode-selector">
       <button id="objectModeBtn" class="mode-btn active">🔍 物品辨識</button>
       <button id="ocrModeBtn" class="mode-btn">🔤 字母辨識</button>
     </div>
 
-    <!-- 遊戲模式提示 -->
     <div id="gameMode" class="game-mode">
       找到 → <strong id="targetWord"></strong>
     </div>
 
-    <!-- 單一相機畫面 -->
     <div class="video-container">
       <video id="video" autoplay muted playsinline></video>
       <canvas id="canvas"></canvas>
       <div class="ocr-focus-area" id="ocrFocusArea"></div>
     </div>
 
-    <!-- 單字顯示 -->
     <div class="word-display" id="wordDisplay">
-      準備中...
+      載入 AI 模型中...
     </div>
     
-    <!-- 狀態資訊 -->
     <div class="status-info" id="statusInfo">
-      偵測中...
+      請點擊畫面開始載入模型
     </div>
 
-    <!-- 控制按鈕 -->
     <div class="controls">
       <button id="langBtnEn" class="active">🔊 英文</button>
       <button id="langBtnZh">🔊 中文</button>
       <button id="gameBtn">🎮 遊戲模式</button>
     </div>
 
-    <!-- 單字本區域 -->
     <div class="vocab-section">
       <div class="vocab-header">
         <h2>📚 我的單字本</h2>
@@ -377,19 +371,34 @@
     <div class="pikachu-corner"></div>
   </div>
 
-  <!-- 載入您的 itemDatabase.js -->
   <script src="itemDatabase.js"></script>
 
-  <!-- TensorFlow.js 與 COCO-SSD -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
   
-  <!-- Tesseract.js for OCR -->
   <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
 
   <script>
+    // --- YOLOv8 專用設定 ---
+    const MODEL_INPUT_SIZE = 640;
+    const CONF_THRESHOLD = 0.3; // 預設信心度門檻 (從 0.25 調整到 0.3，確保品質)
+    const IOU_THRESHOLD = 0.45; // NMS IOU 門檻
+    // 標準 COCO 80 類別
+    const CLASS_NAMES = [
+        'person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 
+        'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 
+        'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 
+        'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 
+        'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 
+        'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 
+        'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 
+        'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 
+        'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 
+        'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+    ];
+
     // 初始化變數
-    let net;
+    let yoloDetector; // 替換舊的 net 變數
     let isEnglish = true;
     let isInGameMode = false;
     let isOCRMode = false;
@@ -401,7 +410,7 @@
     let lastSpokenTime = 0;
     let ocrWorker = null;
 
-    // DOM 元素
+    // DOM 元素 (保留)
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
@@ -417,44 +426,198 @@
     const ocrModeBtn = document.getElementById('ocrModeBtn');
     const statusInfo = document.getElementById('statusInfo');
     const ocrFocusArea = document.getElementById('ocrFocusArea');
-
-    // 擴展的 COCO-SSD 與資料庫 key 對應表
+    
+    // 擴展的 COCO-SSD 與資料庫 key 對應表 (改為 YOLOv8 類別對應，如果您的 itemDatabase.js 使用了不同的 key)
     const cocoToYourKey = {
-      'cell phone': 'smartphone',
-      'hair drier': 'hair dryer',
-      'tv': 'television',
-      'remote': 'remote control',
-      'mouse': 'computer mouse',
-      'keyboard': 'computer keyboard',
-      'laptop': 'notebook computer',
-      'sports ball': 'ball',
-      'baseball bat': 'bat',
-      'baseball glove': 'glove',
-      'tennis racket': 'racket',
-      'wine glass': 'glass',
-      'hot dog': 'hotdog',
-      'potted plant': 'plant',
-      'dining table': 'table',
-      'parking meter': 'meter',
-      'stop sign': 'sign',
-      'fire hydrant': 'hydrant',
-      'traffic light': 'trafficlight'
+        'cell phone': 'smartphone',
+        'hair drier': 'hair dryer',
+        'tvmonitor': 'television', // 替換 'tv'
+        'remote': 'remote control',
+        'mouse': 'computer mouse',
+        'keyboard': 'computer keyboard',
+        'laptop': 'notebook computer',
+        'sports ball': 'ball',
+        'baseball bat': 'bat',
+        'baseball glove': 'glove',
+        'tennis racket': 'racket',
+        'wine glass': 'glass',
+        'hot dog': 'hotdog',
+        'pottedplant': 'plant', // 替換 'potted plant'
+        'diningtable': 'table', // 替換 'dining table'
+        'parking meter': 'meter',
+        'stop sign': 'sign',
+        'fire hydrant': 'hydrant',
+        'traffic light': 'trafficlight'
+        // 其他類別將直接使用 COCO 名稱
     };
 
-    // 從 itemDatabase 查詢單字資訊
+
+    // --- Class: YOLOv8Detector (新的偵測邏輯) ---
+    class YOLOv8Detector {
+      constructor(modelPath = 'yolov8n.onnx') {
+        this.modelPath = modelPath;
+        this.session = null;
+        this.isReady = false;
+      }
+
+      async loadModel() {
+        statusInfo.textContent = '載入 AI 模型中...';
+        wordDisplay.textContent = `正在從 ${this.modelPath} 載入模型...`;
+
+        try {
+          if (typeof ort === 'undefined' || !ort.InferenceSession) {
+            throw new Error("ONNX Runtime Web 函式庫未載入。");
+          }
+
+          // 核心載入邏輯：加入 WebGL/WASM 回退
+          this.session = await ort.InferenceSession.create(this.modelPath, {
+            executionProviders: ['webgl', 'wasm'], 
+            graphOptimizationLevel: 'all',
+            logLevel: 'error' 
+          });
+
+          this.isReady = true;
+          statusInfo.textContent = 'AI 視覺準備就緒';
+          wordDisplay.textContent = '模型載入完成！對準物品開始學習';
+          return true;
+        } catch (error) {
+          console.error('YOLOv8 模型載入失敗 (詳細):', error);
+          const errorMessage = `模型載入失敗。請檢查: 1. 路徑 ${this.modelPath} 2. WebGL/WASM 錯誤。錯誤: ${error.message.substring(0, 80)}...`;
+          statusInfo.textContent = '載入失敗';
+          wordDisplay.textContent = errorMessage; 
+          return false;
+        }
+      }
+
+      async detect(video) {
+        if (!this.isReady) return [];
+
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        
+        // --- 1. 影像預處理：TF.js Tensor 轉換 (HWC -> NCHW, 歸一化) ---
+        const inputTensor = tf.tidy(() => {
+          let tensor = tf.browser.fromPixels(video); 
+          tensor = tf.image.resizeBilinear(tensor, [MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
+          tensor = tensor.div(255.0); 
+          tensor = tensor.transpose([2, 0, 1]); // HWC -> CHW
+          tensor = tensor.expandDims(0); // CHW -> NCHW
+          return tensor;
+        });
+
+        const input = new ort.Tensor('float32', inputTensor.dataSync(), [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
+        inputTensor.dispose(); // 釋放 tfjs 內存
+
+        // --- 2. 執行 ONNX 推理 ---
+        const feeds = { 'images': input }; // 'images' 是 YOLOv8 ONNX 模型的標準輸入名稱
+        const output = await this.session.run(feeds);
+        
+        // YOLOv8n 的輸出張量名稱通常是 'output0'
+        const predictions = this._processOutput(
+            output['output0'], width, height, CONF_THRESHOLD, IOU_THRESHOLD
+        );
+        
+        return predictions;
+      }
+      
+      // --- 3. YOLOv8 NMS 後處理 ---
+      _processOutput(outputTensor, originalWidth, originalHeight, confThreshold, iouThreshold) {
+        const output = outputTensor.data;
+        // YOLOv8 的輸出格式是 [1, 84, 8400] 或 [1, 85, 8400]，但我們只處理 [84, 8400]
+        const numClasses = CLASS_NAMES.length; // 80
+        const rows = outputTensor.dims[2]; // 8400
+        const valuesPerRow = outputTensor.dims[1]; // 84 (4+80)
+
+        let boxes = []; // 儲存 [x1, y1, x2, y2, score, classId]
+
+        for (let i = 0; i < rows; i++) {
+          const rowStart = i * valuesPerRow;
+          const scoreStart = rowStart + 4; // 類別分數從第 5 個值開始 (0-based: index 4)
+
+          // 找出最高分數的類別
+          let maxScore = 0;
+          let classId = -1;
+          for (let c = 0; c < numClasses; c++) {
+            const score = output[scoreStart + c];
+            if (score > maxScore) {
+              maxScore = score;
+              classId = c;
+            }
+          }
+
+          if (maxScore > confThreshold) {
+            // 解析 Bounding Box (cx, cy, w, h)
+            const cx = output[rowStart + 0];
+            const cy = output[rowStart + 1];
+            const w = output[rowStart + 2];
+            const h = output[rowStart + 3];
+
+            // 轉換到 (x1, y1, x2, y2)
+            const x1 = cx - w / 2;
+            const y1 = cy - h / 2;
+            const x2 = cx + w / 2;
+            const y2 = cy + h / 2;
+
+            boxes.push([x1, y1, x2, y2, maxScore, classId]);
+          }
+        }
+        
+        // 執行 NMS (非最大抑制)
+        const NMS_IDX = 4; // score index
+        const boxesTensor = tf.tensor2d(boxes, [boxes.length, 6]);
+        const scores = boxesTensor.slice([0, NMS_IDX], [-1, 1]).squeeze();
+        const boxCoords = boxesTensor.slice([0, 0], [-1, 4]);
+
+        const indices = tf.image.nonMaxSuppression(
+          boxCoords, 
+          scores, 
+          100, // max detections
+          iouThreshold,
+          confThreshold
+        );
+
+        const selectedBoxesData = boxesTensor.gather(indices).arraySync();
+        boxesTensor.dispose();
+        scores.dispose();
+        boxCoords.dispose();
+        indices.dispose();
+        
+        const finalDetections = selectedBoxesData.map(box => {
+            // 轉換回原始影片解析度
+            const xRatio = originalWidth / MODEL_INPUT_SIZE;
+            const yRatio = originalHeight / MODEL_INPUT_SIZE;
+            
+            const x1 = Math.max(0, box[0] * xRatio);
+            const y1 = Math.max(0, box[1] * yRatio);
+            const x2 = Math.min(originalWidth, box[2] * xRatio);
+            const y2 = Math.min(originalHeight, box[3] * yRatio);
+            
+            return {
+                class: CLASS_NAMES[box[5]],
+                score: box[4],
+                bbox: [x1, y1, x2 - x1, y2 - y1] // 轉換為 [x, y, w, h] 格式
+            };
+        });
+
+        return finalDetections;
+      }
+    }
+
+
+    // 從 itemDatabase 查詢單字資訊 (保留)
     function getWordInfo(label) {
+      // 由於 YOLOv8n 使用標準 COCO 標籤，這裡直接對應
       const key = cocoToYourKey[label] || label;
       const zh = itemNames[key] || label;
       const en = key.charAt(0).toUpperCase() + key.slice(1);
       return { en, zh, key };
     }
 
-    // iOS 兼容的語音朗讀功能
+    // iOS 兼容的語音朗讀功能 (保留)
     function speak(text, lang = 'en-US') {
       if (isSpeaking) return;
       
       const now = Date.now();
-      // 防止重複朗讀：同一文字3秒內不重複，不同文字1秒內不重複
       if (now - lastSpokenTime < (text === lastSpokenWord ? 3000 : 1000)) {
         return;
       }
@@ -486,7 +649,7 @@
       }, 100);
     }
 
-    // 語言切換
+    // 語言切換 (保留)
     langBtnEn.addEventListener('click', () => {
       isEnglish = true;
       langBtnEn.classList.add('active');
@@ -501,7 +664,7 @@
       speak('中文模式', 'zh-TW');
     });
 
-    // 模式切換
+    // 模式切換 (保留)
     objectModeBtn.addEventListener('click', () => {
       isOCRMode = false;
       objectModeBtn.classList.add('active');
@@ -520,7 +683,7 @@
       speak('字母辨識模式', 'zh-TW');
     });
 
-    // 遊戲模式
+    // 遊戲模式 (保留)
     gameBtn.addEventListener('click', () => {
       if (isOCRMode) {
         alert('遊戲模式目前僅支援物品辨識模式');
@@ -549,7 +712,7 @@
       speak(`請找到 ${zh}`, 'zh-TW');
     }
 
-    // 單字本功能
+    // 單字本功能 (保留)
     function addToVocab(en, zh, key) {
       if (!collectedWords.some(w => w.key === key)) {
         collectedWords.push({ en, zh, key });
@@ -588,7 +751,7 @@
       }
     });
 
-    // OCR 功能 - 改進版
+    // --- OCR 功能 - 優化版 (保留 OCR 功能，但修復了邏輯) ---
     let lastOCRText = '';
     let ocrCooldown = 0;
 
@@ -599,95 +762,71 @@
       }
 
       try {
-        // 只取畫面中央區域進行OCR，避免雜訊
-        const focusWidth = 200;
-        const focusHeight = 80;
+        const focusWidth = 250;
+        const focusHeight = 100;
         const centerX = (canvas.width - focusWidth) / 2;
         const centerY = (canvas.height - focusHeight) / 2;
 
-        // 創建臨時canvas用於OCR
         const tempCanvas = document.createElement('canvas');
         const tempCtx = tempCanvas.getContext('2d');
         tempCanvas.width = focusWidth;
         tempCanvas.height = focusHeight;
         
-        // 只繪製中央區域
         tempCtx.drawImage(
           video, 
           centerX, centerY, focusWidth, focusHeight,
           0, 0, focusWidth, focusHeight
         );
 
-        // 圖像預處理：提高對比度
-        const imageData = tempCtx.getImageData(0, 0, focusWidth, focusHeight);
-        const data = imageData.data;
-        for (let i = 0; i < data.length; i += 4) {
-          // 簡單的二值化處理
-          const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-          const value = avg > 128 ? 255 : 0;
-          data[i] = value;     // R
-          data[i + 1] = value; // G
-          data[i + 2] = value; // B
-        }
-        tempCtx.putImageData(imageData, 0, 0);
-
         if (!ocrWorker) {
           ocrWorker = Tesseract.createWorker();
           await ocrWorker.load();
           await ocrWorker.loadLanguage('eng');
           await ocrWorker.initialize('eng');
-          // 設定只識別字母
           await ocrWorker.setParameters({
-            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
-            tessedit_pageseg_mode: '7' // 單行文字模式
+            tessedit_pageseg_mode: '6' // 統一文字塊模式
           });
         }
 
         const { data: { text } } = await ocrWorker.recognize(tempCanvas);
         
-        // 清理文字：只保留字母，取第一個有效的字母
-        const cleanText = text.replace(/[^A-Za-z]/g, '');
+        // 清理文字：只保留大寫英文字母，並移除空格
+        const words = text.toUpperCase().match(/[A-Z]+/g); 
         
-        if (cleanText.length > 0) {
-          // 只取第一個字母，避免識別到整個單字
-          const letter = cleanText.charAt(0).toUpperCase();
+        if (words && words.length > 0) {
+          const recognizedWord = words[0]; 
           
-          // 只有在字母變化時才更新顯示和朗讀
-          if (letter !== lastOCRText) {
-            lastOCRText = letter;
-            wordDisplay.innerHTML = `<strong>${letter}</strong>`;
+          if (recognizedWord !== lastOCRText) {
+            lastOCRText = recognizedWord;
+            wordDisplay.innerHTML = `<strong>${recognizedWord}</strong>`;
             
             if (isEnglish) {
-              speak(letter, 'en-US');
+              speak(recognizedWord, 'en-US');
             }
             
-            // 在畫面上標示識別區域和結果
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.strokeStyle = '#00ff00';
             ctx.lineWidth = 3;
             ctx.strokeRect(centerX, centerY, focusWidth, focusHeight);
-            ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
-            ctx.fillRect(centerX, centerY, focusWidth, focusHeight);
             ctx.fillStyle = 'white';
             ctx.font = 'bold 20px Arial';
-            ctx.fillText(`字母: ${letter}`, centerX + 10, centerY - 10);
+            ctx.fillText(`辨識: ${recognizedWord}`, centerX + 10, centerY - 10);
             
-            // 設置冷卻時間，避免頻繁變化
-            ocrCooldown = 10;
+            ocrCooldown = 15;
           }
         } else if (lastOCRText !== '') {
-          // 如果沒有識別到文字，清空顯示
           lastOCRText = '';
-          wordDisplay.innerHTML = '對準字母開始學習';
+          wordDisplay.innerHTML = '對準英文字母或單字開始學習';
           ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
         
-        statusInfo.textContent = `OCR: ${cleanText || '未識別到字母'}`;
+        statusInfo.textContent = `OCR: ${words ? words.join(' ') : '未識別到單字'}`;
       } catch (error) {
         console.error('OCR 錯誤:', error);
         statusInfo.textContent = 'OCR錯誤';
       }
     }
+
 
     // 攝影機與偵測功能
     async function setupCamera() {
@@ -715,15 +854,16 @@
 
     let lastLabel = '';
     let lastDetectionTime = 0;
-    const DETECTION_INTERVAL = 800; // 增加檢測間隔
+    const DETECTION_INTERVAL = 500; // 檢測間隔 500ms
     let objectCooldown = 0;
 
+    // --- 核心偵測迴圈：改用 YOLOv8Detector ---
     async function detectFrame() {
       const now = Date.now();
       
       // OCR 模式
       if (isOCRMode) {
-        if (now - lastDetectionTime > 1000) { // OCR 1秒檢測一次
+        if (now - lastDetectionTime > 1000) { 
           lastDetectionTime = now;
           await performOCR();
         }
@@ -731,7 +871,7 @@
         return;
       }
       
-      // 物品辨識模式
+      // 物品辨識模式 (YOLOv8)
       if (objectCooldown > 0) {
         objectCooldown--;
         requestAnimationFrame(detectFrame);
@@ -746,16 +886,18 @@
       lastDetectionTime = now;
       
       try {
-        const predictions = await net.detect(video);
+        // 使用 YOLOv8Detector 進行推理
+        const predictions = await yoloDetector.detect(video); 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (predictions.length > 0) {
-          const validPredictions = predictions
-            .filter(pred => pred.score > 0.6) // 提高置信度門檻
-            .slice(0, 2); // 只處理前2個
+          // 篩選出所有偵測結果
+          const validPredictions = predictions.filter(pred => pred.score > CONF_THRESHOLD);
 
           if (validPredictions.length > 0) {
-            const bestPred = validPredictions[0];
+            // 找出分數最高的物體
+            const bestPred = validPredictions.reduce((prev, current) => (prev.score > current.score) ? prev : current);
+            
             const { class: label, score, bbox } = bestPred;
             const { en, zh, key } = getWordInfo(label);
 
@@ -773,21 +915,20 @@
                 setTimeout(startNewGame, 2000);
               }
               
-              // 設置冷卻時間
-              objectCooldown = 20;
+              objectCooldown = 20; // 設置冷卻時間，避免頻繁朗讀
             }
 
-            statusInfo.textContent = `偵測到: ${zh} (${Math.round(score * 100)}%)`;
+            statusInfo.textContent = `YOLOv8 偵測到: ${zh} (${Math.round(score * 100)}%)`;
 
             // 畫出檢測框
             validPredictions.forEach(pred => {
               const [x, y, w, h] = pred.bbox;
               const isBest = pred === bestPred;
               
-              ctx.strokeStyle = isBest ? '#e74c3c' : '#3498db';
+              ctx.strokeStyle = isBest ? '#ff6347' : '#3cb371';
               ctx.lineWidth = isBest ? 3 : 2;
               ctx.strokeRect(x, y, w, h);
-              ctx.fillStyle = isBest ? 'rgba(231, 76, 60, 0.5)' : 'rgba(52, 152, 219, 0.5)';
+              ctx.fillStyle = isBest ? 'rgba(255, 99, 71, 0.5)' : 'rgba(60, 179, 113, 0.5)';
               ctx.fillRect(x, y, w, 20);
               ctx.fillStyle = 'white';
               ctx.font = '12px Arial';
@@ -801,38 +942,37 @@
           lastLabel = '';
         }
       } catch (error) {
-        console.error('偵測錯誤:', error);
-        statusInfo.textContent = '偵測錯誤';
+        console.error('YOLOv8 偵測錯誤:', error);
+        statusInfo.textContent = 'YOLOv8 偵測錯誤';
       }
 
       requestAnimationFrame(detectFrame);
     }
 
-    // 啟動應用
+    // 啟動應用 (替換舊的 loadModel)
     async function loadModel() {
       try {
-        wordDisplay.textContent = '載入AI模型中...';
-        statusInfo.textContent = '請稍候...';
+        // 初始化 YOLOv8Detector 實例
+        yoloDetector = new YOLOv8Detector('yolov8n.onnx'); 
         
-        net = await cocoSsd.load({
-          base: 'lite_mobilenet_v2'
-        });
+        // 載入模型
+        const success = await yoloDetector.loadModel();
         
-        console.log('✅ COCO-SSD 模型載入完成');
-        wordDisplay.textContent = '模型載入完成！對準物品開始學習';
-        statusInfo.textContent = '準備就緒';
-        
-        speak('歡迎使用英文學習系統', 'zh-TW');
-        
-        setupCamera();
+        if (success) {
+            speak('歡迎使用英文學習系統', 'zh-TW');
+            setupCamera();
+        } else {
+            // 錯誤訊息已經在 loadModel 中更新到 UI
+        }
+
       } catch (error) {
-        console.error('模型載入失敗:', error);
-        wordDisplay.textContent = '模型載入失敗，請重新整理頁面';
-        statusInfo.textContent = '載入失敗';
+        console.error('啟動失敗:', error);
+        wordDisplay.textContent = '系統啟動失敗，請檢查主控台';
+        statusInfo.textContent = '啟動失敗';
       }
     }
 
-    // 頁面可見性變化處理
+    // 頁面可見性變化處理 (保留)
     document.addEventListener('visibilitychange', function() {
       if (document.hidden) {
         if (speechSynthesis.speaking) {
@@ -841,7 +981,7 @@
       }
     });
 
-    // 清理資源
+    // 清理資源 (保留)
     window.addEventListener('beforeunload', function() {
       if (ocrWorker) {
         ocrWorker.terminate();
@@ -851,9 +991,10 @@
       }
     });
 
-    // 初始化
+    // 初始化 (保留)
     renderVocabList();
     
+    // 第一次點擊畫面時載入模型 (確保語音和相機權限)
     document.addEventListener('click', function init() {
       loadModel();
       document.removeEventListener('click', init);
