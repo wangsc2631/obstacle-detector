@@ -58,11 +58,11 @@
       gap: 5px;
       padding: 5px;
       min-height: 0;
-      overflow-y: auto; /* 添加滾動以確保所有內容可見 */
+      overflow-y: auto;
     }
     
     .camera-view {
-      flex: 0 0 35vh; /* 調整相機畫面高度，為下方按鈕留出空間 */
+      flex: 0 0 35vh;
       background: #000;
       border-radius: 8px;
       position: relative;
@@ -159,7 +159,7 @@
       grid-template-columns: 1fr 1fr;
       gap: 6px;
       flex-shrink: 0;
-      margin-bottom: 6px; /* 添加底部間距 */
+      margin-bottom: 6px;
     }
     
     .btn {
@@ -237,7 +237,6 @@
       left: 4px;
     }
     
-    /* 模式選擇按鈕 */
     .mode-selector {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -263,7 +262,6 @@
       box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
     }
 
-    /* 緊急按鈕 */
     .emergency-section {
       margin-top: 6px;
       flex-shrink: 0;
@@ -281,7 +279,6 @@
       min-height: 50px;
     }
 
-    /* 避障指示器 */
     .avoidance-indicator {
       position: absolute;
       bottom: 4px;
@@ -299,7 +296,6 @@
       display: block;
     }
 
-    /* 路徑建議箭頭 */
     .path-arrow {
       position: absolute;
       font-size: 40px;
@@ -333,7 +329,6 @@
       transform: translateX(-50%) rotate(0deg);
     }
 
-    /* 用於繪製 YOLO Bounding Box 的 Canvas */
     #bboxCanvas {
         position: absolute;
         top: 0;
@@ -343,9 +338,21 @@
         z-index: 2;
     }
 
-    /* 控制區域滾動 */
     .control-section {
       flex-shrink: 0;
+    }
+
+    .debug-info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      z-index: 20;
+      display: none;
     }
   </style>
 </head>
@@ -385,6 +392,7 @@
         <div class="avoidance-indicator" id="avoidanceIndicator">
           ⚠️ AI 模型載入中...
         </div>
+        <div class="debug-info" id="debugInfo"></div>
       </div>
       
       <div class="control-section">
@@ -446,7 +454,7 @@
 
     /**
      * @class YOLOv8Detector
-     * 修復版 YOLOv8 檢測器，包含模擬模式
+     * 修復版 YOLOv8 檢測器 - 完全使用真實模型
      */
     class YOLOv8Detector {
       constructor(modelPath = 'yolov8n.onnx') {
@@ -457,227 +465,265 @@
         this.canvasElement = document.getElementById('bboxCanvas');
         this.canvasCtx = this.canvasElement.getContext('2d');
         this.lastInferenceTime = Date.now();
-        // --- 修正 1.1: 預設設定為 false，優先嘗試載入真實模型 ---
-        this.useSimulation = false; 
-        this.simulationObjects = [];
+        this.frameCount = 0;
+        this.fps = 0;
+        
+        // 禁用模擬模式，強制使用真實模型
+        this.useSimulation = false;
       }
 
       async loadModel() {
         document.getElementById('systemStatus').textContent = '嘗試載入 AI 模型...';
         document.getElementById('voiceAlert').textContent = `正在從 ${this.modelPath} 載入模型...`;
         
-        if (this.useSimulation) {
-          // 使用模擬模式
-          setTimeout(() => {
-            this.isReady = true;
-            document.getElementById('systemStatus').textContent = 'AI 模擬模式就緒';
-            document.getElementById('voiceAlert').textContent = 'AI 模擬模式已啟動，可以開始測試避障功能';
-            document.getElementById('avoidanceIndicator').textContent = '🎮 AI 模擬模式';
-            document.getElementById('avoidanceIndicator').classList.add('active');
-            document.getElementById('btnStart').disabled = false;
-            document.getElementById('btnStop').disabled = false;
-          }, 1500);
-          return true;
-        }
-
-        // 原始載入邏輯（嘗試載入真實模型）
-        const providers = ['webgl', 'wasm']; 
-        let success = false;
-
-        for (const provider of providers) {
-          try {
-            if (typeof ort === 'undefined' || !ort.InferenceSession) {
-                throw new Error("ONNX Runtime Web 函式庫未載入。");
-            }
-
-            this.session = await ort.InferenceSession.create(this.modelPath, {
-              executionProviders: [provider], 
-              freeDimensionOverrides: { input_size: MODEL_INPUT_SIZE },
-              logLevel: 'error' 
-            });
-            success = true;
-            break; 
-          } catch (e) {
-            console.warn(`嘗試使用 ${provider} 失敗:`, e.message);
+        try {
+          if (typeof ort === 'undefined' || !ort.InferenceSession) {
+            throw new Error("ONNX Runtime Web 函式庫未載入。");
           }
-        }
 
-        if (success) {
+          // 嘗試使用 WebGL 加速
+          this.session = await ort.InferenceSession.create(this.modelPath, {
+            executionProviders: ['webgl'],
+            graphOptimizationLevel: 'all'
+          });
+
+          console.log('YOLOv8 模型載入成功');
+          console.log('輸入名稱:', this.session.inputNames);
+          console.log('輸出名稱:', this.session.outputNames);
+          
           this.isReady = true;
           document.getElementById('systemStatus').textContent = 'AI 視覺準備就緒';
-          document.getElementById('voiceAlert').textContent = 'AI 模型載入成功';
+          document.getElementById('voiceAlert').textContent = 'AI 模型載入成功，可以開始導航';
           document.getElementById('avoidanceIndicator').textContent = '✅ AI 視覺準備就緒';
           document.getElementById('avoidanceIndicator').classList.add('active');
           document.getElementById('btnStart').disabled = false;
           document.getElementById('btnStop').disabled = false;
+          
           return true;
-        } else {
-          // --- 修正 1.2: 真實模型載入失敗時，才切換到模擬模式並重新載入 ---
-          document.getElementById('systemStatus').textContent = 'AI 視覺錯誤';
-          document.getElementById('voiceAlert').textContent = 'AI 模型載入失敗，啟用模擬模式'; 
-          document.getElementById('avoidanceIndicator').textContent = '❌ AI 錯誤，切換至模擬';
-          this.useSimulation = true;
-          // 確保在模擬模式下重新調用 loadModel 以完成初始化
-          return this.loadModel(); 
+          
+        } catch (error) {
+          console.error('模型載入失敗:', error);
+          document.getElementById('systemStatus').textContent = 'AI 模型載入失敗';
+          document.getElementById('voiceAlert').textContent = 'AI 模型載入失敗: ' + error.message;
+          document.getElementById('avoidanceIndicator').textContent = '❌ AI 模型錯誤';
+          return false;
         }
       }
 
       async detect(video) {
-        if (!this.isReady) return [];
-        
-        if (this.useSimulation) {
-          return this.simulateDetection(video);
+        if (!this.isReady || !this.session) {
+          console.log('模型未準備好');
+          return [];
         }
 
-        // 原始檢測邏輯
+        const startTime = performance.now();
+
         try {
-          const start = Date.now();
-          const tf_image = tf.browser.fromPixels(video);
-          const resized = tf.image.resizeBilinear(tf_image, [MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
-          const normalized = resized.div(255.0);
-          const batched = normalized.expandDims(0);
-          const inputTensor = batched.transpose([0, 3, 1, 2]);
-
-          const inputMap = {};
-          inputMap[this.session.inputNames[0]] = new ort.Tensor('float32', inputTensor.dataSync(), [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
+          // 1. 圖像預處理 - 修復張量轉換邏輯
+          const inputTensor = this.preprocessImage(video);
           
-          const results = await this.session.run(inputMap);
-          const outputTensor = results[this.session.outputNames[0]].data;
-
-          tf_image.dispose();
-          resized.dispose();
-          normalized.dispose();
-          batched.dispose();
-          inputTensor.dispose();
+          // 2. 模型推理
+          const feeds = {};
+          feeds[this.session.inputNames[0]] = inputTensor;
           
-          const detections = this._processOutput(outputTensor, video.videoWidth, video.videoHeight);
+          const results = await this.session.run(feeds);
+          const outputTensor = results[this.session.outputNames[0]];
           
-          const end = Date.now();
-          const inferenceTime = end - start;
-          const fps = (1000 / inferenceTime).toFixed(1);
-          document.getElementById('safetyScore').textContent = fps + ' FPS';
+          // 3. 後處理
+          const detections = this.postprocessOutput(outputTensor, video.videoWidth, video.videoHeight);
+          
+          // 4. 計算 FPS
+          const endTime = performance.now();
+          const inferenceTime = endTime - startTime;
+          this.updateFPS(inferenceTime);
           
           return detections;
+          
         } catch (error) {
-          console.error('檢測錯誤，回退到模擬:', error);
-          this.useSimulation = true;
-          return this.simulateDetection(video); // 出錯時回退到模擬
+          console.error('檢測過程中發生錯誤:', error);
+          return [];
         }
       }
 
-      // 模擬檢測 - 生成虛擬障礙物
-      simulateDetection(video) {
-        const width = video.videoWidth || 640;
-        const height = video.videoHeight || 480;
-        
-        // --- 修正 1.3: 改善模擬邏輯，讓物件更穩定，減少亂閃 ---
-        
-        // 只有 15% 的機率重置或新增障礙物，讓畫面穩定
-        if (this.simulationObjects.length === 0 || Math.random() < 0.15) { 
-          this.simulationObjects = [];
+      preprocessImage(video) {
+        return tf.tidy(() => {
+          // 1. 從影片元素獲取張量
+          let tensor = tf.browser.fromPixels(video);
           
-          // 生成 1-3 個障礙物
-          const numObjects = Math.floor(Math.random() * 3) + 1;
-          for (let i = 0; i < numObjects; i++) {
-            // 將座標限制在畫面中央，模擬前方障礙物
-            const x = width * 0.2 + Math.random() * width * 0.6;
-            const y = height * 0.5 + Math.random() * height * 0.3; 
-            const w = 80 + Math.random() * 120;
-            const h = 80 + Math.random() * 120;
+          // 2. 調整大小到 640x640
+          tensor = tf.image.resizeBilinear(tensor, [MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
+          
+          // 3. 歸一化: [0, 255] -> [0, 1]
+          tensor = tensor.div(255.0);
+          
+          // 4. 變換通道: (H, W, C) -> (C, H, W)
+          tensor = tensor.transpose([2, 0, 1]);
+          
+          // 5. 增加 Batch 維度: (C, H, W) -> (1, C, H, W)
+          tensor = tensor.expandDims(0);
+          
+          // 6. 確保數據類型為 float32
+          const data = tensor.dataSync();
+          
+          return new ort.Tensor('float32', data, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
+        });
+      }
+
+      postprocessOutput(outputTensor, originalWidth, originalHeight, confThreshold = 0.25, iouThreshold = 0.45) {
+        const detections = [];
+        const outputData = outputTensor.data;
+        const outputDims = outputTensor.dims;
+        
+        console.log('輸出維度:', outputDims);
+        console.log('輸出數據長度:', outputData.length);
+        
+        // YOLOv8 輸出格式通常是 [1, 84, 8400]
+        if (outputDims.length === 3 && outputDims[0] === 1) {
+          const numClasses = outputDims[1] - 4; // 84 - 4 = 80 classes
+          const numBoxes = outputDims[2]; // 8400 boxes
+          
+          for (let i = 0; i < numBoxes; i++) {
+            const classScores = [];
+            let maxScore = -1;
+            let classId = -1;
             
-            const obstacleTypes = ['person', 'chair', 'wall', 'table'];
-            const type = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+            // 獲取類別分數
+            for (let j = 0; j < numClasses; j++) {
+              const score = outputData[(j + 4) * numBoxes + i];
+              classScores.push(score);
+              if (score > maxScore) {
+                maxScore = score;
+                classId = j;
+              }
+            }
             
-            this.simulationObjects.push({
-              x1: x - w/2,
-              y1: y - h/2,
-              x2: x + w/2,
-              y2: y + h/2,
-              w: w,
-              h: h,
-              score: 0.95,
-              classId: 0,
-              className: type,
-              // 模擬障礙物隨著幀數靠近
-              initialDistance: 1 + Math.random() * 5, 
-              distance: 1 + Math.random() * 5 
-            });
+            // 應用信心度門檻
+            if (maxScore > confThreshold) {
+              // 獲取邊界框座標
+              const cx = outputData[0 * numBoxes + i] * originalWidth / MODEL_INPUT_SIZE;
+              const cy = outputData[1 * numBoxes + i] * originalHeight / MODEL_INPUT_SIZE;
+              const w = outputData[2 * numBoxes + i] * originalWidth / MODEL_INPUT_SIZE;
+              const h = outputData[3 * numBoxes + i] * originalHeight / MODEL_INPUT_SIZE;
+              
+              const x1 = cx - w / 2;
+              const y1 = cy - h / 2;
+              const x2 = cx + w / 2;
+              const y2 = cy + h / 2;
+              
+              detections.push({
+                x1: Math.max(0, x1),
+                y1: Math.max(0, y1),
+                x2: Math.min(originalWidth, x2),
+                y2: Math.min(originalHeight, y2),
+                w: w,
+                h: h,
+                score: maxScore,
+                classId: classId,
+                className: CLASS_NAMES[classId],
+                distance: this.estimateDistance(h, originalHeight)
+              });
+            }
           }
         }
         
-        // 更新距離，模擬靠近
-        this.simulationObjects.forEach(obj => {
-             // 模擬每秒靠近 0.1m
-            const timeElapsed = (Date.now() - this.lastInferenceTime) / 1000;
-            // 簡化模擬：在一個範圍內隨機
-            obj.distance = Math.max(1.0, Math.min(6.0, obj.distance + (Math.random() - 0.5) * 0.2)); 
-        });
+        // 應用 NMS (非極大值抑制)
+        const nmsDetections = this.nonMaxSuppression(detections, iouThreshold);
+        
+        console.log(`檢測到 ${nmsDetections.length} 個物件`);
+        return nmsDetections.slice(0, 10); // 返回前10個檢測結果
+      }
 
-        // 更新 FPS 顯示
+      nonMaxSuppression(detections, iouThreshold) {
+        detections.sort((a, b) => b.score - a.score);
+        const selected = [];
+        
+        while (detections.length > 0) {
+          const best = detections[0];
+          selected.push(best);
+          detections = detections.slice(1);
+          
+          detections = detections.filter(det => {
+            const iou = this.calculateIOU(best, det);
+            return iou < iouThreshold;
+          });
+        }
+        
+        return selected;
+      }
+
+      calculateIOU(box1, box2) {
+        const x1 = Math.max(box1.x1, box2.x1);
+        const y1 = Math.max(box1.y1, box2.y1);
+        const x2 = Math.min(box1.x2, box2.x2);
+        const y2 = Math.min(box1.y2, box2.y2);
+        
+        const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+        const area1 = (box1.x2 - box1.x1) * (box1.y2 - box1.y1);
+        const area2 = (box2.x2 - box2.x1) * (box2.y2 - box2.y1);
+        const union = area1 + area2 - intersection;
+        
+        return intersection / union;
+      }
+
+      estimateDistance(height, imageHeight) {
+        if (height <= 0) return 999;
+        const normalizedHeight = height / imageHeight;
+        // 簡化的距離估計：物體越大，距離越近
+        return Math.min(20, 3 / normalizedHeight);
+      }
+
+      updateFPS(inferenceTime) {
+        this.frameCount++;
         const now = Date.now();
-        const fps = 1000 / (now - this.lastInferenceTime);
-        document.getElementById('safetyScore').textContent = fps.toFixed(1) + ' FPS';
-        this.lastInferenceTime = now;
         
-        return [...this.simulationObjects];
-      }
-
-      _processOutput(output, originalWidth, originalHeight, conf_threshold = 0.5) {
-        // 簡化的輸出處理邏輯
-        const boxes = [];
-        const outputSize = output.length;
-        // 假設 YOLOv8n 的輸出結構為 [batch, 84, 8400]
-        const numPredictions = 8400; // 實際模型的預測數量
-        const numOutputs = CLASS_NAMES.length + 4; // x,y,w,h + classes
-
-        // 由於原始碼中的 _processOutput 邏輯不完整且依賴 ONNX 輸出格式，
-        // 在不更改原始碼結構的情況下，我們僅保留原有的簡單邏輯，
-        // 實際運作中，這部分需要精確的 ONNX/YOLOv8 輸出處理邏輯。
-        // 為保持程式碼完整性，暫時保留原有的簡化邏輯。
-        
-        // 此處需要完整的 NMS 及輸出解碼，但因您要求不修改程式碼，故保留原簡化版本。
-
-        return boxes.slice(0, 10);
-      }
-      
-      _estimateDistance(h) {
-        const videoHeight = this.videoElement.videoHeight || 480;
-        if (h <= 0) return 999;
-        const normalizedHeight = h / videoHeight;
-        // 簡易的距離估計函數：物件高度佔畫面的比例與距離成反比
-        return Math.min(20, 3 / normalizedHeight); 
+        if (now - this.lastInferenceTime >= 1000) {
+          this.fps = this.frameCount;
+          this.frameCount = 0;
+          this.lastInferenceTime = now;
+          document.getElementById('safetyScore').textContent = this.fps + ' FPS';
+        }
       }
 
       draw(detections) {
         if (!this.canvasElement || !this.canvasCtx) return;
         
-        this.canvasElement.width = this.videoElement.videoWidth || 640;
-        this.canvasElement.height = this.videoElement.videoHeight || 480;
-        this.canvasCtx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+        const width = this.videoElement.videoWidth || 640;
+        const height = this.videoElement.videoHeight || 480;
+        
+        this.canvasElement.width = width;
+        this.canvasElement.height = height;
+        this.canvasCtx.clearRect(0, 0, width, height);
 
-        detections.forEach(box => {
-            const { x1, y1, w, h, className, distance } = box;
-            
-            let color = '#22c55e';
-            if (distance < 3.0) color = '#f59e0b';
-            if (distance < 1.5) color = '#ef4444';
+        // 顯示除錯資訊
+        const debugInfo = document.getElementById('debugInfo');
+        debugInfo.textContent = `解析度: ${width}x${height}\n檢測到: ${detections.length} 個物件`;
+        debugInfo.style.display = 'block';
 
-            this.canvasCtx.strokeStyle = color;
-            this.canvasCtx.lineWidth = 3;
-            // 繪製 Bounding Box
-            this.canvasCtx.strokeRect(x1, y1, w, h);
+        detections.forEach((box, index) => {
+          const { x1, y1, w, h, className, distance, score } = box;
+          
+          // 根據距離設置顏色
+          let color = '#22c55e'; // 綠色 (遠)
+          if (distance < 3.0) color = '#f59e0b'; // 黃色 (中)
+          if (distance < 1.5) color = '#ef4444'; // 紅色 (近)
 
-            this.canvasCtx.fillStyle = color;
-            this.canvasCtx.font = '14px Arial';
-            const label = `${className} ${distance.toFixed(1)}m`;
-            const textWidth = this.canvasCtx.measureText(label).width;
-            
-            // 確保標籤顯示在框的上方
-            const textY = y1 > 20 ? y1 - 20 : y1 + h + 5;
-            
-            this.canvasCtx.fillRect(x1, y1 - 20, textWidth + 10, 20);
-            this.canvasCtx.fillStyle = '#000';
-            this.canvasCtx.fillText(label, x1 + 5, y1 - 5);
+          // 繪製邊界框
+          this.canvasCtx.strokeStyle = color;
+          this.canvasCtx.lineWidth = 3;
+          this.canvasCtx.strokeRect(x1, y1, w, h);
+
+          // 繪製標籤背景
+          this.canvasCtx.fillStyle = color;
+          this.canvasCtx.font = '14px Arial';
+          const label = `${className} ${distance.toFixed(1)}m (${score.toFixed(2)})`;
+          const textWidth = this.canvasCtx.measureText(label).width;
+          
+          const labelY = y1 > 20 ? y1 - 5 : y1 + h + 15;
+          this.canvasCtx.fillRect(x1, labelY - 15, textWidth + 10, 18);
+          
+          // 繪製文字
+          this.canvasCtx.fillStyle = '#000';
+          this.canvasCtx.fillText(label, x1 + 5, labelY);
         });
       }
     }
@@ -695,10 +741,9 @@
         this.currentPosition = null;
         this.gpsWatchId = null;
         
-        // --- 修正 2.1: 新增語音頻率控制變數 ---
-        this.lastSpeakTime = 0; 
-        this.speakCooldown = 3000; // 語音冷卻時間 (3秒)
-        this.lastSpokenAdvice = ''; // 追蹤上次播放的語音內容
+        this.lastSpeakTime = 0;
+        this.speakCooldown = 3000;
+        this.lastSpokenAdvice = '';
         
         this.loadHomePosition();
         this.initButtons();
@@ -715,7 +760,9 @@
         const success = await this.yoloDetector.loadModel();
         
         if (success) {
-            this.updateSystemStatus('準備就緒');
+          this.updateSystemStatus('準備就緒');
+        } else {
+          this.updateSystemStatus('載入失敗');
         }
       }
 
@@ -729,32 +776,50 @@
           this.speak('已切換到室內避障模式');
           document.getElementById('avoidanceIndicator').classList.add('active');
           document.getElementById('btnFollow').disabled = true;
+          
+          // 如果正在導航，重新啟動 AI 檢測
+          if (this.isNavigating) {
+            this.startAIDetection();
+          }
         } else {
           this.speak('已切換到室外導航模式');
-          // 確保在室外模式下，避障指示器不會一直顯示模擬/錯誤狀態
-          document.getElementById('avoidanceIndicator').classList.remove('active'); 
+          document.getElementById('avoidanceIndicator').classList.remove('active');
+          this.stopAIDetection();
           this.hideAllArrows();
         }
         this.updateUI();
       }
 
       startAIDetection() {
-        if (this.detectionLoopId) return;
+        // 清除現有的檢測循環
+        if (this.detectionLoopId) {
+          cancelAnimationFrame(this.detectionLoopId);
+          this.detectionLoopId = null;
+        }
 
-        const loop = async () => {
-          if (this.isNavigating && this.isIndoorMode && this.yoloDetector.isReady) {
-            try {
+        console.log('啟動 AI 檢測循環...');
+
+        const detectFrame = async () => {
+          if (!this.isNavigating || !this.isIndoorMode || !this.yoloDetector.isReady) {
+            this.detectionLoopId = requestAnimationFrame(detectFrame);
+            return;
+          }
+
+          try {
+            // 確保影片元素已準備好
+            if (this.yoloDetector.videoElement.readyState === 4) {
               const detections = await this.yoloDetector.detect(this.yoloDetector.videoElement);
               this.yoloDetector.draw(detections);
               this.provideAvoidanceGuidance(detections);
-            } catch (error) {
-              console.error('檢測循環錯誤:', error);
             }
+          } catch (error) {
+            console.error('檢測循環錯誤:', error);
           }
-          this.detectionLoopId = requestAnimationFrame(loop);
+
+          this.detectionLoopId = requestAnimationFrame(detectFrame);
         };
-        
-        this.detectionLoopId = requestAnimationFrame(loop);
+
+        this.detectionLoopId = requestAnimationFrame(detectFrame);
       }
 
       stopAIDetection() {
@@ -763,11 +828,12 @@
           this.detectionLoopId = null;
         }
         if (this.yoloDetector.canvasCtx) {
-          this.yoloDetector.canvasCtx.clearRect(0, 0, 
-            this.yoloDetector.canvasElement.width, 
-            this.yoloDetector.canvasElement.height
-          );
+          const canvas = this.yoloDetector.canvasElement;
+          this.yoloDetector.canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
         }
+        
+        // 隱藏除錯資訊
+        document.getElementById('debugInfo').style.display = 'none';
       }
 
       provideAvoidanceGuidance(detections) {
@@ -779,62 +845,60 @@
         this.hideAllArrows();
 
         const width = this.yoloDetector.videoElement.videoWidth || 640;
-        const left_area = width * 0.3; // 畫面左側 30%
-        const right_area = width * 0.7; // 畫面右側 70%
+        const leftArea = width * 0.3;
+        const rightArea = width * 0.7;
 
-        let danger_left = 999;
-        let danger_right = 999;
-        let danger_front = 999;
+        let dangerLeft = 999;
+        let dangerRight = 999;
+        let dangerFront = 999;
 
         detections.forEach(box => {
-            const center_x = (box.x1 + box.x2) / 2;
-            
-            if (box.distance < closestDistance) {
-                closestDistance = box.distance;
-            }
+          const centerX = (box.x1 + box.x2) / 2;
+          
+          if (box.distance < closestDistance) {
+            closestDistance = box.distance;
+          }
 
-            if (box.distance < 4.0) { // 考慮 4 公尺內的障礙物
-                if (center_x < left_area) {
-                    danger_left = Math.min(danger_left, box.distance);
-                } else if (center_x > right_area) {
-                    danger_right = Math.min(danger_right, box.distance);
-                } else {
-                    danger_front = Math.min(danger_front, box.distance);
-                }
+          if (box.distance < 4.0) {
+            if (centerX < leftArea) {
+              dangerLeft = Math.min(dangerLeft, box.distance);
+            } else if (centerX > rightArea) {
+              dangerRight = Math.min(dangerRight, box.distance);
+            } else {
+              dangerFront = Math.min(dangerFront, box.distance);
             }
+          }
         });
 
         document.getElementById('closestObstacle').textContent = 
-            closestDistance !== Infinity ? closestDistance.toFixed(1) + ' 公尺' : '-- 公尺';
+          closestDistance !== Infinity ? closestDistance.toFixed(1) + ' 公尺' : '-- 公尺';
 
-        const STOP_THRESHOLD = 1.0; // 1.0 公尺停止
-        const YIELD_THRESHOLD = 2.0; // 2.0 公尺建議轉彎
+        const STOP_THRESHOLD = 1.0;
+        const YIELD_THRESHOLD = 2.0;
 
         if (closestDistance < STOP_THRESHOLD) {
-            advice = '緊急！前方有障礙物，請立即停止！';
-            safeDirection = 'stop';
-        } else if (danger_front < YIELD_THRESHOLD) {
-            // 前方有障礙物，判斷左邊或右邊較安全
-            if (danger_left > danger_right + 0.5) { // 左邊比右邊安全 0.5m 以上
-                advice = `前方障礙物 ${danger_front.toFixed(1)}m，請向左`;
-                safeDirection = 'left';
-            } else if (danger_right > danger_left + 0.5) {
-                advice = `前方障礙物 ${danger_front.toFixed(1)}m，請向右`;
-                safeDirection = 'right';
-            } else {
-                // 如果兩側差不多，則保持原地或停止
-                advice = `前方有障礙物 ${danger_front.toFixed(1)}m，請稍候`;
-                safeDirection = 'stop';
-            }
-        } else if (danger_left < YIELD_THRESHOLD && danger_left < danger_right) {
-            advice = `左側障礙物 ${danger_left.toFixed(1)}m，請向右`;
-            safeDirection = 'right';
-        } else if (danger_right < YIELD_THRESHOLD && danger_right < danger_left) {
-            advice = `右側障礙物 ${danger_right.toFixed(1)}m，請向左`;
+          advice = '緊急！前方有障礙物，請立即停止！';
+          safeDirection = 'stop';
+        } else if (dangerFront < YIELD_THRESHOLD) {
+          if (dangerLeft > dangerRight + 0.5) {
+            advice = `前方障礙物 ${dangerFront.toFixed(1)}m，請向左`;
             safeDirection = 'left';
+          } else if (dangerRight > dangerLeft + 0.5) {
+            advice = `前方障礙物 ${dangerFront.toFixed(1)}m，請向右`;
+            safeDirection = 'right';
+          } else {
+            advice = `前方有障礙物 ${dangerFront.toFixed(1)}m，請稍候`;
+            safeDirection = 'stop';
+          }
+        } else if (dangerLeft < YIELD_THRESHOLD && dangerLeft < dangerRight) {
+          advice = `左側障礙物 ${dangerLeft.toFixed(1)}m，請向右`;
+          safeDirection = 'right';
+        } else if (dangerRight < YIELD_THRESHOLD && dangerRight < dangerLeft) {
+          advice = `右側障礙物 ${dangerRight.toFixed(1)}m，請向左`;
+          safeDirection = 'left';
         } else {
-            advice = '路徑安全，請直行';
-            safeDirection = 'forward';
+          advice = '路徑安全，請直行';
+          safeDirection = 'forward';
         }
         
         document.getElementById('avoidanceAdvice').textContent = advice;
@@ -843,28 +907,23 @@
         document.getElementById('arrowLeft').classList.toggle('active', safeDirection === 'left');
         document.getElementById('arrowRight').classList.toggle('active', safeDirection === 'right');
         document.getElementById('arrowForward').classList.toggle('active', safeDirection === 'forward');
-        
-        // --- 修正 2.2: 語音頻率控制邏輯 ---
+
+        // 語音頻率控制
         const now = Date.now();
         let shouldSpeak = false;
 
         if (safeDirection === 'stop' && closestDistance < STOP_THRESHOLD) {
-            // 發生緊急情況時，立即播報
-            shouldSpeak = true;
+          shouldSpeak = true;
         } else if (safeDirection !== 'forward' && closestDistance < YIELD_THRESHOLD) {
-            // 遇到需要避讓時，檢查冷卻時間和訊息是否改變
-            if (now - this.lastSpeakTime > this.speakCooldown || this.lastSpokenAdvice !== advice) {
-                shouldSpeak = true;
-            }
-        } else if (safeDirection === 'forward' && this.lastSpokenAdvice !== '路徑安全，請直行' && now - this.lastSpeakTime > 10000) {
-            // 如果已有一段時間沒有語音提示，且現在安全，可以提示一次「安全」
-             shouldSpeak = true;
+          if (now - this.lastSpeakTime > this.speakCooldown || this.lastSpokenAdvice !== advice) {
+            shouldSpeak = true;
+          }
         }
 
         if (shouldSpeak) {
-            this.speak(advice);
-            this.lastSpeakTime = now;
-            this.lastSpokenAdvice = advice;
+          this.speak(advice);
+          this.lastSpeakTime = now;
+          this.lastSpokenAdvice = advice;
         }
       }
       
@@ -881,7 +940,7 @@
         try {
           await this.initializeCamera();
           if (this.isIndoorMode) {
-            this.speak('室內避障模式啟動');
+            this.speak('室內避障模式啟動，開始 AI 視覺分析');
             this.startAIDetection();
           } else {
             this.speak('室外導航啟動');
@@ -891,6 +950,7 @@
           console.warn('導航啟動失敗:', error);
           this.speak('啟動失敗: ' + error.message);
           this.isNavigating = false;
+          this.updateSystemStatus('啟動失敗');
         }
         
         this.updateUI();
@@ -1001,7 +1061,6 @@
 
       showHomeSetup() {
         this.speak('設定家的位置功能');
-        // 簡化設定
       }
 
       calculateDistance(lat1, lon1, lat2, lon2) {
@@ -1035,6 +1094,7 @@
           return new Promise((resolve) => {
             video.onloadedmetadata = () => {
               video.play();
+              console.log('相機初始化完成，解析度:', video.videoWidth, 'x', video.videoHeight);
               resolve();
             };
           });
@@ -1049,7 +1109,6 @@
           return;
         }
         
-        // 簡化 GPS 追蹤
         this.speak('GPS 定位已啟動');
       }
     }
