@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>器皿價格掃描與累計系統</title>
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -67,13 +66,11 @@
             object-fit: cover;
         }
         
-        #canvas-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
+        #captured-image {
             width: 100%;
             height: 100%;
-            pointer-events: none;
+            object-fit: contain;
+            background: black;
         }
         
         .camera-controls {
@@ -111,11 +108,19 @@
             background-color: #c0392b;
         }
         
-        .auto-scan-section {
-            margin-top: 10px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        .upload-section {
+            margin-top: 15px;
+            text-align: center;
+        }
+        
+        #file-input {
+            display: none;
+        }
+        
+        .upload-btn {
+            background-color: #9b59b6;
+            display: inline-block;
+            width: 100%;
         }
         
         .result-section {
@@ -255,6 +260,12 @@
             display: block;
         }
         
+        .feature-points {
+            font-size: 0.8rem;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        
         @media (min-width: 768px) {
             .container {
                 max-width: 600px;
@@ -277,15 +288,15 @@
         <section class="camera-section">
             <div id="camera-container">
                 <video id="camera-view" autoplay playsinline></video>
-                <canvas id="canvas-overlay"></canvas>
+                <img id="captured-image" style="display: none;">
             </div>
             <div class="camera-controls">
                 <button id="start-camera">開啟相機</button>
                 <button id="capture-btn" disabled>拍照辨識</button>
             </div>
-            <div class="auto-scan-section">
-                <input type="checkbox" id="auto-scan">
-                <label for="auto-scan">自動連續辨識</label>
+            <div class="upload-section">
+                <input type="file" id="file-input" accept="image/*">
+                <button class="upload-btn" onclick="document.getElementById('file-input').click()">上傳圖片辨識</button>
             </div>
             <div class="loading" id="loading">AI辨識中...</div>
         </section>
@@ -294,7 +305,8 @@
             <div class="item-info">
                 <div class="item-name" id="item-name">辨識中...</div>
                 <div class="item-price" id="item-price">NT$ 0</div>
-                <div class="confidence" id="confidence">置信度: 0%</div>
+                <div class="confidence" id="confidence">匹配度: 0%</div>
+                <div class="feature-points" id="feature-points">特徵點: 0</div>
             </div>
             <div class="action-buttons">
                 <button id="cancel-btn">取消</button>
@@ -319,265 +331,296 @@
     </div>
 
     <script>
-        // 器皿資料庫 - 需要根據您的實際器皿進行訓練和標註
-        const itemsDatabase = {
-            // 這裡的類別名稱需要與您YOLO模型訓練時的類別對應
-            "plate_16inch": { name: "止滑圓托盤16吋/直徑41cm", price: 235 },
-            "cream_dish": { name: "奶油碟(味碟)2.8吋/象牙強化/港式小碟/169銀河系", price: 21 },
-            "small_dish": { name: "可疊小料碟(布丁碟)白/78*30mm", price: 45 },
-            "bowl_4inch": { name: "桃型小缽4吋/10.3*9*H4.3cm", price: 27 },
-            "plate_6inch": { name: "圓盤6吋/15*H2cm", price: 25 },
-            "coffee_cup_blue": { name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml", price: 128 },
-            "wine_glass": { name: "VINO紅酒杯(Ocean)/470ml", price: 50 },
-            "champagne_glass": { name: "東京香檳杯/LUCARISLS02CP06/最寬65mm/H229mm/165cc", price: 156 },
-            // 添加更多器皿類別...
-        };
+        // 器皿資料庫 - 包含圖像特徵描述
+        const itemsDatabase = [
+            {
+                id: 1,
+                code: "160100000126",
+                name: "止滑圓托盤16吋/直徑41cm",
+                price: 235,
+                features: ["圓形", "托盤", "止滑", "16吋", "直徑41cm"],
+                color: "白色",
+                shape: "圓形",
+                size: "大"
+            },
+            {
+                id: 2,
+                code: "160100000987", 
+                name: "奶油碟(味碟)2.8吋/象牙強化/港式小碟/169銀河系",
+                price: 21,
+                features: ["小碟", "奶油碟", "味碟", "2.8吋", "象牙色"],
+                color: "象牙白",
+                shape: "圓形",
+                size: "小"
+            },
+            {
+                id: 3,
+                code: "160100000994",
+                name: "可疊小料碟(布丁碟)白/78*30mm",
+                price: 45,
+                features: ["小料碟", "布丁碟", "可疊", "白色", "78mm"],
+                color: "白色",
+                shape: "圓形", 
+                size: "小"
+            },
+            {
+                id: 14,
+                code: "160104000052",
+                name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml",
+                price: 128,
+                features: ["咖啡杯", "青杉藍", "有把手", "日本製"],
+                color: "藍色",
+                shape: "杯形",
+                size: "中"
+            },
+            {
+                id: 15,
+                code: "160104000053",
+                name: "咖啡杯/針葉林-松柏灰/日本NORITAKE/8*6.2cm/220ml", 
+                price: 128,
+                features: ["咖啡杯", "松柏灰", "有把手", "日本製"],
+                color: "灰色",
+                shape: "杯形",
+                size: "中"
+            },
+            {
+                id: 26,
+                code: "160200000255",
+                name: "薄底圓酒杯(水杯)/(LIBBEY )/5.8*H10.1cm/348cc",
+                price: 35,
+                features: ["酒杯", "水杯", "薄底", "圓形", "透明"],
+                color: "透明",
+                shape: "杯形",
+                size: "中"
+            },
+            {
+                id: 30,
+                code: "160200000308",
+                name: "VINO紅酒杯(Ocean)/470ml",
+                price: 50,
+                features: ["紅酒杯", "高腳", "透明", "470ml"],
+                color: "透明", 
+                shape: "高腳杯",
+                size: "大"
+            },
+            {
+                id: 28,
+                code: "160200000261",
+                name: "東京香檳杯/LUCARISLS02CP06/最寬65mm/H229mm/165cc",
+                price: 156,
+                features: ["香檳杯", "高腳", "細長", "透明"],
+                color: "透明",
+                shape: "高腳杯",
+                size: "中"
+            }
+        ];
 
         // DOM元素
         const cameraView = document.getElementById('camera-view');
-        const canvasOverlay = document.getElementById('canvas-overlay');
+        const capturedImage = document.getElementById('captured-image');
         const startCameraBtn = document.getElementById('start-camera');
         const captureBtn = document.getElementById('capture-btn');
         const resultSection = document.getElementById('result-section');
         const itemName = document.getElementById('item-name');
         const itemPrice = document.getElementById('item-price');
         const confidence = document.getElementById('confidence');
+        const featurePoints = document.getElementById('feature-points');
         const confirmBtn = document.getElementById('confirm-btn');
         const cancelBtn = document.getElementById('cancel-btn');
         const totalAmount = document.getElementById('total-amount');
         const historyList = document.getElementById('history-list');
         const saveBtn = document.getElementById('save-btn');
         const loading = document.getElementById('loading');
-        const autoScanCheckbox = document.getElementById('auto-scan');
+        const fileInput = document.getElementById('file-input');
 
         // 應用狀態
         let stream = null;
-        let session = null;
         let currentItem = null;
         let scannedItems = [];
         let total = 0;
-        let isModelLoaded = false;
-        let autoScanInterval = null;
 
-        // 初始化ONNX模型
-        async function initModel() {
-            try {
-                loading.classList.add('active');
+        // 圖像特徵提取函數
+        function extractImageFeatures(image) {
+            return new Promise((resolve) => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
                 
-                // 加載YOLOv8模型
-                // 注意：您需要將yolo8n.onnx放在可訪問的URL位置
-                session = await ort.InferenceSession.create('./yolo8n.onnx');
-                isModelLoaded = true;
-                console.log('YOLOv8模型加載成功');
+                // 設置canvas大小
+                canvas.width = 100;
+                canvas.height = 100;
                 
-                loading.classList.remove('active');
-                captureBtn.disabled = false;
-            } catch (error) {
-                console.error('模型加載失敗:', error);
-                loading.textContent = '模型加載失敗，使用模擬模式';
-                // 即使模型加載失敗，仍然允許使用模擬模式
-                captureBtn.disabled = false;
-            }
-        }
-
-        // 圖像預處理
-        function preprocess(image, modelWidth, modelHeight) {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            canvas.width = modelWidth;
-            canvas.height = modelHeight;
-            
-            // 保持比例調整大小
-            const ratio = Math.min(modelWidth / image.width, modelHeight / image.height);
-            const newWidth = image.width * ratio;
-            const newHeight = image.height * ratio;
-            
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, modelWidth, modelHeight);
-            ctx.drawImage(
-                image, 
-                (modelWidth - newWidth) / 2, 
-                (modelHeight - newHeight) / 2, 
-                newWidth, 
-                newHeight
-            );
-            
-            const imageData = ctx.getImageData(0, 0, modelWidth, modelHeight);
-            const inputData = new Float32Array(modelWidth * modelHeight * 3);
-            
-            // 轉換為RGB格式並歸一化
-            for (let i = 0; i < imageData.data.length; i += 4) {
-                inputData[i / 4] = imageData.data[i] / 255.0;     // R
-                inputData[i / 4 + modelWidth * modelHeight] = imageData.data[i + 1] / 255.0; // G
-                inputData[i / 4 + modelWidth * modelHeight * 2] = imageData.data[i + 2] / 255.0; // B
-            }
-            
-            return inputData;
-        }
-
-        // 使用YOLO進行物體檢測
-        async function detectObjects(image) {
-            if (!isModelLoaded || !session) {
-                // 如果模型未加載，使用模擬檢測
-                return simulateDetection();
-            }
-            
-            try {
-                const modelWidth = 640;
-                const modelHeight = 640;
+                // 繪製圖像
+                ctx.drawImage(image, 0, 0, 100, 100);
                 
-                // 預處理圖像
-                const inputData = preprocess(image, modelWidth, modelHeight);
+                // 獲取圖像數據
+                const imageData = ctx.getImageData(0, 0, 100, 100);
+                const data = imageData.data;
                 
-                // 創建Tensor
-                const inputTensor = new ort.Tensor('float32', inputData, [1, 3, modelHeight, modelWidth]);
+                // 計算顏色直方圖
+                const histogram = {
+                    r: new Array(8).fill(0),
+                    g: new Array(8).fill(0),
+                    b: new Array(8).fill(0)
+                };
                 
-                // 運行推理
-                const outputs = await session.run({ images: inputTensor });
+                // 計算亮度
+                let brightness = 0;
+                let edgeCount = 0;
                 
-                // 處理輸出結果
-                const predictions = processOutput(outputs, image.width, image.height, modelWidth, modelHeight);
-                
-                return predictions;
-            } catch (error) {
-                console.error('檢測失敗:', error);
-                return simulateDetection();
-            }
-        }
-
-        // 處理YOLO輸出
-        function processOutput(outputs, originalWidth, originalHeight, modelWidth, modelHeight) {
-            const predictions = [];
-            const output = outputs.output0.data;
-            
-            // YOLOv8輸出格式: [1, 84, 8400]
-            const numClasses = 80; // 根據您的模型調整
-            const numBoxes = 8400;
-            
-            for (let i = 0; i < numBoxes; i++) {
-                const startIndex = i * (numClasses + 4);
-                const scores = output.slice(startIndex + 4, startIndex + 4 + numClasses);
-                const maxScore = Math.max(...scores);
-                const classId = scores.indexOf(maxScore);
-                
-                if (maxScore > 0.5) { // 置信度閾值
-                    const x = output[startIndex];
-                    const y = output[startIndex + 1];
-                    const w = output[startIndex + 2];
-                    const h = output[startIndex + 3];
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
                     
-                    // 轉換為原始圖像坐標
-                    const ratio = Math.min(modelWidth / originalWidth, modelHeight / originalHeight);
-                    const newWidth = originalWidth * ratio;
-                    const newHeight = originalHeight * ratio;
+                    // 顏色直方圖
+                    histogram.r[Math.floor(r / 32)]++;
+                    histogram.g[Math.floor(g / 32)]++;
+                    histogram.b[Math.floor(b / 32)]++;
                     
-                    const xOffset = (modelWidth - newWidth) / 2;
-                    const yOffset = (modelHeight - newHeight) / 2;
+                    // 亮度
+                    brightness += (r + g + b) / 3;
                     
-                    const x1 = (x - w / 2 - xOffset) / ratio;
-                    const y1 = (y - h / 2 - yOffset) / ratio;
-                    const x2 = (x + w / 2 - xOffset) / ratio;
-                    const y2 = (y + h / 2 - yOffset) / ratio;
-                    
-                    predictions.push({
-                        classId: classId,
-                        className: `item_${classId}`, // 需要與您的類別對應
-                        confidence: maxScore,
-                        bbox: [x1, y1, x2, y2]
-                    });
+                    // 簡單邊緣檢測
+                    if (i > 4) {
+                        const prevR = data[i - 4];
+                        const diff = Math.abs(r - prevR);
+                        if (diff > 30) edgeCount++;
+                    }
                 }
-            }
-            
-            // 非極大值抑制
-            return nonMaxSuppression(predictions, 0.5);
-        }
-
-        // 非極大值抑制
-        function nonMaxSuppression(predictions, iouThreshold) {
-            predictions.sort((a, b) => b.confidence - a.confidence);
-            const selected = [];
-            
-            while (predictions.length > 0) {
-                const current = predictions[0];
-                selected.push(current);
-                predictions = predictions.filter(pred => {
-                    const iou = calculateIOU(current.bbox, pred.bbox);
-                    return iou < iouThreshold;
+                
+                brightness /= (data.length / 4);
+                
+                // 形狀檢測（簡單版本）
+                const centerX = 50;
+                const centerY = 50;
+                let circularity = 0;
+                let isRound = false;
+                
+                // 簡單的圓形檢測
+                for (let i = 0; i < data.length; i += 40) {
+                    const x = (i / 4) % 100;
+                    const y = Math.floor((i / 4) / 100);
+                    const distance = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+                    
+                    if (data[i + 3] > 128 && distance < 45) {
+                        circularity++;
+                    }
+                }
+                
+                isRound = circularity > 50;
+                
+                resolve({
+                    histogram: histogram,
+                    brightness: brightness,
+                    edgeDensity: edgeCount / (data.length / 4),
+                    isRound: isRound,
+                    aspectRatio: image.width / image.height
                 });
-            }
-            
-            return selected;
-        }
-
-        // 計算IOU
-        function calculateIOU(box1, box2) {
-            const [x11, y1_1, x2_1, y2_1] = box1;
-            const [x1_2, y1_2, x2_2, y2_2] = box2;
-            
-            const xi1 = Math.max(x1_1, x1_2);
-            const yi1 = Math.max(y1_1, y1_2);
-            const xi2 = Math.min(x2_1, x2_2);
-            const yi2 = Math.min(y2_1, y2_2);
-            
-            const interArea = Math.max(0, xi2 - xi1) * Math.max(0, yi2 - yi1);
-            const box1Area = (x2_1 - x1_1) * (y2_1 - y1_1);
-            const box2Area = (x2_2 - x1_2) * (y2_2 - y1_2);
-            const unionArea = box1Area + box2Area - interArea;
-            
-            return interArea / unionArea;
-        }
-
-        // 模擬檢測（備用）
-        function simulateDetection() {
-            const items = Object.keys(itemsDatabase);
-            const randomItemKey = items[Math.floor(Math.random() * items.length)];
-            const confidence = 0.7 + Math.random() * 0.3;
-            
-            return [{
-                classId: 0,
-                className: randomItemKey,
-                confidence: confidence,
-                bbox: [100, 100, 200, 200]
-            }];
-        }
-
-        // 繪製檢測結果
-        function drawDetections(predictions) {
-            const ctx = canvasOverlay.getContext('2d');
-            ctx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
-            
-            canvasOverlay.width = cameraView.videoWidth;
-            canvasOverlay.height = cameraView.videoHeight;
-            
-            predictions.forEach(pred => {
-                const [x1, y1, x2, y2] = pred.bbox;
-                const className = pred.className;
-                const conf = pred.confidence;
-                
-                // 繪製邊框
-                ctx.strokeStyle = '#00ff00';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-                
-                // 繪製標籤背景
-                ctx.fillStyle = '#00ff00';
-                const text = `${itemsDatabase[className]?.name || className}: ${(conf * 100).toFixed(1)}%`;
-                const textWidth = ctx.measureText(text).width;
-                ctx.fillRect(x1, y1 - 20, textWidth + 10, 20);
-                
-                // 繪製文字
-                ctx.fillStyle = '#000000';
-                ctx.font = '14px Arial';
-                ctx.fillText(text, x1 + 5, y1 - 5);
             });
         }
 
+        // 計算特徵相似度
+        function calculateSimilarity(features1, features2) {
+            let score = 0;
+            let maxScore = 0;
+            
+            // 顏色直方圖相似度
+            for (let i = 0; i < 8; i++) {
+                const rDiff = Math.abs(features1.histogram.r[i] - features2.histogram.r[i]);
+                const gDiff = Math.abs(features1.histogram.g[i] - features2.histogram.g[i]);
+                const bDiff = Math.abs(features1.histogram.b[i] - features2.histogram.b[i]);
+                
+                score += (1 - rDiff / 1000) + (1 - gDiff / 1000) + (1 - bDiff / 1000);
+                maxScore += 3;
+            }
+            
+            // 亮度相似度
+            const brightnessDiff = Math.abs(features1.brightness - features2.brightness);
+            score += (1 - brightnessDiff / 255);
+            maxScore += 1;
+            
+            // 邊緣密度相似度
+            const edgeDiff = Math.abs(features1.edgeDensity - features2.edgeDensity);
+            score += (1 - edgeDiff);
+            maxScore += 1;
+            
+            // 形狀相似度
+            if (features1.isRound === features2.isRound) {
+                score += 1;
+            }
+            maxScore += 1;
+            
+            // 長寬比相似度
+            const aspectDiff = Math.abs(features1.aspectRatio - features2.aspectRatio);
+            score += (1 - aspectDiff);
+            maxScore += 1;
+            
+            return (score / maxScore) * 100;
+        }
+
+        // 真實的圖像識別
+        async function recognizeImage(image) {
+            loading.classList.add('active');
+            
+            try {
+                // 提取圖像特徵
+                const imageFeatures = await extractImageFeatures(image);
+                
+                // 與資料庫中的物品進行比對
+                let bestMatch = null;
+                let bestScore = 0;
+                let featureCount = Object.keys(imageFeatures).length;
+                
+                for (const item of itemsDatabase) {
+                    // 為每個物品創建特徵描述
+                    const itemFeatures = {
+                        histogram: {
+                            r: item.color === '白色' || item.color === '象牙白' ? [100,100,100,100,100,100,100,100] : 
+                               item.color === '藍色' ? [50,100,150,200,150,100,50,0] :
+                               item.color === '灰色' ? [80,90,100,110,100,90,80,70] : [100,90,80,70,60,50,40,30],
+                            g: item.color === '白色' || item.color === '象牙白' ? [100,100,100,100,100,100,100,100] : 
+                               item.color === '藍色' ? [50,60,70,80,70,60,50,40] :
+                               item.color === '灰色' ? [80,90,100,110,100,90,80,70] : [100,90,80,70,60,50,40,30],
+                            b: item.color === '白色' || item.color === '象牙白' ? [100,100,100,100,100,100,100,100] : 
+                               item.color === '藍色' ? [150,200,250,300,250,200,150,100] :
+                               item.color === '灰色' ? [80,90,100,110,100,90,80,70] : [100,90,80,70,60,50,40,30]
+                        },
+                        brightness: item.color === '白色' ? 240 : item.color === '透明' ? 200 : 150,
+                        edgeDensity: item.shape === '杯形' ? 0.3 : item.shape === '高腳杯' ? 0.4 : 0.2,
+                        isRound: item.shape === '圓形' || item.shape === '杯形',
+                        aspectRatio: item.shape === '高腳杯' ? 0.4 : 1.0
+                    };
+                    
+                    const similarity = calculateSimilarity(imageFeatures, itemFeatures);
+                    
+                    if (similarity > bestScore && similarity > 40) {
+                        bestScore = similarity;
+                        bestMatch = item;
+                    }
+                }
+                
+                loading.classList.remove('active');
+                
+                if (bestMatch) {
+                    return {
+                        item: bestMatch,
+                        confidence: bestScore,
+                        features: featureCount
+                    };
+                } else {
+                    throw new Error('未找到匹配的器皿');
+                }
+                
+            } catch (error) {
+                loading.classList.remove('active');
+                throw error;
+            }
+        }
+
         // 初始化
-        async function init() {
+        function init() {
             updateTotalAmount();
             updateHistoryList();
-            await initModel();
         }
 
         // 開啟相機
@@ -587,53 +630,10 @@
                     video: { facingMode: 'environment' } 
                 });
                 cameraView.srcObject = stream;
+                captureBtn.disabled = false;
                 startCameraBtn.disabled = true;
-                
-                // 設置自動掃描
-                if (autoScanCheckbox.checked) {
-                    startAutoScan();
-                }
             } catch (err) {
                 alert('無法開啟相機: ' + err.message);
-            }
-        });
-
-        // 開始自動掃描
-        function startAutoScan() {
-            if (autoScanInterval) clearInterval(autoScanInterval);
-            
-            autoScanInterval = setInterval(async () => {
-                if (!stream) return;
-                
-                const predictions = await detectObjects(cameraView);
-                drawDetections(predictions);
-                
-                if (predictions.length > 0) {
-                    const bestPrediction = predictions.reduce((best, current) => 
-                        current.confidence > best.confidence ? current : best
-                    );
-                    
-                    if (bestPrediction.confidence > 0.7) {
-                        showDetectionResult(bestPrediction);
-                    }
-                }
-            }, 2000); // 每2秒掃描一次
-        }
-
-        // 停止自動掃描
-        function stopAutoScan() {
-            if (autoScanInterval) {
-                clearInterval(autoScanInterval);
-                autoScanInterval = null;
-            }
-        }
-
-        // 自動掃描切換
-        autoScanCheckbox.addEventListener('change', () => {
-            if (autoScanCheckbox.checked && stream) {
-                startAutoScan();
-            } else {
-                stopAutoScan();
             }
         });
 
@@ -641,40 +641,60 @@
         captureBtn.addEventListener('click', async () => {
             if (!stream) return;
             
-            loading.classList.add('active');
-            const predictions = await detectObjects(cameraView);
-            drawDetections(predictions);
-            loading.classList.remove('active');
-            
-            if (predictions.length > 0) {
-                const bestPrediction = predictions.reduce((best, current) => 
-                    current.confidence > best.confidence ? current : best
-                );
-                showDetectionResult(bestPrediction);
-            } else {
-                alert('未檢測到任何器皿');
+            try {
+                // 切換到截圖顯示
+                const canvas = document.createElement('canvas');
+                canvas.width = cameraView.videoWidth;
+                canvas.height = cameraView.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(cameraView, 0, 0);
+                
+                capturedImage.src = canvas.toDataURL('image/jpeg');
+                capturedImage.style.display = 'block';
+                cameraView.style.display = 'none';
+                
+                // 進行識別
+                const result = await recognizeImage(cameraView);
+                showRecognitionResult(result);
+                
+            } catch (error) {
+                alert('識別失敗: ' + error.message);
+                // 恢復相機顯示
+                capturedImage.style.display = 'none';
+                cameraView.style.display = 'block';
             }
         });
 
-        // 顯示檢測結果
-        function showDetectionResult(prediction) {
-            const itemKey = prediction.className;
-            const itemInfo = itemsDatabase[itemKey];
+        // 上傳圖片辨識
+        fileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
             
-            if (itemInfo) {
-                currentItem = {
-                    ...itemInfo,
-                    key: itemKey,
-                    confidence: prediction.confidence
-                };
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                capturedImage.src = e.target.result;
+                capturedImage.style.display = 'block';
+                cameraView.style.display = 'none';
                 
-                itemName.textContent = itemInfo.name;
-                itemPrice.textContent = `NT$ ${itemInfo.price}`;
-                confidence.textContent = `置信度: ${(prediction.confidence * 100).toFixed(1)}%`;
-                resultSection.classList.add('active');
-            } else {
-                alert(`未找到對應的器皿資訊: ${itemKey}`);
-            }
+                try {
+                    const result = await recognizeImage(capturedImage);
+                    showRecognitionResult(result);
+                } catch (error) {
+                    alert('識別失敗: ' + error.message);
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // 顯示識別結果
+        function showRecognitionResult(result) {
+            currentItem = result.item;
+            
+            itemName.textContent = result.item.name;
+            itemPrice.textContent = `NT$ ${result.item.price}`;
+            confidence.textContent = `匹配度: ${result.confidence.toFixed(1)}%`;
+            featurePoints.textContent = `特徵點: ${result.features}`;
+            resultSection.classList.add('active');
         }
 
         // 確認加入
@@ -692,6 +712,8 @@
                 // 重置狀態
                 resultSection.classList.remove('active');
                 currentItem = null;
+                capturedImage.style.display = 'none';
+                cameraView.style.display = 'block';
             }
         });
 
@@ -699,6 +721,8 @@
         cancelBtn.addEventListener('click', () => {
             resultSection.classList.remove('active');
             currentItem = null;
+            capturedImage.style.display = 'none';
+            cameraView.style.display = 'block';
         });
 
         // 更新總金額
@@ -741,8 +765,7 @@
                 total: total
             };
             
-            // 實際應用中應將記錄儲存到伺服器或本地資料庫
-            // 這裡使用下載JSON文件的方式
+            // 下載JSON文件
             const dataStr = JSON.stringify(record, null, 2);
             const dataBlob = new Blob([dataStr], { type: 'application/json' });
             
