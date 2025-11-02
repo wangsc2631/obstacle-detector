@@ -290,18 +290,21 @@
       margin: 5px 0;
     }
     
+    /* 移除 ocr-focus-area 的樣式，因為我們改用 Canvas 繪製 */
+    /*
     .ocr-focus-area {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 250px; /* 調整大小以符合優化後的 OCR 區域 */
+      width: 250px; 
       height: 100px;
       border: 3px solid #00ff00;
       background: rgba(0, 255, 0, 0.1);
       pointer-events: none;
       display: none;
     }
+    */
     
     @media (max-height: 700px) {
       #video {
@@ -341,8 +344,7 @@
     <div class="video-container">
       <video id="video" autoplay muted playsinline></video>
       <canvas id="canvas"></canvas>
-      <div class="ocr-focus-area" id="ocrFocusArea"></div>
-    </div>
+      </div>
 
     <div class="word-display" id="wordDisplay">
       載入 AI 模型中...
@@ -381,7 +383,8 @@
   <script>
     // --- YOLOv8 專用設定 ---
     const MODEL_INPUT_SIZE = 640;
-    const CONF_THRESHOLD = 0.6; // 預設信心度門檻 (從 0.25 調整到 0.3，確保品質)
+    // **優化點 1: 提高信心度門檻 (從 0.6 提高到 0.75，過濾低品質辨識)**
+    const CONF_THRESHOLD = 0.75; 
     const IOU_THRESHOLD = 0.45; // NMS IOU 門檻
     // 標準 COCO 80 類別
     const CLASS_NAMES = [
@@ -398,7 +401,7 @@
     ];
 
     // 初始化變數
-    let yoloDetector; // 替換舊的 net 變數
+    let yoloDetector; 
     let isEnglish = true;
     let isInGameMode = false;
     let isOCRMode = false;
@@ -410,7 +413,7 @@
     let lastSpokenTime = 0;
     let ocrWorker = null;
 
-    // DOM 元素 (保留)
+    // DOM 元素
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
@@ -425,13 +428,14 @@
     const objectModeBtn = document.getElementById('objectModeBtn');
     const ocrModeBtn = document.getElementById('ocrModeBtn');
     const statusInfo = document.getElementById('statusInfo');
-    const ocrFocusArea = document.getElementById('ocrFocusArea');
+    // const ocrFocusArea = document.getElementById('ocrFocusArea'); // 移除此 DOM 引用
+
     
-    // 擴展的 COCO-SSD 與資料庫 key 對應表 (改為 YOLOv8 類別對應，如果您的 itemDatabase.js 使用了不同的 key)
+    // 擴展的 COCO-SSD 與資料庫 key 對應表
     const cocoToYourKey = {
         'cell phone': 'smartphone',
         'hair drier': 'hair dryer',
-        'tvmonitor': 'television', // 替換 'tv'
+        'tvmonitor': 'television', 
         'remote': 'remote control',
         'mouse': 'computer mouse',
         'keyboard': 'computer keyboard',
@@ -442,17 +446,16 @@
         'tennis racket': 'racket',
         'wine glass': 'glass',
         'hot dog': 'hotdog',
-        'pottedplant': 'plant', // 替換 'potted plant'
-        'diningtable': 'table', // 替換 'dining table'
+        'pottedplant': 'plant', 
+        'diningtable': 'table', 
         'parking meter': 'meter',
         'stop sign': 'sign',
         'fire hydrant': 'hydrant',
         'traffic light': 'trafficlight'
-        // 其他類別將直接使用 COCO 名稱
     };
 
 
-    // --- Class: YOLOv8Detector (新的偵測邏輯) ---
+    // --- Class: YOLOv8Detector ---
     class YOLOv8Detector {
       constructor(modelPath = 'yolov8n.onnx') {
         this.modelPath = modelPath;
@@ -469,7 +472,6 @@
             throw new Error("ONNX Runtime Web 函式庫未載入。");
           }
 
-          // 核心載入邏輯：加入 WebGL/WASM 回退
           this.session = await ort.InferenceSession.create(this.modelPath, {
             executionProviders: ['webgl', 'wasm'], 
             graphOptimizationLevel: 'all',
@@ -523,7 +525,6 @@
       // --- 3. YOLOv8 NMS 後處理 ---
       _processOutput(outputTensor, originalWidth, originalHeight, confThreshold, iouThreshold) {
         const output = outputTensor.data;
-        // YOLOv8 的輸出格式是 [1, 84, 8400] 或 [1, 85, 8400]，但我們只處理 [84, 8400]
         const numClasses = CLASS_NAMES.length; // 80
         const rows = outputTensor.dims[2]; // 8400
         const valuesPerRow = outputTensor.dims[1]; // 84 (4+80)
@@ -564,6 +565,8 @@
         
         // 執行 NMS (非最大抑制)
         const NMS_IDX = 4; // score index
+        if (boxes.length === 0) return [];
+
         const boxesTensor = tf.tensor2d(boxes, [boxes.length, 6]);
         const scores = boxesTensor.slice([0, NMS_IDX], [-1, 1]).squeeze();
         const boxCoords = boxesTensor.slice([0, 0], [-1, 4]);
@@ -604,16 +607,15 @@
     }
 
 
-    // 從 itemDatabase 查詢單字資訊 (保留)
+    // 從 itemDatabase 查詢單字資訊
     function getWordInfo(label) {
-      // 由於 YOLOv8n 使用標準 COCO 標籤，這裡直接對應
       const key = cocoToYourKey[label] || label;
       const zh = itemNames[key] || label;
       const en = key.charAt(0).toUpperCase() + key.slice(1);
       return { en, zh, key };
     }
 
-    // iOS 兼容的語音朗讀功能 (保留)
+    // iOS 兼容的語音朗讀功能
     function speak(text, lang = 'en-US') {
       if (isSpeaking) return;
       
@@ -649,7 +651,7 @@
       }, 100);
     }
 
-    // 語言切換 (保留)
+    // 語言切換
     langBtnEn.addEventListener('click', () => {
       isEnglish = true;
       langBtnEn.classList.add('active');
@@ -664,13 +666,13 @@
       speak('中文模式', 'zh-TW');
     });
 
-    // 模式切換 (保留)
+    // 模式切換
     objectModeBtn.addEventListener('click', () => {
       isOCRMode = false;
       objectModeBtn.classList.add('active');
       ocrModeBtn.classList.remove('active');
       wordDisplay.textContent = '物品辨識模式 - 對準物品開始學習';
-      ocrFocusArea.style.display = 'none';
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // 清除 OCR 模式留下的框
       speak('物品辨識模式', 'zh-TW');
     });
     
@@ -679,11 +681,11 @@
       ocrModeBtn.classList.add('active');
       objectModeBtn.classList.remove('active');
       wordDisplay.textContent = '字母辨識模式 - 對準英文字母開始學習';
-      ocrFocusArea.style.display = 'block';
+      // ocrFocusArea.style.display = 'block'; // 移除靜態框顯示
       speak('字母辨識模式', 'zh-TW');
     });
 
-    // 遊戲模式 (保留)
+    // 遊戲模式
     gameBtn.addEventListener('click', () => {
       if (isOCRMode) {
         alert('遊戲模式目前僅支援物品辨識模式');
@@ -712,7 +714,7 @@
       speak(`請找到 ${zh}`, 'zh-TW');
     }
 
-    // 單字本功能 (保留)
+    // 單字本功能
     function addToVocab(en, zh, key) {
       if (!collectedWords.some(w => w.key === key)) {
         collectedWords.push({ en, zh, key });
@@ -736,7 +738,7 @@
     }
 
     function removeWord(key) {
-      collectedWords = collectedWords.filter(w => w.key !== key);
+      collectedWords = collectedWords.filter(w => w.key === key);
       localStorage.setItem('collectedWords', JSON.stringify(collectedWords));
       renderVocabList();
     }
@@ -751,9 +753,11 @@
       }
     });
 
-    // --- OCR 功能 - 優化版 (保留 OCR 功能，但修復了邏輯) ---
+    // --- OCR 功能 - 優化版 ---
     let lastOCRText = '';
     let ocrCooldown = 0;
+    const OCR_FOCUS_WIDTH = 250;
+    const OCR_FOCUS_HEIGHT = 100;
 
     async function performOCR() {
       if (ocrCooldown > 0) {
@@ -761,21 +765,30 @@
         return;
       }
 
-      try {
-        const focusWidth = 250;
-        const focusHeight = 100;
-        const centerX = (canvas.width - focusWidth) / 2;
-        const centerY = (canvas.height - focusHeight) / 2;
+      // 清除上一幀的繪圖
+      ctx.clearRect(0, 0, canvas.width, canvas.height); 
 
+      const centerX = (canvas.width - OCR_FOCUS_WIDTH) / 2;
+      const centerY = (canvas.height - OCR_FOCUS_HEIGHT) / 2;
+
+      // **優化點 2: 繪製唯一的鎖定框 (Canvas 框)**
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(centerX, centerY, OCR_FOCUS_WIDTH, OCR_FOCUS_HEIGHT);
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
+      ctx.fillRect(centerX, centerY, OCR_FOCUS_WIDTH, OCR_FOCUS_HEIGHT);
+
+
+      try {
         const tempCanvas = document.createElement('canvas');
         const tempCtx = tempCanvas.getContext('2d');
-        tempCanvas.width = focusWidth;
-        tempCanvas.height = focusHeight;
+        tempCanvas.width = OCR_FOCUS_WIDTH;
+        tempCanvas.height = OCR_FOCUS_HEIGHT;
         
         tempCtx.drawImage(
           video, 
-          centerX, centerY, focusWidth, focusHeight,
-          0, 0, focusWidth, focusHeight
+          centerX, centerY, OCR_FOCUS_WIDTH, OCR_FOCUS_HEIGHT,
+          0, 0, OCR_FOCUS_WIDTH, OCR_FOCUS_HEIGHT
         );
 
         if (!ocrWorker) {
@@ -784,7 +797,7 @@
           await ocrWorker.loadLanguage('eng');
           await ocrWorker.initialize('eng');
           await ocrWorker.setParameters({
-            tessedit_pageseg_mode: '6' // 統一文字塊模式
+            tessedit_pageseg_mode: '6' 
           });
         }
 
@@ -804,10 +817,7 @@
               speak(recognizedWord, 'en-US');
             }
             
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = '#00ff00';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(centerX, centerY, focusWidth, focusHeight);
+            // 在鎖定框上方顯示辨識結果
             ctx.fillStyle = 'white';
             ctx.font = 'bold 20px Arial';
             ctx.fillText(`辨識: ${recognizedWord}`, centerX + 10, centerY - 10);
@@ -815,9 +825,9 @@
             ocrCooldown = 15;
           }
         } else if (lastOCRText !== '') {
+          // 未識別到文字時，保持鎖定框，但清除辨識文字
           lastOCRText = '';
           wordDisplay.innerHTML = '對準英文字母或單字開始學習';
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
         
         statusInfo.textContent = `OCR: ${words ? words.join(' ') : '未識別到單字'}`;
@@ -886,12 +896,11 @@
       lastDetectionTime = now;
       
       try {
-        // 使用 YOLOv8Detector 進行推理
         const predictions = await yoloDetector.detect(video); 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // 清除 Canvas 上的框
 
         if (predictions.length > 0) {
-          // 篩選出所有偵測結果
+          // 由於 CONF_THRESHOLD 已經提高到 0.75，這裡的 predictions 數量應已大幅減少
           const validPredictions = predictions.filter(pred => pred.score > CONF_THRESHOLD);
 
           if (validPredictions.length > 0) {
@@ -920,21 +929,27 @@
 
             statusInfo.textContent = `YOLOv8 偵測到: ${zh} (${Math.round(score * 100)}%)`;
 
-            // 畫出檢測框
+            // 畫出所有檢測框 (現在由於 CONF_THRESHOLD 提高，數量會減少)
             validPredictions.forEach(pred => {
               const [x, y, w, h] = pred.bbox;
               const isBest = pred === bestPred;
               
-              ctx.strokeStyle = isBest ? '#ff6347' : '#3cb371';
-              ctx.lineWidth = isBest ? 3 : 2;
+              // 使用更清晰的顏色區分最佳和次佳
+              ctx.strokeStyle = isBest ? 'var(--pokemon-red)' : 'var(--pokemon-blue)';
+              ctx.lineWidth = isBest ? 4 : 2;
               ctx.strokeRect(x, y, w, h);
-              ctx.fillStyle = isBest ? 'rgba(255, 99, 71, 0.5)' : 'rgba(60, 179, 113, 0.5)';
+              ctx.fillStyle = isBest ? 'rgba(255, 99, 71, 0.6)' : 'rgba(60, 76, 202, 0.4)';
               ctx.fillRect(x, y, w, 20);
               ctx.fillStyle = 'white';
               ctx.font = '12px Arial';
-              const displayText = `${pred.class} (${pred.score.toFixed(2)})`;
+              const displayText = `${getWordInfo(pred.class).zh} (${pred.score.toFixed(2)})`; // 顯示中文名稱
               ctx.fillText(displayText, x + 5, y + 15);
             });
+          } else {
+            // 雖然偵測到東西，但分數都太低
+            wordDisplay.textContent = '對準物品開始學習';
+            statusInfo.textContent = '未偵測到高信心度的物品';
+            lastLabel = '';
           }
         } else {
           wordDisplay.textContent = '對準物品開始學習';
@@ -949,22 +964,17 @@
       requestAnimationFrame(detectFrame);
     }
 
-    // 啟動應用 (替換舊的 loadModel)
+    // 啟動應用
     async function loadModel() {
       try {
-        // 初始化 YOLOv8Detector 實例
         yoloDetector = new YOLOv8Detector('yolov8n.onnx'); 
         
-        // 載入模型
         const success = await yoloDetector.loadModel();
         
         if (success) {
             speak('歡迎使用英文學習系統', 'zh-TW');
             setupCamera();
-        } else {
-            // 錯誤訊息已經在 loadModel 中更新到 UI
-        }
-
+        } 
       } catch (error) {
         console.error('啟動失敗:', error);
         wordDisplay.textContent = '系統啟動失敗，請檢查主控台';
@@ -972,7 +982,7 @@
       }
     }
 
-    // 頁面可見性變化處理 (保留)
+    // 頁面可見性變化處理
     document.addEventListener('visibilitychange', function() {
       if (document.hidden) {
         if (speechSynthesis.speaking) {
@@ -981,7 +991,7 @@
       }
     });
 
-    // 清理資源 (保留)
+    // 清理資源
     window.addEventListener('beforeunload', function() {
       if (ocrWorker) {
         ocrWorker.terminate();
@@ -991,7 +1001,7 @@
       }
     });
 
-    // 初始化 (保留)
+    // 初始化
     renderVocabList();
     
     // 第一次點擊畫面時載入模型 (確保語音和相機權限)
