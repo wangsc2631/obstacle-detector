@@ -66,11 +66,21 @@
             object-fit: cover;
         }
         
+        #canvas-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
         #captured-image {
             width: 100%;
             height: 100%;
             object-fit: contain;
             background: black;
+            display: none;
         }
         
         .camera-controls {
@@ -154,6 +164,12 @@
         
         .confidence {
             font-size: 0.9rem;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        
+        .detection-info {
+            font-size: 0.8rem;
             color: #7f8c8d;
             margin-top: 5px;
         }
@@ -260,9 +276,18 @@
             display: block;
         }
         
-        .feature-points {
-            font-size: 0.8rem;
-            color: #7f8c8d;
+        .manual-select {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .manual-select select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
             margin-top: 5px;
         }
         
@@ -288,7 +313,8 @@
         <section class="camera-section">
             <div id="camera-container">
                 <video id="camera-view" autoplay playsinline></video>
-                <img id="captured-image" style="display: none;">
+                <canvas id="canvas-overlay"></canvas>
+                <img id="captured-image">
             </div>
             <div class="camera-controls">
                 <button id="start-camera">開啟相機</button>
@@ -299,6 +325,12 @@
                 <button class="upload-btn" onclick="document.getElementById('file-input').click()">上傳圖片辨識</button>
             </div>
             <div class="loading" id="loading">AI辨識中...</div>
+            <div class="manual-select">
+                <label>或手動選擇器皿：</label>
+                <select id="manual-select">
+                    <option value="">請選擇器皿...</option>
+                </select>
+            </div>
         </section>
         
         <section class="result-section" id="result-section">
@@ -306,7 +338,7 @@
                 <div class="item-name" id="item-name">辨識中...</div>
                 <div class="item-price" id="item-price">NT$ 0</div>
                 <div class="confidence" id="confidence">匹配度: 0%</div>
-                <div class="feature-points" id="feature-points">特徵點: 0</div>
+                <div class="detection-info" id="detection-info">檢測區域: 無</div>
             </div>
             <div class="action-buttons">
                 <button id="cancel-btn">取消</button>
@@ -331,92 +363,53 @@
     </div>
 
     <script>
-        // 器皿資料庫 - 包含圖像特徵描述
+        // 器皿資料庫
         const itemsDatabase = [
             {
-                id: 1,
-                code: "160100000126",
-                name: "止滑圓托盤16吋/直徑41cm",
-                price: 235,
-                features: ["圓形", "托盤", "止滑", "16吋", "直徑41cm"],
-                color: "白色",
-                shape: "圓形",
-                size: "大"
+                id: 1, code: "160100000126", name: "止滑圓托盤16吋/直徑41cm", price: 235,
+                features: { color: "white", shape: "round", size: "large", edges: "smooth" }
             },
             {
-                id: 2,
-                code: "160100000987", 
-                name: "奶油碟(味碟)2.8吋/象牙強化/港式小碟/169銀河系",
-                price: 21,
-                features: ["小碟", "奶油碟", "味碟", "2.8吋", "象牙色"],
-                color: "象牙白",
-                shape: "圓形",
-                size: "小"
+                id: 2, code: "160100000987", name: "奶油碟(味碟)2.8吋/象牙強化/港式小碟/169銀河系", price: 21,
+                features: { color: "ivory", shape: "round", size: "small", edges: "smooth" }
             },
             {
-                id: 3,
-                code: "160100000994",
-                name: "可疊小料碟(布丁碟)白/78*30mm",
-                price: 45,
-                features: ["小料碟", "布丁碟", "可疊", "白色", "78mm"],
-                color: "白色",
-                shape: "圓形", 
-                size: "小"
+                id: 3, code: "160100000994", name: "可疊小料碟(布丁碟)白/78*30mm", price: 45,
+                features: { color: "white", shape: "round", size: "small", edges: "smooth" }
             },
             {
-                id: 14,
-                code: "160104000052",
-                name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml",
-                price: 128,
-                features: ["咖啡杯", "青杉藍", "有把手", "日本製"],
-                color: "藍色",
-                shape: "杯形",
-                size: "中"
+                id: 4, code: "160101000478", name: "桃型小缽4吋/10.3*9*H4.3cm", price: 27,
+                features: { color: "white", shape: "oval", size: "small", edges: "curved" }
             },
             {
-                id: 15,
-                code: "160104000053",
-                name: "咖啡杯/針葉林-松柏灰/日本NORITAKE/8*6.2cm/220ml", 
-                price: 128,
-                features: ["咖啡杯", "松柏灰", "有把手", "日本製"],
-                color: "灰色",
-                shape: "杯形",
-                size: "中"
+                id: 5, code: "160101000479", name: "圓盤6吋/15*H2cm", price: 25,
+                features: { color: "white", shape: "round", size: "medium", edges: "smooth" }
             },
             {
-                id: 26,
-                code: "160200000255",
-                name: "薄底圓酒杯(水杯)/(LIBBEY )/5.8*H10.1cm/348cc",
-                price: 35,
-                features: ["酒杯", "水杯", "薄底", "圓形", "透明"],
-                color: "透明",
-                shape: "杯形",
-                size: "中"
+                id: 14, code: "160104000052", name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml", price: 128,
+                features: { color: "blue", shape: "cup", size: "medium", edges: "handle" }
             },
             {
-                id: 30,
-                code: "160200000308",
-                name: "VINO紅酒杯(Ocean)/470ml",
-                price: 50,
-                features: ["紅酒杯", "高腳", "透明", "470ml"],
-                color: "透明", 
-                shape: "高腳杯",
-                size: "大"
+                id: 15, code: "160104000053", name: "咖啡杯/針葉林-松柏灰/日本NORITAKE/8*6.2cm/220ml", price: 128,
+                features: { color: "gray", shape: "cup", size: "medium", edges: "handle" }
             },
             {
-                id: 28,
-                code: "160200000261",
-                name: "東京香檳杯/LUCARISLS02CP06/最寬65mm/H229mm/165cc",
-                price: 156,
-                features: ["香檳杯", "高腳", "細長", "透明"],
-                color: "透明",
-                shape: "高腳杯",
-                size: "中"
+                id: 26, code: "160200000255", name: "薄底圓酒杯(水杯)/(LIBBEY )/5.8*H10.1cm/348cc", price: 35,
+                features: { color: "clear", shape: "glass", size: "medium", edges: "thin" }
+            },
+            {
+                id: 30, code: "160200000308", name: "VINO紅酒杯(Ocean)/470ml", price: 50,
+                features: { color: "clear", shape: "wine_glass", size: "large", edges: "stem" }
+            },
+            {
+                id: 28, code: "160200000261", name: "東京香檳杯/LUCARISLS02CP06/最寬65mm/H229mm/165cc", price: 156,
+                features: { color: "clear", shape: "champagne", size: "medium", edges: "stem" }
             }
         ];
 
         // DOM元素
         const cameraView = document.getElementById('camera-view');
+        const canvasOverlay = document.getElementById('canvas-overlay');
         const capturedImage = document.getElementById('captured-image');
         const startCameraBtn = document.getElementById('start-camera');
         const captureBtn = document.getElementById('capture-btn');
@@ -424,7 +417,7 @@
         const itemName = document.getElementById('item-name');
         const itemPrice = document.getElementById('item-price');
         const confidence = document.getElementById('confidence');
-        const featurePoints = document.getElementById('feature-points');
+        const detectionInfo = document.getElementById('detection-info');
         const confirmBtn = document.getElementById('confirm-btn');
         const cancelBtn = document.getElementById('cancel-btn');
         const totalAmount = document.getElementById('total-amount');
@@ -432,183 +425,324 @@
         const saveBtn = document.getElementById('save-btn');
         const loading = document.getElementById('loading');
         const fileInput = document.getElementById('file-input');
+        const manualSelect = document.getElementById('manual-select');
 
         // 應用狀態
         let stream = null;
         let currentItem = null;
         let scannedItems = [];
         let total = 0;
+        let currentImage = null;
 
-        // 圖像特徵提取函數
-        function extractImageFeatures(image) {
-            return new Promise((resolve) => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                
-                // 設置canvas大小
-                canvas.width = 100;
-                canvas.height = 100;
-                
-                // 繪製圖像
-                ctx.drawImage(image, 0, 0, 100, 100);
-                
-                // 獲取圖像數據
-                const imageData = ctx.getImageData(0, 0, 100, 100);
-                const data = imageData.data;
-                
-                // 計算顏色直方圖
-                const histogram = {
-                    r: new Array(8).fill(0),
-                    g: new Array(8).fill(0),
-                    b: new Array(8).fill(0)
-                };
-                
-                // 計算亮度
-                let brightness = 0;
-                let edgeCount = 0;
-                
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = data[i];
-                    const g = data[i + 1];
-                    const b = data[i + 2];
-                    
-                    // 顏色直方圖
-                    histogram.r[Math.floor(r / 32)]++;
-                    histogram.g[Math.floor(g / 32)]++;
-                    histogram.b[Math.floor(b / 32)]++;
-                    
-                    // 亮度
-                    brightness += (r + g + b) / 3;
-                    
-                    // 簡單邊緣檢測
-                    if (i > 4) {
-                        const prevR = data[i - 4];
-                        const diff = Math.abs(r - prevR);
-                        if (diff > 30) edgeCount++;
+        // 初始化手動選擇選項
+        function initManualSelect() {
+            itemsDatabase.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = `${item.name} - NT$ ${item.price}`;
+                manualSelect.appendChild(option);
+            });
+            
+            manualSelect.addEventListener('change', function() {
+                if (this.value) {
+                    const selectedItem = itemsDatabase.find(item => item.id == this.value);
+                    if (selectedItem) {
+                        showRecognitionResult({
+                            item: selectedItem,
+                            confidence: 100,
+                            detection: { x: 100, y: 100, width: 200, height: 200 }
+                        });
                     }
                 }
-                
-                brightness /= (data.length / 4);
-                
-                // 形狀檢測（簡單版本）
-                const centerX = 50;
-                const centerY = 50;
-                let circularity = 0;
-                let isRound = false;
-                
-                // 簡單的圓形檢測
-                for (let i = 0; i < data.length; i += 40) {
-                    const x = (i / 4) % 100;
-                    const y = Math.floor((i / 4) / 100);
-                    const distance = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
-                    
-                    if (data[i + 3] > 128 && distance < 45) {
-                        circularity++;
-                    }
-                }
-                
-                isRound = circularity > 50;
-                
-                resolve({
-                    histogram: histogram,
-                    brightness: brightness,
-                    edgeDensity: edgeCount / (data.length / 4),
-                    isRound: isRound,
-                    aspectRatio: image.width / image.height
-                });
             });
         }
 
-        // 計算特徵相似度
-        function calculateSimilarity(features1, features2) {
-            let score = 0;
-            let maxScore = 0;
+        // 繪製檢測框
+        function drawDetectionBox(detection, label, confidence) {
+            const ctx = canvasOverlay.getContext('2d');
+            ctx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
             
-            // 顏色直方圖相似度
-            for (let i = 0; i < 8; i++) {
-                const rDiff = Math.abs(features1.histogram.r[i] - features2.histogram.r[i]);
-                const gDiff = Math.abs(features1.histogram.g[i] - features2.histogram.g[i]);
-                const bDiff = Math.abs(features1.histogram.b[i] - features2.histogram.b[i]);
-                
-                score += (1 - rDiff / 1000) + (1 - gDiff / 1000) + (1 - bDiff / 1000);
-                maxScore += 3;
+            // 設置canvas尺寸與圖像一致
+            if (currentImage) {
+                canvasOverlay.width = currentImage.width;
+                canvasOverlay.height = currentImage.height;
             }
             
-            // 亮度相似度
-            const brightnessDiff = Math.abs(features1.brightness - features2.brightness);
-            score += (1 - brightnessDiff / 255);
-            maxScore += 1;
+            const { x, y, width, height } = detection;
             
-            // 邊緣密度相似度
-            const edgeDiff = Math.abs(features1.edgeDensity - features2.edgeDensity);
-            score += (1 - edgeDiff);
-            maxScore += 1;
+            // 繪製邊框
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, width, height);
             
-            // 形狀相似度
-            if (features1.isRound === features2.isRound) {
-                score += 1;
-            }
-            maxScore += 1;
+            // 繪製標籤背景
+            ctx.fillStyle = '#00ff00';
+            const text = `${label} (${confidence}%)`;
+            const textWidth = ctx.measureText(text).width;
+            ctx.fillRect(x, y - 25, textWidth + 10, 25);
             
-            // 長寬比相似度
-            const aspectDiff = Math.abs(features1.aspectRatio - features2.aspectRatio);
-            score += (1 - aspectDiff);
-            maxScore += 1;
+            // 繪製文字
+            ctx.fillStyle = '#000000';
+            ctx.font = '16px Arial';
+            ctx.fillText(text, x + 5, y - 8);
             
-            return (score / maxScore) * 100;
+            // 繪製角標
+            const cornerSize = 10;
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 3;
+            
+            // 左上角
+            ctx.beginPath();
+            ctx.moveTo(x, y + cornerSize);
+            ctx.lineTo(x, y);
+            ctx.lineTo(x + cornerSize, y);
+            ctx.stroke();
+            
+            // 右上角
+            ctx.beginPath();
+            ctx.moveTo(x + width - cornerSize, y);
+            ctx.lineTo(x + width, y);
+            ctx.lineTo(x + width, y + cornerSize);
+            ctx.stroke();
+            
+            // 左下角
+            ctx.beginPath();
+            ctx.moveTo(x, y + height - cornerSize);
+            ctx.lineTo(x, y + height);
+            ctx.lineTo(x + cornerSize, y + height);
+            ctx.stroke();
+            
+            // 右下角
+            ctx.beginPath();
+            ctx.moveTo(x + width - cornerSize, y + height);
+            ctx.lineTo(x + width, y + height);
+            ctx.lineTo(x + width, y + height - cornerSize);
+            ctx.stroke();
         }
 
-        // 真實的圖像識別
+        // 物體檢測算法
+        function detectObjects(image) {
+            return new Promise((resolve) => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = image.width;
+                canvas.height = image.height;
+                ctx.drawImage(image, 0, 0);
+                
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                
+                // 尋找潛在的物體區域
+                const regions = findPotentialRegions(data, canvas.width, canvas.height);
+                
+                // 對每個區域進行特徵分析
+                const detections = [];
+                
+                regions.forEach(region => {
+                    const regionFeatures = analyzeRegion(imageData, region);
+                    const match = findBestMatch(regionFeatures);
+                    
+                    if (match.confidence > 40) {
+                        detections.push({
+                            detection: region,
+                            item: match.item,
+                            confidence: match.confidence
+                        });
+                    }
+                });
+                
+                resolve(detections);
+            });
+        }
+
+        // 尋找潛在區域
+        function findPotentialRegions(data, width, height) {
+            const regions = [];
+            const visited = new Set();
+            
+            // 簡單的區域生長算法
+            for (let y = 0; y < height; y += 10) {
+                for (let x = 0; x < width; x += 10) {
+                    const index = (y * width + x) * 4;
+                    const brightness = (data[index] + data[index + 1] + data[index + 2]) / 3;
+                    
+                    // 如果像素足夠亮且未被訪問，開始區域生長
+                    if (brightness > 50 && !visited.has(`${x},${y}`)) {
+                        const region = growRegion(data, width, height, x, y, visited);
+                        if (region.area > 1000) { // 只考慮足夠大的區域
+                            regions.push(region);
+                        }
+                    }
+                }
+            }
+            
+            return regions;
+        }
+
+        // 區域生長算法
+        function growRegion(data, width, height, startX, startY, visited) {
+            const queue = [[startX, startY]];
+            let minX = startX, minY = startY, maxX = startX, maxY = startY;
+            let area = 0;
+            
+            while (queue.length > 0) {
+                const [x, y] = queue.shift();
+                const key = `${x},${y}`;
+                
+                if (visited.has(key) || x < 0 || x >= width || y < 0 || y >= height) {
+                    continue;
+                }
+                
+                const index = (y * width + x) * 4;
+                const brightness = (data[index] + data[index + 1] + data[index + 2]) / 3;
+                
+                if (brightness > 30) { // 亮度閾值
+                    visited.add(key);
+                    area++;
+                    
+                    minX = Math.min(minX, x);
+                    minY = Math.min(minY, y);
+                    maxX = Math.max(maxX, x);
+                    maxY = Math.max(maxY, y);
+                    
+                    // 添加相鄰像素
+                    queue.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+                }
+            }
+            
+            return {
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY,
+                area: area
+            };
+        }
+
+        // 分析區域特徵
+        function analyzeRegion(imageData, region) {
+            const { x, y, width, height } = region;
+            const data = imageData.data;
+            const imgWidth = imageData.width;
+            
+            let totalRed = 0, totalGreen = 0, totalBlue = 0;
+            let edgeCount = 0;
+            let pixelCount = 0;
+            
+            for (let ry = y; ry < y + height; ry += 2) {
+                for (let rx = x; rx < x + width; rx += 2) {
+                    const index = (ry * imgWidth + rx) * 4;
+                    
+                    totalRed += data[index];
+                    totalGreen += data[index + 1];
+                    totalBlue += data[index + 2];
+                    pixelCount++;
+                    
+                    // 簡單邊緣檢測
+                    if (rx > x && ry > y) {
+                        const prevIndex = ((ry - 1) * imgWidth + (rx - 1)) * 4;
+                        const diff = Math.abs(data[index] - data[prevIndex]) +
+                                   Math.abs(data[index + 1] - data[prevIndex + 1]) +
+                                   Math.abs(data[index + 2] - data[prevIndex + 2]);
+                        if (diff > 50) edgeCount++;
+                    }
+                }
+            }
+            
+            const avgRed = totalRed / pixelCount;
+            const avgGreen = totalGreen / pixelCount;
+            const avgBlue = totalBlue / pixelCount;
+            const edgeDensity = edgeCount / pixelCount;
+            const aspectRatio = width / height;
+            
+            // 判斷形狀
+            let shape = 'unknown';
+            const roundness = (4 * Math.PI * region.area) / (Math.pow(Math.max(width, height), 2));
+            if (roundness > 0.8) shape = 'round';
+            else if (aspectRatio > 1.5) shape = 'rectangular';
+            else if (aspectRatio < 0.7) shape = 'tall';
+            
+            // 判斷顏色
+            let color = 'unknown';
+            const brightness = (avgRed + avgGreen + avgBlue) / 3;
+            if (brightness > 200) color = 'white';
+            else if (avgBlue > avgRed && avgBlue > avgGreen) color = 'blue';
+            else if (Math.abs(avgRed - avgGreen) < 30 && Math.abs(avgRed - avgBlue) < 30) color = 'gray';
+            else if (brightness > 150) color = 'light';
+            else color = 'dark';
+            
+            return {
+                color: color,
+                shape: shape,
+                size: width * height > 50000 ? 'large' : width * height > 10000 ? 'medium' : 'small',
+                edgeDensity: edgeDensity,
+                aspectRatio: aspectRatio
+            };
+        }
+
+        // 尋找最佳匹配
+        function findBestMatch(features) {
+            let bestMatch = null;
+            let bestScore = 0;
+            
+            itemsDatabase.forEach(item => {
+                let score = 0;
+                let maxScore = 0;
+                
+                // 顏色匹配
+                if (features.color === item.features.color) score += 30;
+                maxScore += 30;
+                
+                // 形狀匹配
+                if (features.shape === item.features.shape) score += 30;
+                maxScore += 30;
+                
+                // 尺寸匹配
+                if (features.size === item.features.size) score += 20;
+                maxScore += 20;
+                
+                // 邊緣特徵匹配
+                if (features.edgeDensity > 0.1 && item.features.edges !== 'smooth') score += 10;
+                if (features.edgeDensity < 0.05 && item.features.edges === 'smooth') score += 10;
+                maxScore += 10;
+                
+                // 長寬比匹配
+                if (Math.abs(features.aspectRatio - 1) < 0.3 && item.features.shape === 'round') score += 10;
+                maxScore += 10;
+                
+                const finalScore = (score / maxScore) * 100;
+                
+                if (finalScore > bestScore) {
+                    bestScore = finalScore;
+                    bestMatch = item;
+                }
+            });
+            
+            return {
+                item: bestMatch,
+                confidence: bestScore
+            };
+        }
+
+        // 圖像識別主函數
         async function recognizeImage(image) {
             loading.classList.add('active');
             
             try {
-                // 提取圖像特徵
-                const imageFeatures = await extractImageFeatures(image);
-                
-                // 與資料庫中的物品進行比對
-                let bestMatch = null;
-                let bestScore = 0;
-                let featureCount = Object.keys(imageFeatures).length;
-                
-                for (const item of itemsDatabase) {
-                    // 為每個物品創建特徵描述
-                    const itemFeatures = {
-                        histogram: {
-                            r: item.color === '白色' || item.color === '象牙白' ? [100,100,100,100,100,100,100,100] : 
-                               item.color === '藍色' ? [50,100,150,200,150,100,50,0] :
-                               item.color === '灰色' ? [80,90,100,110,100,90,80,70] : [100,90,80,70,60,50,40,30],
-                            g: item.color === '白色' || item.color === '象牙白' ? [100,100,100,100,100,100,100,100] : 
-                               item.color === '藍色' ? [50,60,70,80,70,60,50,40] :
-                               item.color === '灰色' ? [80,90,100,110,100,90,80,70] : [100,90,80,70,60,50,40,30],
-                            b: item.color === '白色' || item.color === '象牙白' ? [100,100,100,100,100,100,100,100] : 
-                               item.color === '藍色' ? [150,200,250,300,250,200,150,100] :
-                               item.color === '灰色' ? [80,90,100,110,100,90,80,70] : [100,90,80,70,60,50,40,30]
-                        },
-                        brightness: item.color === '白色' ? 240 : item.color === '透明' ? 200 : 150,
-                        edgeDensity: item.shape === '杯形' ? 0.3 : item.shape === '高腳杯' ? 0.4 : 0.2,
-                        isRound: item.shape === '圓形' || item.shape === '杯形',
-                        aspectRatio: item.shape === '高腳杯' ? 0.4 : 1.0
-                    };
-                    
-                    const similarity = calculateSimilarity(imageFeatures, itemFeatures);
-                    
-                    if (similarity > bestScore && similarity > 40) {
-                        bestScore = similarity;
-                        bestMatch = item;
-                    }
-                }
+                currentImage = image;
+                const detections = await detectObjects(image);
                 
                 loading.classList.remove('active');
                 
-                if (bestMatch) {
-                    return {
-                        item: bestMatch,
-                        confidence: bestScore,
-                        features: featureCount
-                    };
+                if (detections.length > 0) {
+                    // 選擇置信度最高的檢測結果
+                    const bestDetection = detections.reduce((best, current) => 
+                        current.confidence > best.confidence ? current : best
+                    );
+                    
+                    return bestDetection;
                 } else {
-                    throw new Error('未找到匹配的器皿');
+                    throw new Error('未檢測到任何器皿');
                 }
                 
             } catch (error) {
@@ -621,6 +755,7 @@
         function init() {
             updateTotalAmount();
             updateHistoryList();
+            initManualSelect();
         }
 
         // 開啟相機
@@ -632,6 +767,12 @@
                 cameraView.srcObject = stream;
                 captureBtn.disabled = false;
                 startCameraBtn.disabled = true;
+                
+                // 設置canvas尺寸
+                cameraView.addEventListener('loadedmetadata', () => {
+                    canvasOverlay.width = cameraView.videoWidth;
+                    canvasOverlay.height = cameraView.videoHeight;
+                });
             } catch (err) {
                 alert('無法開啟相機: ' + err.message);
             }
@@ -642,7 +783,7 @@
             if (!stream) return;
             
             try {
-                // 切換到截圖顯示
+                // 創建快照
                 const canvas = document.createElement('canvas');
                 canvas.width = cameraView.videoWidth;
                 canvas.height = cameraView.videoHeight;
@@ -652,14 +793,14 @@
                 capturedImage.src = canvas.toDataURL('image/jpeg');
                 capturedImage.style.display = 'block';
                 cameraView.style.display = 'none';
+                currentImage = capturedImage;
                 
                 // 進行識別
-                const result = await recognizeImage(cameraView);
+                const result = await recognizeImage(capturedImage);
                 showRecognitionResult(result);
                 
             } catch (error) {
                 alert('識別失敗: ' + error.message);
-                // 恢復相機顯示
                 capturedImage.style.display = 'none';
                 cameraView.style.display = 'block';
             }
@@ -672,16 +813,19 @@
             
             const reader = new FileReader();
             reader.onload = async (e) => {
+                capturedImage.onload = async () => {
+                    capturedImage.style.display = 'block';
+                    cameraView.style.display = 'none';
+                    currentImage = capturedImage;
+                    
+                    try {
+                        const result = await recognizeImage(capturedImage);
+                        showRecognitionResult(result);
+                    } catch (error) {
+                        alert('識別失敗: ' + error.message);
+                    }
+                };
                 capturedImage.src = e.target.result;
-                capturedImage.style.display = 'block';
-                cameraView.style.display = 'none';
-                
-                try {
-                    const result = await recognizeImage(capturedImage);
-                    showRecognitionResult(result);
-                } catch (error) {
-                    alert('識別失敗: ' + error.message);
-                }
             };
             reader.readAsDataURL(file);
         });
@@ -693,7 +837,11 @@
             itemName.textContent = result.item.name;
             itemPrice.textContent = `NT$ ${result.item.price}`;
             confidence.textContent = `匹配度: ${result.confidence.toFixed(1)}%`;
-            featurePoints.textContent = `特徵點: ${result.features}`;
+            detectionInfo.textContent = `檢測區域: ${result.detection.width}x${result.detection.height}`;
+            
+            // 繪製檢測框
+            drawDetectionBox(result.detection, result.item.name, result.confidence.toFixed(1));
+            
             resultSection.classList.add('active');
         }
 
@@ -710,20 +858,26 @@
                 updateHistoryList();
                 
                 // 重置狀態
-                resultSection.classList.remove('active');
-                currentItem = null;
-                capturedImage.style.display = 'none';
-                cameraView.style.display = 'block';
+                resetCameraView();
             }
         });
 
         // 取消
         cancelBtn.addEventListener('click', () => {
+            resetCameraView();
+        });
+
+        // 重置相機視圖
+        function resetCameraView() {
             resultSection.classList.remove('active');
             currentItem = null;
             capturedImage.style.display = 'none';
             cameraView.style.display = 'block';
-        });
+            
+            // 清除檢測框
+            const ctx = canvasOverlay.getContext('2d');
+            ctx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+        }
 
         // 更新總金額
         function updateTotalAmount() {
