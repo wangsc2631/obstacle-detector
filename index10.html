@@ -231,7 +231,7 @@
       }
 
       async loadModel() {
-        statusInfo.textContent = `載入 AI 模型中... (${this.modelPath})`;
+        statusInfo.textContent = `載入 AI 模型中... (正在下載 42.8 MB 模型)`;
         try {
             // *** 優化：強制使用 WASM 後端，提高穩定性 ***
             this.session = await ort.InferenceSession.create(this.modelPath, {
@@ -245,7 +245,7 @@
 
         } catch (error) {
             console.error('模型載入失敗:', error);
-            statusInfo.textContent = `❌ YOLOv8 模型載入失敗: ${error.message}. 請確認 ${this.modelPath} 檔案已上傳且路徑正確。`;
+            statusInfo.textContent = `❌ YOLOv8 模型載入失敗: ${error.message}. 請確認模型直鏈可訪問。`;
             return false;
         }
       }
@@ -274,6 +274,7 @@
         tensor = tensor.transpose([2, 0, 1]); // HWC to CHW
         tensor = tensor.expandDims(0); // Add batch dim: CHW to NCHW
 
+        // 注意：這裡必須使用 Float32Array，因為我們載入的是 FP32 模型
         const inputData = new Float32Array(tensor.dataSync());
         tf.dispose(tensor); // 釋放 GPU 記憶體
 
@@ -479,9 +480,11 @@
     // --- 啟動函式 ---
 
     async function loadModel() {
+      // *** 使用您提供的 Hugging Face 直鏈 (FP32 模型) ***
+      const HF_MODEL_URL = 'https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx';
+      
       try {
-        // *** 關鍵修改：使用壓縮後的 yolov8s_slim.onnx ***
-        yoloDetector = new YOLOv8Detector('yolov8s_slim.onnx'); 
+        yoloDetector = new YOLOv8Detector(HF_MODEL_URL); 
         
         const success = await yoloDetector.loadModel();
         
