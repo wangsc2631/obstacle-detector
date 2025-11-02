@@ -406,22 +406,19 @@
         
         <section class="camera-section">
             <div class="model-status loading" id="model-status">
-                ⏳ 正在載入YOLOv8s模型...
+                ⏳ 正在自動載入YOLOv8s模型...
             </div>
 
-            <div class="upload-model-section">
-                <h3>📁 模型載入方式</h3>
-                <p style="margin-bottom: 10px; color: #666;">由於網路限制，請選擇以下方式載入模型：</p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="upload-model-section" id="upload-section" style="display: none;">
+                <h3>📁 替代載入方式</h3>
+                <p style="margin-bottom: 10px; color: #666;">如果自動載入失敗，請嘗試：</p>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
                     <button onclick="loadModelFromLocal()" style="background: linear-gradient(135deg, #2ecc71, #27ae60);">
-                        📥 上傳本地模型
-                    </button>
-                    <button onclick="loadModelFromProxy()" style="background: linear-gradient(135deg, #3498db, #2980b9);">
-                        🌐 使用代理載入
+                        📥 上傳本地模型文件
                     </button>
                 </div>
                 <input type="file" id="model-file" accept=".onnx" style="display: none;">
-                <div id="proxy-status" style="margin-top: 10px; font-size: 0.8rem; color: #7f8c8d;"></div>
+                <div id="upload-status" style="margin-top: 10px; font-size: 0.8rem; color: #7f8c8d;"></div>
             </div>
             
             <div id="camera-container">
@@ -429,7 +426,7 @@
                 <canvas id="canvas-overlay"></canvas>
             </div>
             <div class="detection-hint" id="detection-hint">
-                🎯 請先載入YOLOv8s模型，然後將器皿對準畫面中央
+                🎯 請等待模型載入完成...
             </div>
             <div class="camera-controls">
                 <button id="start-camera">開啟相機</button>
@@ -482,13 +479,19 @@
     </div>
 
     <script>
-        // 器皿資料庫
+        // 完整的器皿資料庫
         const itemsDatabase = {
             "plate": { id: 1, code: "160100000126", name: "止滑圓托盤16吋/直徑41cm", price: 235, type: "盤子" },
             "dish": { id: 2, code: "160100000987", name: "奶油碟(味碟)2.8吋/象牙強化/港式小碟/169銀河系", price: 21, type: "碟子" },
+            "small_dish": { id: 3, code: "160100000994", name: "可疊小料碟(布丁碟)白/78*30mm", price: 45, type: "碟子" },
             "bowl": { id: 4, code: "160101000478", name: "桃型小缽4吋/10.3*9*H4.3cm", price: 27, type: "碗" },
-            "cup": { id: 14, code: "160104000052", name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子" },
-            "glass": { id: 26, code: "160200000255", name: "薄底圓酒杯(水杯)/(LIBBEY )/5.8*H10.1cm/348cc", price: 35, type: "杯子" }
+            "plate_6inch": { id: 5, code: "160101000479", name: "圓盤6吋/15*H2cm", price: 25, type: "盤子" },
+            "classic_plate": { id: 6, code: "160101000539", name: "CLASSIC圓餐盤(浮雕直線紋)RAK/240mm", price: 100, type: "盤子" },
+            "nano_plate": { id: 7, code: "160101000540", name: "NANO圓平盤(浮雕直線紋)RAK/240mm", price: 100, type: "盤子" },
+            "rice_bowl": { id: 8, code: "160101000599", name: "飯碗(詩羅恩)23-4000-91581/12cm", price: 68, type: "碗" },
+            "coffee_cup": { id: 14, code: "160104000052", name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子" },
+            "wine_glass": { id: 30, code: "160200000308", name: "VINO紅酒杯(Ocean)/470ml", price: 50, type: "杯子" },
+            "champagne_glass": { id: 28, code: "160200000261", name: "東京香檳杯/LUCARISLS02CP06/最寬65mm/H229mm/165cc", price: 156, type: "杯子" }
         };
 
         // DOM元素
@@ -511,7 +514,8 @@
         const manualSection = document.getElementById('manual-section');
         const itemsGrid = document.getElementById('items-grid');
         const modelFileInput = document.getElementById('model-file');
-        const proxyStatus = document.getElementById('proxy-status');
+        const uploadSection = document.getElementById('upload-section');
+        const uploadStatus = document.getElementById('upload-status');
 
         // 應用狀態
         let stream = null;
@@ -525,10 +529,61 @@
         let detectionInterval = null;
 
         // YOLO模型配置
+        const MODEL_URL = 'https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx';
         const MODEL_INPUT_SIZE = 640;
-        const CLASS_NAMES = ['plate', 'dish', 'bowl', 'cup', 'glass'];
+        const CLASS_NAMES = ['plate', 'dish', 'small_dish', 'bowl', 'plate_6inch', 'classic_plate', 'nano_plate', 'rice_bowl', 'coffee_cup', 'wine_glass', 'champagne_glass'];
 
-        // 從本地載入模型
+        // 直接載入模型（主要方法）
+        async function loadModelDirect() {
+            try {
+                modelStatus.textContent = "⏳ 正在載入YOLOv8s模型...";
+                modelStatus.className = "model-status loading";
+                
+                console.log('開始載入模型:', MODEL_URL);
+                
+                // 直接使用fetch載入
+                const response = await fetch(MODEL_URL);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const arrayBuffer = await response.arrayBuffer();
+                console.log('模型文件下載完成，大小:', arrayBuffer.byteLength, 'bytes');
+                
+                session = await ort.InferenceSession.create(arrayBuffer, {
+                    executionProviders: ['webgl'],
+                    graphOptimizationLevel: 'all'
+                });
+                
+                isModelReady = true;
+                modelStatus.textContent = "✅ YOLOv8s模型載入成功！";
+                modelStatus.className = "model-status ready";
+                captureBtn.disabled = false;
+                detectionHint.textContent = "🎯 模型載入成功！開啟相機開始檢測";
+                uploadSection.style.display = 'none';
+                
+                console.log('YOLOv8s模型載入成功');
+                
+            } catch (error) {
+                console.error('模型載入失敗:', error);
+                modelStatus.textContent = "❌ 模型載入失敗";
+                modelStatus.className = "model-status error";
+                uploadSection.style.display = 'block';
+                uploadStatus.innerHTML = `錯誤: ${error.message}<br>請下載模型文件後上傳`;
+                
+                // 提供詳細的下載指引
+                setTimeout(() => {
+                    uploadStatus.innerHTML += `<br><br>💡 下載指引：<br>
+                    1. 訪問: <a href="${MODEL_URL}" target="_blank">${MODEL_URL}</a><br>
+                    2. 右鍵點擊 "Download" 按鈕<br>
+                    3. 選擇 "另存連結為..."<br>
+                    4. 下載後點擊上方「上傳本地模型文件」`;
+                }, 1000);
+            }
+        }
+
+        // 從本地載入模型（備用方法）
         async function loadModelFromLocal() {
             modelFileInput.click();
         }
@@ -539,10 +594,13 @@
             if (!file) return;
 
             try {
+                uploadStatus.textContent = "正在載入本地模型...";
                 modelStatus.textContent = "⏳ 載入本地模型中...";
                 modelStatus.className = "model-status loading";
                 
                 const arrayBuffer = await file.arrayBuffer();
+                console.log('本地模型文件大小:', arrayBuffer.byteLength, 'bytes');
+                
                 session = await ort.InferenceSession.create(arrayBuffer, {
                     executionProviders: ['webgl'],
                     graphOptimizationLevel: 'all'
@@ -552,64 +610,19 @@
                 modelStatus.textContent = "✅ 本地模型載入成功！";
                 modelStatus.className = "model-status ready";
                 captureBtn.disabled = false;
+                uploadStatus.textContent = "✅ 本地模型載入成功！";
                 detectionHint.textContent = "🎯 模型載入成功！開啟相機開始檢測";
+                uploadSection.style.display = 'none';
                 
                 console.log('本地模型載入成功');
                 
             } catch (error) {
                 console.error('本地模型載入失敗:', error);
-                modelStatus.textContent = "❌ 本地模型載入失敗";
+                uploadStatus.textContent = `❌ 本地模型載入失敗: ${error.message}`;
+                modelStatus.textContent = "❌ 模型載入失敗";
                 modelStatus.className = "model-status error";
             }
         });
-
-        // 使用代理載入模型
-        async function loadModelFromProxy() {
-            try {
-                proxyStatus.textContent = "正在通過代理載入模型...";
-                modelStatus.textContent = "⏳ 通過代理載入模型中...";
-                modelStatus.className = "model-status loading";
-                
-                // 使用CORS代理
-                const proxyUrl = 'https://corsproxy.io/?';
-                const modelUrl = 'https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx';
-                
-                const response = await fetch(proxyUrl + encodeURIComponent(modelUrl));
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const arrayBuffer = await response.arrayBuffer();
-                session = await ort.InferenceSession.create(arrayBuffer, {
-                    executionProviders: ['webgl'],
-                    graphOptimizationLevel: 'all'
-                });
-                
-                isModelReady = true;
-                modelStatus.textContent = "✅ 代理模型載入成功！";
-                modelStatus.className = "model-status ready";
-                captureBtn.disabled = false;
-                proxyStatus.textContent = "✅ 代理載入成功！";
-                detectionHint.textContent = "🎯 模型載入成功！開啟相機開始檢測";
-                
-                console.log('代理模型載入成功');
-                
-            } catch (error) {
-                console.error('代理模型載入失敗:', error);
-                modelStatus.textContent = "❌ 代理模型載入失敗";
-                modelStatus.className = "model-status error";
-                proxyStatus.textContent = "❌ 代理載入失敗，請嘗試上傳本地模型";
-                
-                // 提供備用方案
-                setTimeout(() => {
-                    proxyStatus.innerHTML = "💡 建議下載模型到本地後上傳：<br>" +
-                        "1. 訪問: https://huggingface.co/wang2631/YOLOv8s-web-deployment<br>" +
-                        "2. 下載 yolov8s.onnx 文件<br>" +
-                        "3. 點擊「上傳本地模型」";
-                }, 2000);
-            }
-        }
 
         // 圖像預處理
         function preprocess(source, modelWidth, modelHeight) {
@@ -912,14 +925,12 @@
         }
 
         // 初始化
-        function init() {
+        async function init() {
             updateTotalAmount();
             initManualSelection();
             
-            // 自動嘗試使用代理載入
-            setTimeout(() => {
-                loadModelFromProxy();
-            }, 1000);
+            // 自動載入模型
+            await loadModelDirect();
         }
 
         // 開啟相機
