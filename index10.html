@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>漢來島語 - 視覺盤點系統</title>
+  <style>
+    /* 基礎移動端樣式與配色 */
+    :root {
+      --primary-color: #3b4cca; /* 藍色 */
+      --secondary-color: #ffcc00; /* 黃色 */
+      --accent-color: #ff0000; /* 紅色 */
+      --success-color: #4CAF50;
+      --warning-color: #ff9800;
+    }
+    
+    * { box-sizing: border-box; }
+    
+    body {
+      font-family: 'Microsoft JhengHei', '微軟正黑體', sans-serif;
+      text-align: center;
+      background: linear-gradient(135deg, #f0f0f0, #e0e0e0);
+      margin: 0;
+      padding: 0;
+      color: #333;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    
+    .container {
+      width: 100%;
+      margin: 0 auto;
+      background-color: #ffffff;
+      padding: 15px;
+      border-bottom: 8px solid var(--primary-color);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    h1 {
+      color: var(--primary-color);
+      font-size: 1.8rem;
+      margin: 10px 0 5px;
+      text-shadow: 1px 1px 0 #fff, 2px 2px 0 rgba(0,0,0,0.1);
+      position: relative;
+    }
+    
+    .subtitle {
+      font-size: 0.9rem;
+      color: #555;
+      margin-bottom: 15px;
+    }
+    
+    .video-container {
+      position: relative;
+      width: 100%;
+      margin: 0 auto 15px;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    
+    #video {
+      width: 100%;
+      height: 40vh; /* 手機適配高度 */
+      max-height: 400px;
+      background: #000;
+      object-fit: cover;
+      transform: scaleX(1);
+    }
+    
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    /* 物品資訊顯示 */
+    .item-display {
+      margin: 10px 0;
+      padding: 15px;
+      background: var(--secondary-color);
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      min-height: 80px;
+      font-size: 1.2rem;
+      color: var(--primary-color);
+      border: 3px solid var(--primary-color);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .item-display .price {
+      font-size: 1.6rem;
+      font-weight: bold;
+      color: var(--accent-color);
+    }
+    
+    .status-info {
+      font-size: 0.8rem;
+      color: #666;
+      margin: 5px 0;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 10px 0;
+    }
+
+    button {
+      padding: 12px 15px;
+      font-size: 1rem;
+      color: white;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-weight: bold;
+      box-shadow: 0 3px 0 rgba(0,0,0,0.2);
+      flex: 1;
+      min-width: 120px;
+    }
+
+    /* 確認入帳按鈕 */
+    #confirmBtn {
+        background: var(--success-color);
+        box-shadow: 0 3px 0 #387c3b;
+    }
+    #confirmBtn:active {
+        background: #387c3b;
+    }
+
+    /* 清除歷史按鈕 */
+    #clearHistory {
+        background: #aaa;
+        box-shadow: 0 3px 0 #888;
+    }
+    #clearHistory:active {
+        background: #888;
+    }
+    
+    button:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 rgba(0,0,0,0.2);
+    }
+
+    .total-display {
+      margin: 15px 0;
+      padding: 15px;
+      background: var(--primary-color);
+      color: white;
+      border-radius: 8px;
+      font-size: 1.2rem;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    .total-display span {
+      font-size: 1.8rem;
+      color: var(--secondary-color);
+    }
+    
+    .history-section {
+      margin-top: 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    .history-header h2 {
+      color: var(--primary-color);
+      background: var(--secondary-color);
+      padding: 6px 15px;
+      border-radius: 20px;
+      margin: 0;
+      border: 2px solid var(--primary-color);
+      font-size: 1.2rem;
+    }
+    
+    .history-list {
+      background: #f9f9f9;
+      border-radius: 12px;
+      box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
+      padding: 10px;
+      flex: 1;
+      overflow-y: auto;
+      text-align: left;
+      border: 1px solid #ddd;
+      max-height: 25vh;
+    }
+    
+    .history-item {
+      padding: 8px;
+      border-bottom: 1px solid #eee;
+      font-size: 0.95rem;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .history-item .date {
+        font-size: 0.8rem;
+        color: #999;
+        margin-top: 2px;
+    }
+    .history-item .price-col {
+        font-weight: bold;
+        color: var(--accent-color);
+        min-width: 60px;
+        text-align: right;
+    }
+
+    .empty-history {
+        text-align: center;
+        color: #888;
+        padding: 20px;
+        font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>盤點視覺入帳系統</h1>
+    <div class="subtitle">請將鏡頭對準器皿，確認品名與單價後入帳</div>
+    
+    <div class="video-container">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="item-display" id="itemDisplay">
+      載入 AI 模型中...
+    </div>
+    
+    <div class="status-info" id="statusInfo">
+      請點擊畫面開始載入模型
+    </div>
+
+    <div class="total-display">
+        盤點總計 (NT$)：<span id="totalDisplay">0</span>
+    </div>
+
+    <div class="controls">
+      <button id="confirmBtn" disabled>確認入帳 (N/A)</button>
+      <button id="clearHistory">清除歷史</button>
+    </div>
+
+    <div class="history-section">
+      <div class="history-header">
+        <h2>🧾 盤點歷史紀錄</h2>
+      </div>
+      <div class="history-list" id="historyList">
+        </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  
+  <script>
+    // --- 整合 CSV 資料庫 ---
+    // 這是從您的 CSV 檔案中解析出來的器皿資料庫
+    const INVENTORY_DATABASE = {
+        '160100000126': { name: '止滑圓托盤16吋/直徑41cm', price: 235, coco: 'tray' },
+        '160100000987': { name: '奶油碟(味碟)2.8吋/象牙強化/港式小碟/169銀河系', price: 21, coco: 'small bowl' },
+        '160100000994': { name: '可疊小料碟(布丁碟)白/78*30mm', price: 45, coco: 'bowl' },
+        '160101000478': { name: '桃型小缽4吋/10.3*9*H4.3cm', price: 27, coco: 'bowl' },
+        '160101000479': { name: '圓盤6吋/15*H2cm', price: 25, coco: 'plate' },
+        '160101000539': { name: 'CLASSIC圓餐盤(浮雕直線紋)RAK/240mm', price: 100, coco: 'plate' },
+        '160101000540': { name: 'NANO圓平盤(浮雕直線紋)RAK/240mm', price: 100, coco: 'plate' },
+        '160101000599': { name: '飯碗(詩羅恩)23-4000-91581/12cm', price: 68, coco: 'bowl' },
+        '160102000020': { name: 'RAK圓餐盤(PIXEL)/24cm', price: 80, coco: 'plate' },
+        '160102000317': { name: '麻布紋圓淺盤8.25吋/21cm', price: 230, coco: 'plate' },
+        '160102000318': { name: '圓淺盤(深藍)/10吋/25.4cm', price: 250, coco: 'plate' },
+        '160102000359': { name: 'RAK DUNES 圓餐盤/24cm', price: 136.4, coco: 'plate' },
+        '160102000360': { name: 'RAK FOCUS 圓餐盤/21cm', price: 109.1, coco: 'plate' },
+        '160104000052': { name: '咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml', price: 128, coco: 'cup' },
+        '160104000053': { name: '咖啡杯/針葉林-松柏灰/日本NORITAKE/8*6.2cm/220ml', price: 128, coco: 'cup' },
+        '160104000054': { name: '咖啡/湯盤兩用底盤/青杉藍/日本NORITAKE/15.5*2cm', price: 64, coco: 'plate' },
+        '160104000055': { name: '咖啡/湯盤兩用底盤/松柏灰/日本NORITAKE/15.5*2cm', price: 64, coco: 'plate' },
+        '160104000056': { name: '沙拉盤/針葉林-青杉藍/日本NORITAKE/21cm', price: 107, coco: 'plate' },
+        '160104000057': { name: '沙拉盤/針葉林-松柏灰 /日本NORITAKE/21cm', price: 107, coco: 'plate' },
+        '160104000058': { name: '沙拉盤/針葉林-白色/日本NORITAKE/21cm', price: 107, coco: 'plate' },
+        '160104000059': { name: '有耳濃湯杯(西式湯碗)/針葉林-青杉藍/10.8*5cm/225ml', price: 175, coco: 'cup' },
+        '160104000060': { name: '水果碗/針葉林-青杉藍/日本NORITAKE/14cm*H5.8/450ml', price: 82, coco: 'bowl' },
+        '160106000030': { name: '木製-胡椒研磨器/霧黑色/100mm', price: 860, coco: 'bottle' },
+        '160200000248': { name: '度力龍烈酒杯(甜點杯)', price: 18, coco: 'cup' },
+        '160200000249': { name: '方型烈酒杯/4.8*4.8*H6.5cm/60ml', price: 18, coco: 'cup' },
+        '160200000255': { name: '薄底圓酒杯(水杯)/(LIBBEY )/5.8*H10.1cm/348cc', price: 35, coco: 'cup' },
+        '160200000260': { name: 'SOLO烈酒杯/OCEAN BP00110/最寬54*H69mm/60cc', price: 13, coco: 'cup' },
+        '160200000261': { name: '東京香檳杯/LUCARISLS02CP06/最寬65mm/H229mm/165cc', price: 156, coco: 'wine glass' },
+        '160200000296': { name: '常春捲杯/高腳杯160cc', price: 49, coco: 'cup' },
+        '160200000308': { name: 'VINO紅酒杯(Ocean)/470ml', price: 50, coco: 'wine glass' },
+        '160200000309': { name: '方形烈酒杯LIBBEY/4.7*H6.3CM', price: 41, coco: 'cup' },
+        '160201000082': { name: '曼谷卡本內酒杯LUCARIS/最寬85mm//H233mm/470cc', price: 95, coco: 'wine glass' },
+        '160201000090': { name: '香檳杯/德國(SCHOOT)#121594', price: 129, coco: 'wine glass' },
+        '160306000274': { name: '手打四腳翹淺盤/12*12*H2cm', price: 330, coco: 'plate' },
+        '160306000275': { name: 'Arthur Krupp主餐刀/232mm/CREAM 62511-11', price: 100, coco: 'knife' },
+        '160306000276': { name: 'Arthur Krupp主餐叉/210mm/CREAM 62511-08', price: 98, coco: 'fork' },
+        '160306000280': { name: 'Arthur Krupp圓湯匙/180mm/CREAM 62511-02', price: 98, coco: 'spoon' },
+        '160306000281': { name: 'Arthur Krupp甜湯匙(點心匙)/180mm', price: 90, coco: 'spoon' },
+        '160306000308': { name: 'ST亮面冰夾/13.7cm/圓形夾', price: 200, coco: 'scissors' },
+        '160306000312': { name: '茶匙/13.5cm', price: 25, coco: 'spoon' },
+        '160306000314': { name: '服務夾(鏡面)/23.5cm', price: 295, coco: 'scissors' },
+        '160306000315': { name: '不銹鋼有孔服務夾(毛絲面)/23cm', price: 68, coco: 'scissors' },
+        '160306000317': { name: '服務夾/23.5CM', price: 295, coco: 'scissors' },
+        '160306000318': { name: '蝴蝶燒肉夾/25cm', price: 105, coco: 'scissors' },
+        '160306000319': { name: 'ATHENA不銹鋼菜匙/26cm', price: 415, coco: 'spoon' },
+        '160306000320': { name: 'ATHENA不銹鋼湯杓/29.3cm', price: 380, coco: 'spoon' },
+        '160306000321': { name: 'ATHENA不銹鋼湯杓座/Ø11x10.3(H)cm', price: 720, coco: 'vase' },
+        '160306000322': { name: 'ATHENA不銹鋼佐料杓/18.5cm', price: 285, coco: 'spoon' },
+        '160306000323': { name: 'ATHENA不銹鋼佐料杓(加長)/27cm', price: 310, coco: 'spoon' },
+        '160306000324': { name: 'ATHENA蛋糕鏟/24cm', price: 200, coco: 'knife' },
+        '160306000325': { name: 'ATHENA麵包刀/37cm', price: 430, coco: 'knife' },
+        '160306000326': { name: 'ATHENA起司刀/25cm', price: 300, coco: 'knife' },
+        '160306000329': { name: '熱水壺/1.5L', price: 380, coco: 'bottle' },
+        '160306000330': { name: '不鏽鋼香檳桶(雙瓶)/224x210x200mm', price: 1800, coco: 'bucket' },
+        '160306000331': { name: '不鏽鋼香檳桶架(雙瓶)Dia/255x605(H)mm', price: 2300, coco: 'stand' },
+        '160306000338': { name: '不銹鋼麵包夾/200mm/AT BU18', price: 200, coco: 'scissors' },
+        '160306000347': { name: '不鏽鋼冰桶/Cap.1.0L', price: 630, coco: 'bowl' },
+        '160200000241': { name: '曼谷卡本內紅酒杯/最寬85mm//H233mm/470cc', price: 95, coco: 'wine glass' },
+        '160102000368': { name: 'RAK DUNES可疊式湯碗', price: 155, coco: 'bowl' },
+        '160102000367': { name: 'RAK DUNES可疊式咖啡杯(奶茶色)', price: 115, coco: 'cup' },
+        // 確保所有有單價的項目都包含在內，且單價為數字
+        // 修正 CSV 中單價為 0 的項目: RAK DUNES / RAK FOCUS 
+        '1601020359': { name: 'RAK DUNES 圓餐盤24cm', price: 136.4, coco: 'plate' }, 
+        '1601020360': { name: 'RAK FOCUS 圓餐盤21cm', price: 109.1, coco: 'plate' }
+    };
+    
+    // 將 YOLOv8 的通用 COCO 類別對應到最相似的器皿料件編號 (Key)
+    const COCO_TO_ITEM_ID = {
+        'cup': '160104000052', // 咖啡杯/青杉藍
+        'wine glass': '1602000308', // VINO紅酒杯
+        'bowl': '160101000599', // 飯碗
+        'plate': '160101000539', // CLASSIC圓餐盤
+        'fork': '160306000276', // Arthur Krupp主餐叉
+        'knife': '160306000275', // Arthur Krupp主餐刀
+        'spoon': '160306000280', // Arthur Krupp圓湯匙
+        'bottle': '160306000329', // 熱水壺
+        'tray': '160100000126', // 止滑圓托盤
+        'scissors': '160306000315', // 不銹鋼有孔服務夾
+        'pottedplant': '160104000060', // 水果碗 (無完美對應，使用水果碗代替)
+        'vase': '160306000321', // 湯杓座
+        'diningtable': '1601020359' // 圓餐盤
+        // 更多 COCO 類別可以依此模式手動擴充
+    };
+    
+    // --- YOLOv8 專用設定 (沿用並優化您的設定) ---
+    const MODEL_INPUT_SIZE = 640;
+    const CONF_THRESHOLD = 0.8; // 保持高信心度以減少誤判 (如船、飛機)
+    const IOU_THRESHOLD = 0.45; 
+    const CLASS_NAMES = [
+        'person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 
+        'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 
+        'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 
+        'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 
+        'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 
+        'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 
+        'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 
+        'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 
+        'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 
+        'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+    ];
+
+    // 初始化變數
+    let yoloDetector; 
+    let currentDetectedItem = null; // 儲存當前偵測到的物品物件
+    let transactions = []; // 儲存交易紀錄
+    let totalAmount = 0;
+    let lastDetectionTime = 0;
+    const DETECTION_INTERVAL = 1000; // 每 1 秒偵測一次
+    
+    // DOM 元素
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const itemDisplay = document.getElementById('itemDisplay');
+    const statusInfo = document.getElementById('statusInfo');
+    const totalDisplay = document.getElementById('totalDisplay');
+    const historyList = document.getElementById('historyList');
+    const confirmBtn = document.getElementById('confirmBtn');
+    const clearHistoryBtn = document.getElementById('clearHistory');
+
+    // --- 核心會計與儲存邏輯 ---
+
+    // 1. 從 localStorage 載入歷史紀錄
+    function loadTransactions() {
+        const stored = localStorage.getItem('inventoryTransactions');
+        transactions = stored ? JSON.parse(stored) : [];
+        updateTotal();
+        renderHistory();
+    }
+
+    // 2. 儲存歷史紀錄到 localStorage
+    function saveTransactions() {
+        localStorage.setItem('inventoryTransactions', JSON.stringify(transactions));
+    }
+
+    // 3. 計算總金額並更新顯示
+    function updateTotal() {
+        totalAmount = transactions.reduce((sum, t) => sum + parseFloat(t.price), 0);
+        totalDisplay.textContent = totalAmount.toFixed(1).toLocaleString('zh-TW');
+    }
+
+    // 4. 繪製歷史紀錄列表
+    function renderHistory() {
+        if (transactions.length === 0) {
+            historyList.innerHTML = '<div class="empty-history">暫無盤點紀錄</div>';
+            return;
+        }
+
+        historyList.innerHTML = transactions.map(t => {
+            const dateStr = new Date(t.timestamp).toLocaleString('zh-TW', {
+                month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+            return `
+                <div class="history-item">
+                    <div>
+                        ${t.name}<br>
+                        <span class="date">${dateStr} (${t.itemId})</span>
+                    </div>
+                    <div class="price-col">+${t.price.toFixed(1).toLocaleString('zh-TW')}</div>
+                </div>
+            `;
+        }).reverse().join(''); // 最新紀錄在最上面
+    }
+    
+    // 5. 確認入帳事件處理
+    confirmBtn.addEventListener('click', () => {
+        if (currentDetectedItem) {
+            const transaction = {
+                itemId: currentDetectedItem.itemId,
+                name: currentDetectedItem.name,
+                price: currentDetectedItem.price,
+                timestamp: Date.now()
+            };
+            
+            transactions.push(transaction);
+            saveTransactions();
+            updateTotal();
+            renderHistory();
+
+            // 提示入帳成功
+            itemDisplay.innerHTML = `<strong>✅ 入帳成功!</strong><br><span class="price">NT$ ${transaction.price.toFixed(1).toLocaleString('zh-TW')}</span>`;
+            
+            // 暫時禁用按鈕以避免重複點擊
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = '入帳成功';
+
+            // 1秒後重置按鈕狀態
+            setTimeout(() => {
+                if (currentDetectedItem) {
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = `確認入帳 (NT$ ${currentDetectedItem.price.toFixed(1).toLocaleString('zh-TW')})`;
+                } else {
+                     confirmBtn.textContent = '確認入帳 (N/A)';
+                }
+            }, 1000);
+        }
+    });
+
+    // 6. 清除歷史紀錄事件處理
+    clearHistoryBtn.addEventListener('click', () => {
+        if (confirm('確定要清除所有盤點歷史紀錄和總金額嗎？')) {
+            localStorage.removeItem('inventoryTransactions');
+            transactions = [];
+            totalAmount = 0;
+            updateTotal();
+            renderHistory();
+            itemDisplay.textContent = '歷史紀錄已清除，請開始新的盤點。';
+        }
+    });
+
+    // --- YOLOv8 模型類與邏輯 (沿用並簡化) ---
+
+    // 取得物品資訊
+    function getItemInfo(cocoLabel) {
+        // 1. 嘗試從 COCO 類別對應到 料件編號
+        const itemId = COCO_TO_ITEM_ID[cocoLabel];
+        
+        // 2. 查詢資料庫
+        if (itemId && INVENTORY_DATABASE[itemId]) {
+            const item = INVENTORY_DATABASE[itemId];
+            return {
+                itemId: itemId,
+                name: item.name,
+                price: item.price
+            };
+        }
+        
+        // 3. 如果沒有對應，返回空
+        return null;
+    }
+    
+    // 您的 YOLOv8 Detector Class (維持不變)
+    class YOLOv8Detector {
+      constructor(modelPath = 'yolov8n.onnx') {
+        this.modelPath = modelPath;
+        this.session = null;
+        this.isReady = false;
+      }
+
+      async loadModel() {
+        statusInfo.textContent = '載入 AI 模型中... (請確保 yolov8n.onnx 在同一目錄)';
+        try {
+          if (typeof ort === 'undefined' || !ort.InferenceSession) {
+            throw new Error("ONNX Runtime Web 函式庫未載入。");
+          }
+
+          this.session = await ort.InferenceSession.create(this.modelPath, {
+            executionProviders: ['webgl', 'wasm'], 
+            graphOptimizationLevel: 'all',
+            logLevel: 'error' 
+          });
+
+          this.isReady = true;
+          statusInfo.textContent = 'AI 視覺準備就緒';
+          itemDisplay.textContent = '模型載入完成！請對準器皿';
+          return true;
+        } catch (error) {
+          console.error('YOLOv8 模型載入失敗:', error);
+          statusInfo.textContent = '載入失敗。請檢查 yolov8n.onnx 檔案。';
+          itemDisplay.textContent = `錯誤: ${error.message}`; 
+          return false;
+        }
+      }
+
+      async detect(video) {
+        if (!this.isReady) return [];
+
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        
+        // --- 1. 影像預處理：TF.js Tensor 轉換 (HWC -> NCHW, 歸一化) ---
+        const inputTensor = tf.tidy(() => {
+          let tensor = tf.browser.fromPixels(video); 
+          tensor = tf.image.resizeBilinear(tensor, [MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
+          tensor = tensor.div(255.0); 
+          tensor = tensor.transpose([2, 0, 1]); // HWC -> CHW
+          tensor = tensor.expandDims(0); // CHW -> NCHW
+          return tensor;
+        });
+
+        const input = new ort.Tensor('float32', inputTensor.dataSync(), [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
+        inputTensor.dispose(); 
+
+        // --- 2. 執行 ONNX 推理 ---
+        const feeds = { 'images': input }; 
+        const output = await this.session.run(feeds);
+        
+        const predictions = this._processOutput(
+            output['output0'], width, height, CONF_THRESHOLD, IOU_THRESHOLD
+        );
+        
+        return predictions;
+      }
+      
+      // --- 3. YOLOv8 NMS 後處理 (維持不變) ---
+      _processOutput(outputTensor, originalWidth, originalHeight, confThreshold, iouThreshold) {
+        const output = outputTensor.data;
+        const numClasses = CLASS_NAMES.length; 
+        const rows = outputTensor.dims[2]; 
+        const valuesPerRow = outputTensor.dims[1]; 
+
+        let boxes = []; 
+
+        for (let i = 0; i < rows; i++) {
+          const rowStart = i * valuesPerRow;
+          const scoreStart = rowStart + 4; 
+
+          let maxScore = 0;
+          let classId = -1;
+          for (let c = 0; c < numClasses; c++) {
+            const score = output[scoreStart + c];
+            if (score > maxScore) {
+              maxScore = score;
+              classId = c;
+            }
+          }
+
+          if (maxScore > confThreshold) {
+            const cx = output[rowStart + 0];
+            const cy = output[rowStart + 1];
+            const w = output[rowStart + 2];
+            const h = output[rowStart + 3];
+
+            const x1 = cx - w / 2;
+            const y1 = cy - h / 2;
+            const x2 = cx + w / 2;
+            const y2 = cy + h / 2;
+
+            boxes.push([x1, y1, x2, y2, maxScore, classId]);
+          }
+        }
+        
+        if (boxes.length === 0) return [];
+
+        // 執行 NMS 
+        const NMS_IDX = 4;
+        const boxesTensor = tf.tensor2d(boxes, [boxes.length, 6]);
+        const scores = boxesTensor.slice([0, NMS_IDX], [-1, 1]).squeeze();
+        const boxCoords = boxesTensor.slice([0, 0], [-1, 4]);
+
+        const indices = tf.image.nonMaxSuppression(
+          boxCoords, 
+          scores, 
+          100,
+          iouThreshold,
+          confThreshold
+        );
+
+        const selectedBoxesData = boxesTensor.gather(indices).arraySync();
+        boxesTensor.dispose();
+        scores.dispose();
+        boxCoords.dispose();
+        indices.dispose();
+        
+        const finalDetections = selectedBoxesData.map(box => {
+            const xRatio = originalWidth / MODEL_INPUT_SIZE;
+            const yRatio = originalHeight / MODEL_INPUT_SIZE;
+            
+            const x1 = Math.max(0, box[0] * xRatio);
+            const y1 = Math.max(0, box[1] * yRatio);
+            const x2 = Math.min(originalWidth, box[2] * xRatio);
+            const y2 = Math.min(originalHeight, box[3] * yRatio);
+            
+            return {
+                class: CLASS_NAMES[box[5]],
+                score: box[4],
+                bbox: [x1, y1, x2 - x1, y2 - y1] // 轉換為 [x, y, w, h] 格式
+            };
+        });
+
+        return finalDetections;
+      }
+    }
+
+    // --- 相機與偵測迴圈 ---
+
+    async function setupCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'environment', // 優先使用後置鏡頭
+            width: { ideal: 640 }, 
+            height: { ideal: 480 } 
+          } 
+        });
+        video.srcObject = stream;
+        
+        video.onloadedmetadata = () => {
+          video.play();
+          // 設定 Canvas 尺寸與 Video 匹配
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          detectFrame();
+        };
+      } catch (error) {
+        console.error('無法存取攝影機:', error);
+        itemDisplay.textContent = '無法存取攝影機，請確認權限設定';
+        statusInfo.textContent = '啟動失敗';
+      }
+    }
+
+    let lastDetectedItemId = '';
+    
+    async function detectFrame() {
+      const now = Date.now();
+      
+      // 控制偵測頻率
+      if (now - lastDetectionTime < DETECTION_INTERVAL) {
+        requestAnimationFrame(detectFrame);
+        return;
+      }
+      
+      lastDetectionTime = now;
+      ctx.clearRect(0, 0, canvas.width, canvas.height); 
+      
+      try {
+        const predictions = await yoloDetector.detect(video); 
+
+        if (predictions.length > 0) {
+          // 找出分數最高的物體
+          const bestPred = predictions.reduce((prev, current) => (prev.score > current.score) ? prev : current);
+          
+          const { class: label, score, bbox } = bestPred;
+          const itemInfo = getItemInfo(label);
+
+          if (itemInfo) {
+            // 偵測到有對應物品
+            currentDetectedItem = itemInfo;
+            
+            // 僅在物品變化時才更新顯示和按鈕
+            if (itemInfo.itemId !== lastDetectedItemId) {
+              lastDetectedItemId = itemInfo.itemId;
+              itemDisplay.innerHTML = `
+                <strong>${itemInfo.name}</strong><br>
+                料件編號: ${itemInfo.itemId}<br>
+                <span class="price">單價: NT$ ${itemInfo.price.toFixed(1).toLocaleString('zh-TW')}</span>
+              `;
+              
+              confirmBtn.disabled = false;
+              confirmBtn.textContent = `確認入帳 (NT$ ${itemInfo.price.toFixed(1).toLocaleString('zh-TW')})`;
+            }
+
+            statusInfo.textContent = `偵測到 COCO 類別: ${label} (${(score * 100).toFixed(1)}%)`;
+
+            // 繪製偵測框和標籤
+            const [x, y, w, h] = bestPred.bbox;
+            const displayText = `${itemInfo.name} | ${itemInfo.price.toFixed(1)}`;
+            
+            ctx.strokeStyle = 'var(--primary-color)'; 
+            ctx.lineWidth = 4;
+            ctx.strokeRect(x, y, w, h);
+            ctx.fillStyle = 'var(--primary-color)';
+            ctx.fillRect(x, y, w, 22); 
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText(displayText, x + 5, y + 16);
+            
+          } else {
+            // 偵測到通用 COCO 物件但不在器皿清單中
+            currentDetectedItem = null;
+            lastDetectedItemId = '';
+            itemDisplay.innerHTML = `<strong>偵測到: ${label}</strong><br>此物品不在盤點清單中`;
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = '確認入帳 (N/A)';
+            statusInfo.textContent = `偵測到 COCO 類別: ${label} (${(score * 100).toFixed(1)}%)，但無對應器皿。`;
+          }
+          
+        } else {
+          // 未偵測到任何物體
+          currentDetectedItem = null;
+          lastDetectedItemId = '';
+          itemDisplay.textContent = '對準器皿或物品進行偵測...';
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = '確認入帳 (N/A)';
+          statusInfo.textContent = '未偵測到物品';
+        }
+      } catch (error) {
+        console.error('YOLOv8 偵測錯誤:', error);
+        statusInfo.textContent = 'YOLOv8 偵測錯誤，請檢查主控台';
+      }
+
+      requestAnimationFrame(detectFrame);
+    }
+
+    // 啟動應用
+    async function loadModel() {
+      loadTransactions(); // 先載入歷史資料
+      
+      try {
+        yoloDetector = new YOLOv8Detector('yolov8n.onnx'); 
+        
+        const success = await yoloDetector.loadModel();
+        
+        if (success) {
+            setupCamera();
+        } 
+      } catch (error) {
+        console.error('啟動失敗:', error);
+        itemDisplay.textContent = '系統啟動失敗，請檢查主控台';
+        statusInfo.textContent = '啟動失敗';
+      }
+    }
+
+    // 第一次點擊畫面時載入模型 (確保相機權限)
+    document.addEventListener('click', function init() {
+      loadModel();
+      document.removeEventListener('click', init);
+    }, { once: true });
+    
+    // 清理資源
+    window.addEventListener('beforeunload', function() {
+      if (speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+      }
+    });
+  </script>
+</body>
+</html>
