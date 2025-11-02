@@ -163,6 +163,20 @@
             border-radius: 8px;
             border-left: 4px solid #3498db;
         }
+
+        .upload-model-section {
+            background: #e8f4fd;
+            border: 2px dashed #3498db;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        .upload-model-section h3 {
+            color: #2980b9;
+            margin-bottom: 10px;
+        }
         
         .result-section {
             background: white;
@@ -392,14 +406,30 @@
         
         <section class="camera-section">
             <div class="model-status loading" id="model-status">
-                ⏳ 載入YOLOv8s AI模型中...
+                ⏳ 正在載入YOLOv8s模型...
             </div>
+
+            <div class="upload-model-section">
+                <h3>📁 模型載入方式</h3>
+                <p style="margin-bottom: 10px; color: #666;">由於網路限制，請選擇以下方式載入模型：</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <button onclick="loadModelFromLocal()" style="background: linear-gradient(135deg, #2ecc71, #27ae60);">
+                        📥 上傳本地模型
+                    </button>
+                    <button onclick="loadModelFromProxy()" style="background: linear-gradient(135deg, #3498db, #2980b9);">
+                        🌐 使用代理載入
+                    </button>
+                </div>
+                <input type="file" id="model-file" accept=".onnx" style="display: none;">
+                <div id="proxy-status" style="margin-top: 10px; font-size: 0.8rem; color: #7f8c8d;"></div>
+            </div>
+            
             <div id="camera-container">
                 <video id="camera-view" autoplay playsinline></video>
                 <canvas id="canvas-overlay"></canvas>
             </div>
             <div class="detection-hint" id="detection-hint">
-                🎯 將器皿對準畫面中央，確保光線充足
+                🎯 請先載入YOLOv8s模型，然後將器皿對準畫面中央
             </div>
             <div class="camera-controls">
                 <button id="start-camera">開啟相機</button>
@@ -452,24 +482,13 @@
     </div>
 
     <script>
-        // 器皿資料庫 - 需要與YOLO模型的類別對應
+        // 器皿資料庫
         const itemsDatabase = {
-            // 這裡的鍵名需要與YOLO模型訓練時的類別名稱對應
-            "plate_16inch": { id: 1, code: "160100000126", name: "止滑圓托盤16吋/直徑41cm", price: 235, type: "盤子" },
-            "cream_dish": { id: 2, code: "160100000987", name: "奶油碟(味碟)2.8吋/象牙強化/港式小碟/169銀河系", price: 21, type: "碟子" },
-            "small_dish": { id: 3, code: "160100000994", name: "可疊小料碟(布丁碟)白/78*30mm", price: 45, type: "碟子" },
-            "peach_bowl": { id: 4, code: "160101000478", name: "桃型小缽4吋/10.3*9*H4.3cm", price: 27, type: "碗" },
-            "plate_6inch": { id: 5, code: "160101000479", name: "圓盤6吋/15*H2cm", price: 25, type: "盤子" },
-            "classic_plate": { id: 6, code: "160101000539", name: "CLASSIC圓餐盤(浮雕直線紋)RAK/240mm", price: 100, type: "盤子" },
-            "nano_plate": { id: 7, code: "160101000540", name: "NANO圓平盤(浮雕直線紋)RAK/240mm", price: 100, type: "盤子" },
-            "rice_bowl": { id: 8, code: "160101000599", name: "飯碗(詩羅恩)23-4000-91581/12cm", price: 68, type: "碗" },
-            "pixel_plate": { id: 9, code: "160102000020", name: "RAK圓餐盤(PIXEL)/24cm", price: 80, type: "盤子" },
-            "linen_plate": { id: 10, code: "160102000317", name: "麻布紋圓淺盤8.25吋/21cm", price: 230, type: "盤子" },
-            "blue_plate": { id: 11, code: "160102000318", name: "圓淺盤(深藍)/10吋/25.4cm", price: 250, type: "盤子" },
-            "coffee_cup_blue": { id: 14, code: "160104000052", name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子" },
-            "coffee_cup_gray": { id: 15, code: "160104000053", name: "咖啡杯/針葉林-松柏灰/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子" },
-            "wine_glass": { id: 30, code: "160200000308", name: "VINO紅酒杯(Ocean)/470ml", price: 50, type: "杯子" },
-            "champagne_glass": { id: 28, code: "160200000261", name: "東京香檳杯/LUCARISLS02CP06/最寬65mm/H229mm/165cc", price: 156, type: "杯子" }
+            "plate": { id: 1, code: "160100000126", name: "止滑圓托盤16吋/直徑41cm", price: 235, type: "盤子" },
+            "dish": { id: 2, code: "160100000987", name: "奶油碟(味碟)2.8吋/象牙強化/港式小碟/169銀河系", price: 21, type: "碟子" },
+            "bowl": { id: 4, code: "160101000478", name: "桃型小缽4吋/10.3*9*H4.3cm", price: 27, type: "碗" },
+            "cup": { id: 14, code: "160104000052", name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子" },
+            "glass": { id: 26, code: "160200000255", name: "薄底圓酒杯(水杯)/(LIBBEY )/5.8*H10.1cm/348cc", price: 35, type: "杯子" }
         };
 
         // DOM元素
@@ -491,6 +510,8 @@
         const detectionHint = document.getElementById('detection-hint');
         const manualSection = document.getElementById('manual-section');
         const itemsGrid = document.getElementById('items-grid');
+        const modelFileInput = document.getElementById('model-file');
+        const proxyStatus = document.getElementById('proxy-status');
 
         // 應用狀態
         let stream = null;
@@ -504,38 +525,89 @@
         let detectionInterval = null;
 
         // YOLO模型配置
-        const MODEL_URL = 'https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx';
         const MODEL_INPUT_SIZE = 640;
-        const CLASS_NAMES = [
-            'plate_16inch', 'cream_dish', 'small_dish', 'peach_bowl', 'plate_6inch',
-            'classic_plate', 'nano_plate', 'rice_bowl', 'pixel_plate', 'linen_plate',
-            'blue_plate', 'coffee_cup_blue', 'coffee_cup_gray', 'wine_glass', 'champagne_glass'
-        ];
+        const CLASS_NAMES = ['plate', 'dish', 'bowl', 'cup', 'glass'];
 
-        // 初始化YOLO模型
-        async function initYOLOModel() {
+        // 從本地載入模型
+        async function loadModelFromLocal() {
+            modelFileInput.click();
+        }
+
+        // 處理本地模型文件選擇
+        modelFileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
             try {
-                modelStatus.textContent = "⏳ 載入YOLOv8s模型中...";
+                modelStatus.textContent = "⏳ 載入本地模型中...";
                 modelStatus.className = "model-status loading";
                 
-                // 載入ONNX模型
-                session = await ort.InferenceSession.create(MODEL_URL, {
+                const arrayBuffer = await file.arrayBuffer();
+                session = await ort.InferenceSession.create(arrayBuffer, {
                     executionProviders: ['webgl'],
                     graphOptimizationLevel: 'all'
                 });
                 
                 isModelReady = true;
-                modelStatus.textContent = "✅ YOLOv8s模型載入成功！";
+                modelStatus.textContent = "✅ 本地模型載入成功！";
                 modelStatus.className = "model-status ready";
                 captureBtn.disabled = false;
+                detectionHint.textContent = "🎯 模型載入成功！開啟相機開始檢測";
                 
-                console.log('YOLOv8s模型載入成功');
+                console.log('本地模型載入成功');
                 
             } catch (error) {
-                console.error('模型載入失敗:', error);
-                modelStatus.textContent = "❌ 模型載入失敗，請檢查網路連接";
+                console.error('本地模型載入失敗:', error);
+                modelStatus.textContent = "❌ 本地模型載入失敗";
                 modelStatus.className = "model-status error";
-                isModelReady = false;
+            }
+        });
+
+        // 使用代理載入模型
+        async function loadModelFromProxy() {
+            try {
+                proxyStatus.textContent = "正在通過代理載入模型...";
+                modelStatus.textContent = "⏳ 通過代理載入模型中...";
+                modelStatus.className = "model-status loading";
+                
+                // 使用CORS代理
+                const proxyUrl = 'https://corsproxy.io/?';
+                const modelUrl = 'https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx';
+                
+                const response = await fetch(proxyUrl + encodeURIComponent(modelUrl));
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const arrayBuffer = await response.arrayBuffer();
+                session = await ort.InferenceSession.create(arrayBuffer, {
+                    executionProviders: ['webgl'],
+                    graphOptimizationLevel: 'all'
+                });
+                
+                isModelReady = true;
+                modelStatus.textContent = "✅ 代理模型載入成功！";
+                modelStatus.className = "model-status ready";
+                captureBtn.disabled = false;
+                proxyStatus.textContent = "✅ 代理載入成功！";
+                detectionHint.textContent = "🎯 模型載入成功！開啟相機開始檢測";
+                
+                console.log('代理模型載入成功');
+                
+            } catch (error) {
+                console.error('代理模型載入失敗:', error);
+                modelStatus.textContent = "❌ 代理模型載入失敗";
+                modelStatus.className = "model-status error";
+                proxyStatus.textContent = "❌ 代理載入失敗，請嘗試上傳本地模型";
+                
+                // 提供備用方案
+                setTimeout(() => {
+                    proxyStatus.innerHTML = "💡 建議下載模型到本地後上傳：<br>" +
+                        "1. 訪問: https://huggingface.co/wang2631/YOLOv8s-web-deployment<br>" +
+                        "2. 下載 yolov8s.onnx 文件<br>" +
+                        "3. 點擊「上傳本地模型」";
+                }, 2000);
             }
         }
 
@@ -547,16 +619,13 @@
             canvas.width = modelWidth;
             canvas.height = modelHeight;
             
-            // 計算縮放比例並保持寬高比
             const ratio = Math.min(modelWidth / source.width, modelHeight / source.height);
             const newWidth = source.width * ratio;
             const newHeight = source.height * ratio;
             
-            // 填充黑色背景
             ctx.fillStyle = 'black';
             ctx.fillRect(0, 0, modelWidth, modelHeight);
             
-            // 居中繪製圖像
             ctx.drawImage(
                 source, 
                 (modelWidth - newWidth) / 2, 
@@ -565,11 +634,9 @@
                 newHeight
             );
             
-            // 獲取圖像數據
             const imageData = ctx.getImageData(0, 0, modelWidth, modelHeight);
-            const { data, width, height } = imageData;
+            const { data } = imageData;
             
-            // 轉換為RGB格式並歸一化
             const red = [], green = [], blue = [];
             for (let index = 0; index < data.length; index += 4) {
                 red.push(data[index] / 255.0);
@@ -589,7 +656,6 @@
             const predictions = [];
             const outputData = output.output0.data;
             
-            // YOLOv8輸出格式: [1, 84, 8400]
             const numClasses = CLASS_NAMES.length;
             const boxDataLength = 4 + numClasses;
             const numBoxes = Math.floor(outputData.length / boxDataLength);
@@ -600,13 +666,12 @@
                 const maxScore = Math.max(...scores);
                 const classId = scores.indexOf(maxScore);
                 
-                if (maxScore > 0.3) { // 置信度閾值
+                if (maxScore > 0.3) {
                     const x = outputData[startIndex];
                     const y = outputData[startIndex + 1];
                     const w = outputData[startIndex + 2];
                     const h = outputData[startIndex + 3];
                     
-                    // 轉換為原始圖像坐標
                     const x1 = (x - w / 2) / ratio;
                     const y1 = (y - h / 2) / ratio;
                     const x2 = (x + w / 2) / ratio;
@@ -628,7 +693,6 @@
                 }
             }
             
-            // 非極大值抑制
             return nonMaxSuppression(predictions, 0.5);
         }
 
@@ -700,7 +764,6 @@
                 const width = x2 - x1;
                 const height = y2 - y1;
                 
-                // 根據置信度選擇顏色
                 const color = pred.confidence > 0.7 ? '#00ff00' : 
                              pred.confidence > 0.5 ? '#ff9900' : '#ff4444';
                 
@@ -719,39 +782,6 @@
                 ctx.fillStyle = '#000000';
                 ctx.font = 'bold 14px Arial';
                 ctx.fillText(label, x1 + 5, y1 - 5);
-                
-                // 繪製角標
-                const cornerSize = 8;
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 2;
-                
-                // 左上角
-                ctx.beginPath();
-                ctx.moveTo(x1, y1 + cornerSize);
-                ctx.lineTo(x1, y1);
-                ctx.lineTo(x1 + cornerSize, y1);
-                ctx.stroke();
-                
-                // 右上角
-                ctx.beginPath();
-                ctx.moveTo(x2 - cornerSize, y1);
-                ctx.lineTo(x2, y1);
-                ctx.lineTo(x2, y1 + cornerSize);
-                ctx.stroke();
-                
-                // 左下角
-                ctx.beginPath();
-                ctx.moveTo(x1, y2 - cornerSize);
-                ctx.lineTo(x1, y2);
-                ctx.lineTo(x1 + cornerSize, y2);
-                ctx.stroke();
-                
-                // 右下角
-                ctx.beginPath();
-                ctx.moveTo(x2 - cornerSize, y2);
-                ctx.lineTo(x2, y2);
-                ctx.lineTo(x2, y2 - cornerSize);
-                ctx.stroke();
             });
         }
 
@@ -772,7 +802,6 @@
                     currentDetections = predictions;
                     drawDetections(predictions);
                     
-                    // 如果有高置信度的檢測結果，自動顯示選擇界面
                     const highConfidenceDetections = predictions.filter(pred => pred.confidence > 0.7);
                     if (highConfidenceDetections.length > 0 && !resultSection.classList.contains('active')) {
                         showDetectionResults(highConfidenceDetections);
@@ -781,7 +810,7 @@
                 } catch (error) {
                     console.error('即時檢測錯誤:', error);
                 }
-            }, 500); // 每500ms檢測一次
+            }, 1000);
         }
 
         // 停止檢測
@@ -883,10 +912,14 @@
         }
 
         // 初始化
-        async function init() {
+        function init() {
             updateTotalAmount();
             initManualSelection();
-            await initYOLOModel();
+            
+            // 自動嘗試使用代理載入
+            setTimeout(() => {
+                loadModelFromProxy();
+            }, 1000);
         }
 
         // 開啟相機
@@ -993,7 +1026,6 @@
             const dateStr = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
             const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
             
-            // 創建CSV格式
             let csvContent = "料件編號,品名規格,單價,識別方式,置信度,盤點時間\n";
             scannedItems.forEach(item => {
                 const confidence = item.confidence ? (item.confidence * 100).toFixed(1) + '%' : '100%';
