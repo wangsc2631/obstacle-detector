@@ -155,16 +155,15 @@
         }
         
         .training-buttons {
-            display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
         }
         
         .training-btn {
             background-color: #2980b9;
-            flex: 1;
-            min-width: 120px;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
+            padding: 8px 5px;
         }
         
         .training-btn:hover {
@@ -343,24 +342,33 @@
             font-size: 0.8rem;
             border-radius: 4px;
             margin-bottom: 10px;
-        }
-        
-        .model-status.ready {
             background-color: #d1ecf1;
             color: #0c5460;
         }
         
-        .qr-section {
+        .tips-section {
             background-color: #fff3cd;
             border-radius: 8px;
-            padding: 15px;
-            margin-top: 15px;
+            padding: 12px;
+            margin-top: 10px;
+        }
+        
+        .tips-section h4 {
+            color: #856404;
+            margin-bottom: 8px;
             text-align: center;
         }
         
-        .qr-section h3 {
-            color: #856404;
-            margin-bottom: 10px;
+        .tip-item {
+            font-size: 0.75rem;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .tip-item::before {
+            content: "💡";
+            margin-right: 5px;
         }
         
         @media (min-width: 768px) {
@@ -371,6 +379,10 @@
             
             #camera-container {
                 height: 400px;
+            }
+            
+            .training-buttons {
+                grid-template-columns: 1fr 1fr 1fr;
             }
         }
     </style>
@@ -383,8 +395,8 @@
         </header>
         
         <section class="camera-section">
-            <div class="model-status ready" id="model-status">
-                ✅ 使用改進的特徵識別算法 | 準確率: 85%+
+            <div class="model-status">
+                ✅ 使用餐盤專用識別算法 | 特徵: 形狀+顏色+紋理+尺寸
             </div>
             <div id="camera-container">
                 <video id="camera-view" autoplay playsinline></video>
@@ -397,34 +409,32 @@
                 <button id="retake-btn">重新拍攝</button>
             </div>
             <div class="detection-hint" id="detection-hint">
-                💡 提示: 將器皿放在純色背景上，確保光線充足
+                🎯 將餐盤平放，對準中央，確保光線均勻
+            </div>
+            
+            <div class="tips-section">
+                <h4>提高識別準確度技巧</h4>
+                <div class="tip-item">使用純色背景（建議白色或黑色）</div>
+                <div class="tip-item">保持相同拍攝距離（約30-40公分）</div>
+                <div class="tip-item">避免強烈反光和陰影</div>
+                <div class="tip-item">拍攝前先訓練參考照片</div>
             </div>
             
             <div class="training-section">
-                <h3>📸 改進識別準確度</h3>
-                <p style="text-align: center; font-size: 0.8rem; margin-bottom: 10px; color: #666;">
-                    拍攝器皿的參考照片，系統會學習特徵
+                <h3>📸 訓練參考照片（重要！）</h3>
+                <p style="text-align: center; font-size: 0.75rem; margin-bottom: 10px; color: #666;">
+                    每個餐盤拍攝2-3張不同角度，大幅提高準確率
                 </p>
                 <div class="training-buttons" id="training-buttons">
                     <!-- 訓練按鈕會動態生成 -->
                 </div>
             </div>
             
-            <div class="qr-section">
-                <h3>🔍 進階識別方案</h3>
-                <p style="font-size: 0.8rem; margin-bottom: 10px;">
-                    如需更高準確率，建議為每個器皿貼上QR碼或條碼
-                </p>
-                <button onclick="showQRAdvantage()" style="background-color: #17a2b8; font-size: 0.8rem;">
-                    了解QR碼方案優勢
-                </button>
-            </div>
-            
             <div class="upload-section">
                 <input type="file" id="file-input" accept="image/*">
                 <button class="upload-btn" onclick="document.getElementById('file-input').click()">上傳圖片辨識</button>
             </div>
-            <div class="loading" id="loading">分析圖像特徵中...</div>
+            <div class="loading" id="loading">分析餐盤特徵中...</div>
             <div class="manual-select">
                 <label>或手動選擇器皿：</label>
                 <select id="manual-select">
@@ -438,7 +448,7 @@
                 <div class="item-name" id="item-name">辨識中...</div>
                 <div class="item-price" id="item-price">NT$ 0</div>
                 <div class="confidence" id="confidence">特徵匹配度: 0%</div>
-                <div class="detection-info" id="detection-info">使用改進特徵算法</div>
+                <div class="detection-info" id="detection-info">使用餐盤專用算法</div>
             </div>
             <div class="action-buttons">
                 <button id="cancel-btn">取消</button>
@@ -463,19 +473,85 @@
     </div>
 
     <script>
-        // 完整的器皿資料庫
+        // 餐盤專用資料庫 - 針對餐盤特徵優化
         const itemsDatabase = [
-            { id: 1, code: "160100000126", name: "止滑圓托盤16吋/直徑41cm", price: 235, type: "盤子", features: { shape: "round", size: "large", color: "white", texture: "non_slip" }},
-            { id: 2, code: "160100000987", name: "奶油碟(味碟)2.8吋/象牙強化/港式小碟/169銀河系", price: 21, type: "碟子", features: { shape: "round", size: "small", color: "ivory", texture: "smooth" }},
-            { id: 3, code: "160100000994", name: "可疊小料碟(布丁碟)白/78*30mm", price: 45, type: "碟子", features: { shape: "round", size: "small", color: "white", texture: "smooth" }},
-            { id: 4, code: "160101000478", name: "桃型小缽4吋/10.3*9*H4.3cm", price: 27, type: "碗", features: { shape: "oval", size: "small", color: "white", texture: "smooth" }},
-            { id: 5, code: "160101000479", name: "圓盤6吋/15*H2cm", price: 25, type: "盤子", features: { shape: "round", size: "medium", color: "white", texture: "smooth" }},
-            { id: 6, code: "160101000539", name: "CLASSIC圓餐盤(浮雕直線紋)RAK/240mm", price: 100, type: "盤子", features: { shape: "round", size: "large", color: "white", texture: "embossed" }},
-            { id: 14, code: "160104000052", name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子", features: { shape: "cup", size: "medium", color: "blue", texture: "glossy" }},
-            { id: 15, code: "160104000053", name: "咖啡杯/針葉林-松柏灰/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子", features: { shape: "cup", size: "medium", color: "gray", texture: "glossy" }},
-            { id: 26, code: "160200000255", name: "薄底圓酒杯(水杯)/(LIBBEY )/5.8*H10.1cm/348cc", price: 35, type: "杯子", features: { shape: "glass", size: "medium", color: "clear", texture: "smooth" }},
-            { id: 30, code: "160200000308", name: "VINO紅酒杯(Ocean)/470ml", price: 50, type: "杯子", features: { shape: "wine_glass", size: "large", color: "clear", texture: "smooth" }},
-            { id: 28, code: "160200000261", name: "東京香檳杯/LUCARISLS02CP06/最寬65mm/H229mm/165cc", price: 156, type: "杯子", features: { shape: "champagne", size: "medium", color: "clear", texture: "smooth" }}
+            { 
+                id: 1, code: "160100000126", name: "止滑圓托盤16吋/直徑41cm", price: 235, type: "盤子", 
+                features: { 
+                    shape: "round", size: "large", color: "white", texture: "non_slip",
+                    diameter: 41, edges: "smooth", thickness: "medium"
+                }
+            },
+            { 
+                id: 2, code: "160100000987", name: "奶油碟(味碟)2.8吋/象牙強化/港式小碟/169銀河系", price: 21, type: "碟子", 
+                features: { 
+                    shape: "round", size: "small", color: "ivory", texture: "smooth",
+                    diameter: 7, edges: "thin", thickness: "thin"
+                }
+            },
+            { 
+                id: 3, code: "160100000994", name: "可疊小料碟(布丁碟)白/78*30mm", price: 45, type: "碟子", 
+                features: { 
+                    shape: "round", size: "small", color: "white", texture: "smooth",
+                    diameter: 7.8, edges: "stackable", thickness: "thin"
+                }
+            },
+            { 
+                id: 4, code: "160101000478", name: "桃型小缽4吋/10.3*9*H4.3cm", price: 27, type: "碗", 
+                features: { 
+                    shape: "oval", size: "small", color: "white", texture: "smooth",
+                    diameter: 10.3, edges: "curved", thickness: "medium"
+                }
+            },
+            { 
+                id: 5, code: "160101000479", name: "圓盤6吋/15*H2cm", price: 25, type: "盤子", 
+                features: { 
+                    shape: "round", size: "medium", color: "white", texture: "smooth",
+                    diameter: 15, edges: "smooth", thickness: "thin"
+                }
+            },
+            { 
+                id: 6, code: "160101000539", name: "CLASSIC圓餐盤(浮雕直線紋)RAK/240mm", price: 100, type: "盤子", 
+                features: { 
+                    shape: "round", size: "large", color: "white", texture: "embossed",
+                    diameter: 24, edges: "patterned", thickness: "medium"
+                }
+            },
+            { 
+                id: 7, code: "160101000540", name: "NANO圓平盤(浮雕直線紋)RAK/240mm", price: 100, type: "盤子", 
+                features: { 
+                    shape: "round", size: "large", color: "white", texture: "embossed",
+                    diameter: 24, edges: "patterned", thickness: "thin"
+                }
+            },
+            { 
+                id: 10, code: "160102000317", name: "麻布紋圓淺盤8.25吋/21cm", price: 230, type: "盤子", 
+                features: { 
+                    shape: "round", size: "medium", color: "white", texture: "linen",
+                    diameter: 21, edges: "textured", thickness: "thin"
+                }
+            },
+            { 
+                id: 11, code: "160102000318", name: "圓淺盤(深藍)/10吋/25.4cm", price: 250, type: "盤子", 
+                features: { 
+                    shape: "round", size: "large", color: "blue", texture: "smooth",
+                    diameter: 25.4, edges: "smooth", thickness: "thin"
+                }
+            },
+            { 
+                id: 14, code: "160104000052", name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子", 
+                features: { 
+                    shape: "cup", size: "medium", color: "blue", texture: "glossy",
+                    diameter: 8, edges: "with_handle", thickness: "medium"
+                }
+            },
+            { 
+                id: 26, code: "160200000255", name: "薄底圓酒杯(水杯)/(LIBBEY )/5.8*H10.1cm/348cc", price: 35, type: "杯子", 
+                features: { 
+                    shape: "glass", size: "medium", color: "clear", texture: "smooth",
+                    diameter: 5.8, edges: "thin", thickness: "thin"
+                }
+            }
         ];
 
         // DOM元素
@@ -507,75 +583,194 @@
         let scannedItems = [];
         let total = 0;
         let currentImage = null;
-        let referenceImages = {}; // 儲存訓練的參考圖片
+        let referenceTemplates = {}; // 儲存模板圖片
 
-        // 改進的特徵提取算法
-        class ImprovedFeatureDetector {
+        // 餐盤專用特徵檢測器
+        class PlateFeatureDetector {
             constructor() {
-                this.referenceFeatures = {};
-            }
-            
-            // 提取圖像特徵
-            extractFeatures(image) {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = 64;
-                canvas.height = 64;
-                ctx.drawImage(image, 0, 0, 64, 64);
-                
-                const imageData = ctx.getImageData(0, 0, 64, 64);
-                const data = imageData.data;
-                
-                return {
-                    colorHistogram: this.getColorHistogram(data),
-                    edgeDensity: this.getEdgeDensity(data, 64, 64),
-                    brightness: this.getAverageBrightness(data),
-                    contrast: this.getContrast(data),
-                    shape: this.detectShape(data, 64, 64)
+                this.templates = {};
+                this.featureWeights = {
+                    shape: 0.25,
+                    size: 0.20,
+                    color: 0.20,
+                    texture: 0.15,
+                    edges: 0.10,
+                    brightness: 0.10
                 };
             }
             
-            // 顏色直方圖
-            getColorHistogram(data) {
-                const histogram = { r: Array(8).fill(0), g: Array(8).fill(0), b: Array(8).fill(0) };
-                for (let i = 0; i < data.length; i += 4) {
-                    histogram.r[Math.floor(data[i] / 32)]++;
-                    histogram.g[Math.floor(data[i + 1] / 32)]++;
-                    histogram.b[Math.floor(data[i + 2] / 32)]++;
-                }
-                return histogram;
+            // 提取餐盤特徵
+            extractPlateFeatures(image) {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 100;
+                canvas.height = 100;
+                ctx.drawImage(image, 0, 0, 100, 100);
+                
+                const imageData = ctx.getImageData(0, 0, 100, 100);
+                const data = imageData.data;
+                
+                return {
+                    shape: this.detectPlateShape(data, 100, 100),
+                    size: this.estimatePlateSize(data, 100, 100),
+                    color: this.analyzePlateColor(data),
+                    texture: this.analyzeTexture(data, 100, 100),
+                    edges: this.analyzeEdges(data, 100, 100),
+                    brightness: this.getAverageBrightness(data),
+                    contrast: this.getContrast(data)
+                };
             }
             
-            // 邊緣密度
-            getEdgeDensity(data, width, height) {
-                let edgeCount = 0;
-                for (let y = 1; y < height - 1; y++) {
-                    for (let x = 1; x < width - 1; x++) {
+            // 檢測餐盤形狀
+            detectPlateShape(data, width, height) {
+                const centerX = width / 2;
+                const centerY = height / 2;
+                let platePixels = 0;
+                let roundPixels = 0;
+                let totalPixels = 0;
+                
+                // 檢測圓形度
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
                         const idx = (y * width + x) * 4;
                         const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
                         
-                        // 簡單的Sobel邊緣檢測
-                        const topIdx = ((y - 1) * width + x) * 4;
-                        const bottomIdx = ((y + 1) * width + x) * 4;
-                        const leftIdx = (y * width + (x - 1)) * 4;
-                        const rightIdx = (y * width + (x + 1)) * 4;
+                        if (brightness > 50) { // 餐盤區域
+                            platePixels++;
+                            const distance = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+                            if (distance < 45) {
+                                roundPixels++;
+                            }
+                        }
+                        totalPixels++;
+                    }
+                }
+                
+                const roundness = roundPixels / platePixels;
+                const coverage = platePixels / totalPixels;
+                
+                if (roundness > 0.85) return "round";
+                if (roundness > 0.6) return "oval";
+                if (coverage > 0.7) return "rectangular";
+                return "irregular";
+            }
+            
+            // 估計餐盤尺寸
+            estimatePlateSize(data, width, height) {
+                let platePixels = 0;
+                let totalPixels = width * height;
+                
+                for (let i = 0; i < data.length; i += 4) {
+                    const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    if (brightness > 50) {
+                        platePixels++;
+                    }
+                }
+                
+                const coverage = platePixels / totalPixels;
+                if (coverage > 0.6) return "large";
+                if (coverage > 0.3) return "medium";
+                return "small";
+            }
+            
+            // 分析餐盤顏色
+            analyzePlateColor(data) {
+                let totalR = 0, totalG = 0, totalB = 0;
+                let count = 0;
+                
+                for (let i = 0; i < data.length; i += 4) {
+                    const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    if (brightness > 50 && brightness < 240) { // 排除背景和過亮區域
+                        totalR += data[i];
+                        totalG += data[i + 1];
+                        totalB += data[i + 2];
+                        count++;
+                    }
+                }
+                
+                if (count === 0) return "unknown";
+                
+                const avgR = totalR / count;
+                const avgG = totalG / count;
+                const avgB = totalB / count;
+                const brightness = (avgR + avgG + avgB) / 3;
+                
+                if (brightness > 200) return "white";
+                if (brightness > 180 && brightness < 200) return "ivory";
+                if (avgB > avgR + 20 && avgB > avgG + 20) return "blue";
+                if (Math.abs(avgR - avgG) < 10 && Math.abs(avgR - avgB) < 10) return "gray";
+                if (brightness < 100) return "dark";
+                return "light";
+            }
+            
+            // 分析紋理
+            analyzeTexture(data, width, height) {
+                let edgeCount = 0;
+                let variance = 0;
+                const brightnessValues = [];
+                
+                // 收集亮度值
+                for (let i = 0; i < data.length; i += 4) {
+                    const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    brightnessValues.push(brightness);
+                }
+                
+                // 計算方差
+                const mean = brightnessValues.reduce((a, b) => a + b) / brightnessValues.length;
+                variance = brightnessValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / brightnessValues.length;
+                
+                // 邊緣檢測
+                for (let y = 1; y < height - 1; y++) {
+                    for (let x = 1; x < width - 1; x++) {
+                        const idx = (y * width + x) * 4;
+                        const current = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
                         
-                        const verticalGradient = Math.abs(
-                            (data[topIdx] + data[topIdx + 1] + data[topIdx + 2]) / 3 - 
-                            (data[bottomIdx] + data[bottomIdx + 1] + data[bottomIdx + 2]) / 3
-                        );
+                        const right = (data[idx + 4] + data[idx + 5] + data[idx + 6]) / 3;
+                        const bottom = (data[idx + width * 4] + data[idx + width * 4 + 1] + data[idx + width * 4 + 2]) / 3;
                         
-                        const horizontalGradient = Math.abs(
-                            (data[leftIdx] + data[leftIdx + 1] + data[leftIdx + 2]) / 3 - 
-                            (data[rightIdx] + data[rightIdx + 1] + data[rightIdx + 2]) / 3
-                        );
-                        
-                        if (verticalGradient > 30 || horizontalGradient > 30) {
+                        if (Math.abs(current - right) > 25 || Math.abs(current - bottom) > 25) {
                             edgeCount++;
                         }
                     }
                 }
-                return edgeCount / (width * height);
+                
+                const edgeDensity = edgeCount / (width * height);
+                
+                if (variance > 800) return "embossed";
+                if (variance > 500) return "linen";
+                if (edgeDensity > 0.1) return "patterned";
+                return "smooth";
+            }
+            
+            // 分析邊緣特徵
+            analyzeEdges(data, width, height) {
+                let sharpEdgeCount = 0;
+                let gradualEdgeCount = 0;
+                
+                // 檢測邊緣過渡
+                for (let y = 10; y < height - 10; y += 5) {
+                    for (let x = 10; x < width - 10; x += 5) {
+                        const idx = (y * width + x) * 4;
+                        const current = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+                        
+                        // 檢查徑向梯度
+                        const distances = [5, 10, 15];
+                        let maxGradient = 0;
+                        
+                        for (const dist of distances) {
+                            const rightIdx = (y * width + Math.min(x + dist, width - 1)) * 4;
+                            const right = (data[rightIdx] + data[rightIdx + 1] + data[rightIdx + 2]) / 3;
+                            maxGradient = Math.max(maxGradient, Math.abs(current - right));
+                        }
+                        
+                        if (maxGradient > 60) sharpEdgeCount++;
+                        else if (maxGradient > 20) gradualEdgeCount++;
+                    }
+                }
+                
+                if (sharpEdgeCount > gradualEdgeCount * 2) return "sharp";
+                if (gradualEdgeCount > sharpEdgeCount * 2) return "curved";
+                return "smooth";
             }
             
             // 平均亮度
@@ -598,103 +793,103 @@
                 return max - min;
             }
             
-            // 形狀檢測
-            detectShape(data, width, height) {
-                const centerX = width / 2;
-                const centerY = height / 2;
-                let roundPixels = 0;
-                let totalPixels = 0;
-                
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        const idx = (y * width + x) * 4;
-                        const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-                        
-                        if (brightness > 50) { // 非背景像素
-                            totalPixels++;
-                            const distance = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
-                            if (distance < 25) {
-                                roundPixels++;
-                            }
-                        }
-                    }
-                }
-                
-                const roundness = roundPixels / totalPixels;
-                if (roundness > 0.7) return "round";
-                if (roundness > 0.4) return "oval";
-                return "irregular";
-            }
-            
             // 計算特徵相似度
             calculateSimilarity(features1, features2) {
-                let score = 0;
+                let totalScore = 0;
                 let maxScore = 0;
                 
-                // 顏色直方圖相似度 (40%)
-                let colorScore = 0;
-                for (let i = 0; i < 8; i++) {
-                    const rDiff = Math.abs(features1.colorHistogram.r[i] - features2.colorHistogram.r[i]);
-                    const gDiff = Math.abs(features1.colorHistogram.g[i] - features2.colorHistogram.g[i]);
-                    const bDiff = Math.abs(features1.colorHistogram.b[i] - features2.colorHistogram.b[i]);
-                    colorScore += (1 - rDiff / 1000) + (1 - gDiff / 1000) + (1 - bDiff / 1000);
+                for (const [feature, weight] of Object.entries(this.featureWeights)) {
+                    const score = this.compareFeature(feature, features1[feature], features2[feature]);
+                    totalScore += score * weight;
+                    maxScore += weight;
                 }
-                score += colorScore * 0.4;
-                maxScore += 24;
                 
-                // 邊緣密度相似度 (20%)
-                const edgeDiff = Math.abs(features1.edgeDensity - features2.edgeDensity);
-                score += (1 - edgeDiff) * 20;
-                maxScore += 20;
-                
-                // 亮度相似度 (15%)
-                const brightnessDiff = Math.abs(features1.brightness - features2.brightness);
-                score += (1 - brightnessDiff / 255) * 15;
-                maxScore += 15;
-                
-                // 對比度相似度 (15%)
-                const contrastDiff = Math.abs(features1.contrast - features2.contrast);
-                score += (1 - contrastDiff / 255) * 15;
-                maxScore += 15;
-                
-                // 形狀相似度 (10%)
-                if (features1.shape === features2.shape) {
-                    score += 10;
-                }
-                maxScore += 10;
-                
-                return (score / maxScore) * 100;
+                return (totalScore / maxScore) * 100;
             }
             
-            // 添加參考特徵
-            addReference(itemId, features) {
-                if (!this.referenceFeatures[itemId]) {
-                    this.referenceFeatures[itemId] = [];
+            // 比較單個特徵
+            compareFeature(feature, value1, value2) {
+                if (feature === 'brightness' || feature === 'contrast') {
+                    const diff = Math.abs(value1 - value2);
+                    return Math.max(0, 1 - diff / 100);
                 }
-                this.referenceFeatures[itemId].push(features);
+                return value1 === value2 ? 1 : 0;
             }
             
-            // 識別圖像
-            recognize(imageFeatures) {
+            // 添加模板
+            addTemplate(itemId, image) {
+                if (!this.templates[itemId]) {
+                    this.templates[itemId] = [];
+                }
+                const features = this.extractPlateFeatures(image);
+                this.templates[itemId].push(features);
+            }
+            
+            // 識別餐盤
+            recognizePlate(image) {
+                const features = this.extractPlateFeatures(image);
                 let bestMatch = null;
                 let bestScore = 0;
                 
-                for (const [itemId, referenceList] of Object.entries(this.referenceFeatures)) {
-                    for (const referenceFeatures of referenceList) {
-                        const score = this.calculateSimilarity(imageFeatures, referenceFeatures);
-                        if (score > bestScore && score > 60) {
+                for (const [itemId, templateList] of Object.entries(this.templates)) {
+                    for (const templateFeatures of templateList) {
+                        const score = this.calculateSimilarity(features, templateFeatures);
+                        if (score > bestScore && score > 65) {
                             bestScore = score;
                             bestMatch = itemsDatabase.find(item => item.id == itemId);
                         }
                     }
                 }
                 
+                // 如果沒有模板匹配，嘗試基於規則的匹配
+                if (!bestMatch) {
+                    const ruleBased = this.ruleBasedRecognition(features);
+                    if (ruleBased.confidence > 55) {
+                        return ruleBased;
+                    }
+                }
+                
                 return bestMatch ? { item: bestMatch, confidence: bestScore } : null;
+            }
+            
+            // 規則基礎識別
+            ruleBasedRecognition(features) {
+                let bestMatch = null;
+                let bestScore = 0;
+                
+                itemsDatabase.forEach(item => {
+                    let score = 0;
+                    
+                    // 形狀匹配
+                    if (features.shape === item.features.shape) score += 30;
+                    
+                    // 尺寸匹配
+                    if (features.size === item.features.size) score += 25;
+                    
+                    // 顏色匹配
+                    if (features.color === item.features.color) score += 20;
+                    
+                    // 紋理匹配
+                    if (features.texture === item.features.texture) score += 15;
+                    
+                    // 邊緣匹配
+                    if (features.edges === item.features.edges) score += 10;
+                    
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMatch = item;
+                    }
+                });
+                
+                return {
+                    item: bestMatch,
+                    confidence: Math.min(bestScore * 1.3, 90)
+                };
             }
         }
 
         // 初始化特徵檢測器
-        const featureDetector = new ImprovedFeatureDetector();
+        const plateDetector = new PlateFeatureDetector();
 
         // 初始化訓練按鈕
         function initTrainingButtons() {
@@ -703,14 +898,15 @@
             itemsDatabase.forEach(item => {
                 const button = document.createElement('button');
                 button.className = 'training-btn';
-                button.textContent = `學習${item.name.substring(0, 6)}...`;
-                button.onclick = () => trainReferenceImage(item.id, item.name);
+                button.textContent = `${item.name.split('/')[0]}`;
+                button.title = item.name;
+                button.onclick = () => trainPlateTemplate(item.id, item.name);
                 trainingButtons.appendChild(button);
             });
         }
 
-        // 訓練參考圖片
-        function trainReferenceImage(itemId, itemName) {
+        // 訓練餐盤模板
+        function trainPlateTemplate(itemId, itemName) {
             if (!stream) {
                 alert('請先開啟相機');
                 return;
@@ -720,7 +916,6 @@
                 loading.classList.add('active');
                 detectionHint.textContent = `學習 ${itemName} 的特徵...`;
                 
-                // 從相機獲取圖像
                 const canvas = document.createElement('canvas');
                 canvas.width = cameraView.videoWidth;
                 canvas.height = cameraView.videoHeight;
@@ -729,14 +924,13 @@
                 
                 const tempImage = new Image();
                 tempImage.onload = () => {
-                    const features = featureDetector.extractFeatures(tempImage);
-                    featureDetector.addReference(itemId, features);
+                    plateDetector.addTemplate(itemId, tempImage);
                     
                     loading.classList.remove('active');
-                    detectionHint.textContent = `✅ 成功學習 ${itemName} 的特徵！`;
+                    detectionHint.textContent = `✅ 成功學習 ${itemName}！建議拍攝2-3個角度`;
                     
                     setTimeout(() => {
-                        detectionHint.textContent = "💡 提示: 將器皿放在純色背景上，確保光線充足";
+                        detectionHint.textContent = "🎯 將餐盤平放，對準中央，確保光線均勻";
                     }, 3000);
                 };
                 tempImage.src = canvas.toDataURL('image/jpeg');
@@ -748,23 +942,19 @@
             }
         }
 
-        // 改進的圖像識別
+        // 圖像識別
         async function recognizeImage(image) {
             loading.classList.add('active');
-            detectionHint.textContent = "分析圖像特徵中...";
+            detectionHint.textContent = "分析餐盤特徵中...";
             
             try {
-                // 提取特徵
-                const features = featureDetector.extractFeatures(image);
-                
-                // 嘗試識別
-                const result = featureDetector.recognize(features);
+                const result = plateDetector.recognizePlate(image);
                 
                 loading.classList.remove('active');
                 
                 if (result) {
                     detectionHint.textContent = "✅ 識別成功！";
-                    detectionInfo.textContent = "使用改進特徵算法";
+                    detectionInfo.textContent = "使用餐盤專用算法";
                     return {
                         ...result,
                         detection: {
@@ -775,16 +965,7 @@
                         }
                     };
                 } else {
-                    // 如果沒有訓練數據，使用規則匹配
-                    detectionHint.textContent = "⚠️ 使用規則匹配";
-                    detectionInfo.textContent = "建議拍攝參考照片提高準確率";
-                    
-                    const ruleBasedResult = ruleBasedRecognition(features);
-                    if (ruleBasedResult.confidence > 50) {
-                        return ruleBasedResult;
-                    } else {
-                        throw new Error('無法識別此器皿，請嘗試手動選擇或拍攝參考照片');
-                    }
+                    throw new Error('無法識別此餐盤，請拍攝參考照片或手動選擇');
                 }
                 
             } catch (error) {
@@ -794,84 +975,26 @@
             }
         }
 
-        // 規則基礎的識別（備用方案）
-        function ruleBasedRecognition(features) {
-            let bestMatch = null;
-            let bestScore = 0;
-            
-            itemsDatabase.forEach(item => {
-                let score = 0;
-                
-                // 形狀匹配
-                if (features.shape === item.features.shape) score += 40;
-                
-                // 顏色匹配（簡單判斷）
-                if (features.brightness > 200 && item.features.color === 'white') score += 30;
-                if (features.brightness > 180 && features.brightness < 200 && item.features.color === 'ivory') score += 30;
-                if (features.contrast < 50 && item.features.color === 'clear') score += 30;
-                
-                // 紋理匹配
-                if (features.edgeDensity > 0.1 && item.features.texture === 'embossed') score += 20;
-                if (features.edgeDensity < 0.05 && item.features.texture === 'smooth') score += 20;
-                
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestMatch = item;
-                }
-            });
-            
-            return {
-                item: bestMatch,
-                confidence: Math.min(bestScore * 1.2, 95),
-                detection: {
-                    x: 100, y: 100, width: 200, height: 200
-                }
-            };
-        }
-
         // 繪製檢測結果
         function drawDetectionResult(detection, label, confidence) {
             const ctx = canvasOverlay.getContext('2d');
             ctx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
             
             const { x, y, width, height } = detection;
+            const color = confidence > 80 ? '#00ff00' : confidence > 65 ? '#ff9900' : '#ff4444';
             
-            // 根據置信度選擇顏色
-            const color = confidence > 80 ? '#00ff00' : confidence > 60 ? '#ff9900' : '#ff4444';
-            
-            // 繪製邊框
             ctx.strokeStyle = color;
             ctx.lineWidth = 4;
             ctx.strokeRect(x, y, width, height);
             
-            // 繪製標籤背景
             ctx.fillStyle = color;
-            const text = `${label} (${confidence.toFixed(1)}%)`;
+            const text = `${label.split('/')[0]} (${confidence.toFixed(1)}%)`;
             const textWidth = ctx.measureText(text).width;
-            const textHeight = 20;
-            ctx.fillRect(x, y - textHeight - 5, textWidth + 10, textHeight);
+            ctx.fillRect(x, y - 25, textWidth + 10, 25);
             
-            // 繪製文字
             ctx.fillStyle = '#000000';
             ctx.font = 'bold 14px Arial';
-            ctx.fillText(text, x + 5, y - 10);
-        }
-
-        // 顯示QR碼方案優勢
-        function showQRAdvantage() {
-            alert(`QR碼方案優勢：
-            
-🎯 準確率: 100%
-⚡ 識別速度: 即時
-💡 實施簡單: 貼上QR碼標籤
-📱 兼容性: 所有手機都支持
-💰 成本: 極低
-
-建議為每個器皿生成專屬QR碼，包含：
-- 器皿編號
-- 名稱
-- 價格
-- 其他信息`);
+            ctx.fillText(text, x + 5, y - 8);
         }
 
         // 初始化手動選擇選項
@@ -1021,14 +1144,14 @@
                 updateTotalAmount();
                 updateHistoryList();
                 resetCameraView();
-                detectionHint.textContent = "💡 提示: 將器皿放在純色背景上，確保光線充足";
+                detectionHint.textContent = "🎯 將餐盤平放，對準中央，確保光線均勻";
             }
         });
 
         // 取消
         cancelBtn.addEventListener('click', () => {
             resetCameraView();
-            detectionHint.textContent = "💡 提示: 將器皿放在純色背景上，確保光線充足";
+            detectionHint.textContent = "🎯 將餐盤平放，對準中央，確保光線均勻";
         });
 
         // 重置相機視圖
