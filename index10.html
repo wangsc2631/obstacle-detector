@@ -223,10 +223,32 @@
             align-items: center;
         }
         
+        .model-options {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .model-option {
+            flex: 1;
+            text-align: center;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .model-option.selected {
+            border-color: #3498db;
+            background: #e8f4fd;
+        }
+        
         @media (min-width: 768px) {
             .container { max-width: 800px; margin: 0 auto; }
             .camera-container { height: 400px; }
             .items-grid { grid-template-columns: 1fr 1fr; }
+            .controls { grid-template-columns: repeat(4, 1fr); }
         }
     </style>
 </head>
@@ -240,15 +262,31 @@
         <!-- 相機區塊 -->
         <section class="section">
             <div class="status status-loading" id="model-status">
-                ⏳ 請上傳YOLOv8s模型文件 (.onnx)
+                ⏳ 正在載入AI模型...
             </div>
 
             <div class="training-section">
-                <h3>📁 1. 上傳AI模型</h3>
-                <input type="file" id="model-file" accept=".onnx" style="display: none;">
-                <button onclick="document.getElementById('model-file').click()" class="btn-success">
-                    📥 選擇模型文件
-                </button>
+                <h3>🤖 1. AI模型選擇</h3>
+                <div class="model-options">
+                    <div class="model-option selected" id="online-model" onclick="selectModel('online')">
+                        <div style="font-size: 1.2rem;">🌐</div>
+                        <div>線上模型</div>
+                        <div style="font-size: 0.8rem; color: #7f8c8d;">自動下載</div>
+                    </div>
+                    <div class="model-option" id="local-model" onclick="selectModel('local')">
+                        <div style="font-size: 1.2rem;">💾</div>
+                        <div>本地模型</div>
+                        <div style="font-size: 0.8rem; color: #7f8c8d;">手動上傳</div>
+                    </div>
+                </div>
+                
+                <div id="local-upload-section" style="display: none;">
+                    <input type="file" id="model-file" accept=".onnx" style="display: none;">
+                    <button onclick="document.getElementById('model-file').click()" class="btn-secondary">
+                        📥 選擇模型文件
+                    </button>
+                </div>
+                
                 <div class="progress-bar">
                     <div class="progress-fill" id="progress-fill"></div>
                 </div>
@@ -349,9 +387,62 @@
             { id: 4, code: "160101000478", name: "桃型小缽4吋/10.3*9*H4.3cm", price: 27, type: "碗" },
             { id: 5, code: "160101000479", name: "圓盤6吋/15*H2cm", price: 25, type: "盤子" },
             { id: 6, code: "160101000539", name: "CLASSIC圓餐盤(浮雕直線紋)RAK/240mm", price: 100, type: "盤子" },
-            // ... 其他56個項目（為了簡化，這裡只顯示部分）
+            { id: 7, code: "160101000540", name: "NANO圓平盤(浮雕直線紋)RAK/240mm", price: 100, type: "盤子" },
+            { id: 8, code: "160101000599", name: "飯碗(詩羅恩)23-4000-91581/12cm", price: 68, type: "碗" },
+            { id: 9, code: "160102000020", name: "RAK圓餐盤(PIXEL)/24cm", price: 80, type: "盤子" },
+            { id: 10, code: "160102000317", name: "麻布紋圓淺盤8.25吋/21cm", price: 230, type: "盤子" },
+            { id: 11, code: "160102000318", name: "圓淺盤(深藍)/10吋/25.4cm", price: 250, type: "盤子" },
+            { id: 12, code: "160102000359", name: "RAK DUNES 圓餐盤/24cm", price: 0, type: "盤子" },
+            { id: 13, code: "160102000360", name: "RAK FOCUS 圓餐盤/21cm", price: 0, type: "盤子" },
             { id: 14, code: "160104000052", name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子" },
-            { id: 26, code: "160200000255", name: "薄底圓酒杯(水杯)/(LIBBEY )/5.8*H10.1cm/348cc", price: 35, type: "杯子" }
+            { id: 15, code: "160104000053", name: "咖啡杯/針葉林-松柏灰/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子" },
+            { id: 16, code: "160104000054", name: "咖啡/湯盤兩用底盤/青杉藍/日本NORITAKE/15.5*2cm", price: 64, type: "盤子" },
+            { id: 17, code: "160104000055", name: "咖啡/湯盤兩用底盤/松柏灰/日本NORITAKE/15.5*2cm", price: 64, type: "盤子" },
+            { id: 18, code: "160104000056", name: "沙拉盤/針葉林-青杉藍/日本NORITAKE/21cm", price: 107, type: "盤子" },
+            { id: 19, code: "160104000057", name: "沙拉盤/針葉林-松柏灰 /日本NORITAKE/21cm", price: 107, type: "盤子" },
+            { id: 20, code: "160104000058", name: "沙拉盤/針葉林-白色/日本NORITAKE/21cm", price: 107, type: "盤子" },
+            { id: 21, code: "160104000059", name: "有耳濃湯杯(西式湯碗)/針葉林-青杉藍/10.8*5cm/225ml", price: 175, type: "杯子" },
+            { id: 22, code: "160104000060", name: "水果碗/針葉林-青杉藍/日本NORITAKE/14cm*H5.8/450ml", price: 82, type: "碗" },
+            { id: 23, code: "160106000030", name: "木製-胡椒研磨器/霧黑色/100mm", price: 860, type: "其他" },
+            { id: 24, code: "160200000248", name: "度力龍烈酒杯(甜點杯)", price: 18, type: "杯子" },
+            { id: 25, code: "160200000249", name: "方型烈酒杯/4.8*4.8*H6.5cm/60ml", price: 18, type: "杯子" },
+            { id: 26, code: "160200000255", name: "薄底圓酒杯(水杯)/(LIBBEY )/5.8*H10.1cm/348cc", price: 35, type: "杯子" },
+            { id: 27, code: "160200000260", name: "SOLO烈酒杯/OCEAN BP00110/最寬54*H69mm/60cc", price: 13, type: "杯子" },
+            { id: 28, code: "160200000261", name: "東京香檳杯/LUCARISLS02CP06/最寬65mm/H229mm/165cc", price: 156, type: "杯子" },
+            { id: 29, code: "160200000296", name: "常春捲杯/高腳杯160cc", price: 49, type: "杯子" },
+            { id: 30, code: "160200000308", name: "VINO紅酒杯(Ocean)/470ml", price: 50, type: "杯子" },
+            { id: 31, code: "160200000309", name: "方形烈酒杯LIBBEY/4.7*H6.3CM", price: 41, type: "杯子" },
+            { id: 32, code: "160201000082", name: "曼谷卡本內酒杯LUCARIS/最寬85mm//H233mm/470cc", price: 95, type: "杯子" },
+            { id: 33, code: "160201000090", name: "香檳杯/德國(SCHOOT)#121594", price: 129, type: "杯子" },
+            { id: 34, code: "160306000274", name: "手打四腳翹淺盤/12*12*H2cm", price: 330, type: "盤子" },
+            { id: 35, code: "160306000275", name: "Arthur Krupp主餐刀/232mm/CREAM 62511-11", price: 100, type: "餐具" },
+            { id: 36, code: "160306000276", name: "Arthur Krupp主餐叉/210mm/CREAM 62511-08", price: 98, type: "餐具" },
+            { id: 37, code: "160306000280", name: "Arthur Krupp圓湯匙/180mm/CREAM 62511-02", price: 98, type: "餐具" },
+            { id: 38, code: "160306000281", name: "Arthur Krupp甜湯匙(點心匙)/180mm", price: 90, type: "餐具" },
+            { id: 39, code: "160306000308", name: "ST亮面冰夾/13.7cm/圓形夾", price: 200, type: "餐具" },
+            { id: 40, code: "160306000312", name: "茶匙/13.5cm", price: 25, type: "餐具" },
+            { id: 41, code: "160306000314", name: "服務夾(鏡面)/23.5cm", price: 295, type: "餐具" },
+            { id: 42, code: "160306000315", name: "不銹鋼有孔服務夾(毛絲面)/23cm", price: 68, type: "餐具" },
+            { id: 43, code: "160306000317", name: "服務夾/23.5CM", price: 295, type: "餐具" },
+            { id: 44, code: "160306000318", name: "蝴蝶燒肉夾/25cm", price: 105, type: "餐具" },
+            { id: 45, code: "160306000319", name: "ATHENA不銹鋼菜匙/26cm", price: 415, type: "餐具" },
+            { id: 46, code: "160306000320", name: "ATHENA不銹鋼湯杓/29.3cm", price: 380, type: "餐具" },
+            { id: 47, code: "160306000321", name: "ATHENA不銹鋼湯杓座/Ø11x10.3(H)cm", price: 720, type: "餐具" },
+            { id: 48, code: "160306000322", name: "ATHENA不銹鋼佐料杓/18.5cm", price: 285, type: "餐具" },
+            { id: 49, code: "160306000323", name: "ATHENA不銹鋼佐料杓(加長)/27cm", price: 310, type: "餐具" },
+            { id: 50, code: "160306000324", name: "ATHENA蛋糕鏟/24cm", price: 200, type: "餐具" },
+            { id: 51, code: "160306000325", name: "ATHENA麵包刀/37cm", price: 430, type: "餐具" },
+            { id: 52, code: "160306000326", name: "ATHENA起司刀/25cm", price: 300, type: "餐具" },
+            { id: 53, code: "160306000329", name: "熱水壺/1.5L", price: 380, type: "其他" },
+            { id: 54, code: "160306000330", name: "不鏽鋼香檳桶(雙瓶)/224x210x200mm", price: 1800, type: "其他" },
+            { id: 55, code: "160306000331", name: "不鏽鋼香檳桶架(雙瓶)Dia/255x605(H)mm", price: 2300, type: "其他" },
+            { id: 56, code: "160306000338", name: "不銹鋼麵包夾/200mm/AT BU18", price: 200, type: "餐具" },
+            { id: 57, code: "160306000347", name: "不鏽鋼冰桶/Cap.1.0L", price: 630, type: "其他" },
+            { id: 58, code: "160200000241", name: "曼谷卡本內紅酒杯/最寬85mm//H233mm/470cc", price: 95, type: "杯子" },
+            { id: 59, code: "160102000359", name: "RAK DUNES 圓餐盤24cm", price: 136.4, type: "盤子" },
+            { id: 60, code: "160102000360", name: "RAK FOCUS 圓餐盤21cm", price: 109.1, type: "盤子" },
+            { id: 61, code: "160102000368", name: "RAK DUNES可疊式湯碗", price: 155, type: "碗" },
+            { id: 62, code: "160102000367", name: "RAK DUNES可疊式咖啡杯(奶茶色)", price: 115, type: "杯子" }
         ];
 
         // DOM元素
@@ -376,7 +467,10 @@
             totalAmount: document.getElementById('total-amount'),
             itemsCount: document.getElementById('items-count'),
             historyList: document.getElementById('history-list'),
-            saveBtn: document.getElementById('save-btn')
+            saveBtn: document.getElementById('save-btn'),
+            localUploadSection: document.getElementById('local-upload-section'),
+            onlineModel: document.getElementById('online-model'),
+            localModel: document.getElementById('local-model')
         };
 
         // 應用狀態
@@ -390,7 +484,8 @@
             selectedItem: null,
             learningMode: false,
             featureDatabase: loadFromLocalStorage('featureDatabase') || {},
-            learningSamples: loadFromLocalStorage('learningSamples') || {}
+            learningSamples: loadFromLocalStorage('learningSamples') || {},
+            modelType: 'online' // 預設使用線上模型
         };
 
         // 特徵提取器
@@ -516,7 +611,7 @@
             initManualSelection();
             initLearningSelection();
             updateDisplay();
-            loadModelFromLocalStorage();
+            loadOnlineModel(); // 自動載入線上模型
             
             // 事件監聽器
             setupEventListeners();
@@ -539,163 +634,505 @@
             elements.saveBtn.addEventListener('click', saveInventory);
         }
 
-        // 模型處理
-        async function handleModelUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            try {
-                updateStatus("正在載入模型...", "loading");
-                elements.progressFill.style.width = '30%';
-                elements.uploadStatus.textContent = `文件: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
-
-                const arrayBuffer = await file.arrayBuffer();
-                elements.progressFill.style.width = '70%';
-
-                state.session = await ort.InferenceSession.create(arrayBuffer);
-                elements.progressFill.style.width = '100%';
-
-                state.isModelReady = true;
-                updateStatus("模型載入成功！", "ready");
-                elements.captureBtn.disabled = false;
-                elements.uploadStatus.innerHTML = '<span style="color: #27ae60;">✅ 模型載入成功！</span>';
-                
-                saveToLocalStorage('modelFile', file.name);
-
-            } catch (error) {
-                updateStatus("模型載入失敗", "error");
-                elements.uploadStatus.innerHTML = `<span style="color: #e74c3c;">錯誤: ${error.message}</span>`;
-                elements.progressFill.style.width = '0%';
+        // 模型選擇
+        function selectModel(type) {
+            state.modelType = type;
+            
+            if (type === 'online') {
+                elements.onlineModel.classList.add('selected');
+                elements.localModel.classList.remove('selected');
+                elements.localUploadSection.style.display = 'none';
+                loadOnlineModel();
+            } else {
+                elements.onlineModel.classList.remove('selected');
+                elements.localModel.classList.add('selected');
+                elements.localUploadSection.style.display = 'block';
             }
         }
 
-        // 學習功能
+        // 從線上載入模型
+        async function loadOnlineModel() {
+            try {
+                updateStatus("正在下載AI模型...", "loading");
+                elements.progressFill.style.width = '30%';
+                elements.uploadStatus.textContent = "從Hugging Face下載模型...";
+
+                // 使用您的Hugging Face模型鏈接
+                const modelUrl = "https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx";
+                
+                elements.progressFill.style.width = '60%';
+                elements.uploadStatus.textContent = "載入模型中...";
+                
+                // 使用ONNX Runtime載入模型
+                state.session = await ort.InferenceSession.create(modelUrl);
+                
+                elements.progressFill.style.width = '100%';
+                elements.uploadStatus.textContent = "模型載入成功！";
+                updateStatus("AI模型已就緒", "ready");
+                
+                state.isModelReady = true;
+                elements.captureBtn.disabled = false;
+                elements.learnBtn.disabled = false;
+                
+                setTimeout(() => {
+                    elements.progressFill.style.width = '0%';
+                    elements.uploadStatus.textContent = "";
+                }, 2000);
+                
+            } catch (error) {
+                console.error("模型載入失敗:", error);
+                updateStatus("模型載入失敗，請檢查網路連線", "error");
+                elements.uploadStatus.textContent = "錯誤: " + error.message;
+            }
+        }
+
+        // 處理模型上傳
+        async function handleModelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            try {
+                updateStatus("正在載入模型...", "loading");
+                elements.progressFill.style.width = '30%';
+                elements.uploadStatus.textContent = "讀取模型文件...";
+                
+                const arrayBuffer = await file.arrayBuffer();
+                elements.progressFill.style.width = '70%';
+                elements.uploadStatus.textContent = "初始化模型...";
+                
+                state.session = await ort.InferenceSession.create(arrayBuffer);
+                
+                elements.progressFill.style.width = '100%';
+                elements.uploadStatus.textContent = "模型載入成功！";
+                updateStatus("AI模型已就緒", "ready");
+                
+                state.isModelReady = true;
+                elements.captureBtn.disabled = false;
+                elements.learnBtn.disabled = false;
+                
+                setTimeout(() => {
+                    elements.progressFill.style.width = '0%';
+                    elements.uploadStatus.textContent = "";
+                }, 2000);
+                
+            } catch (error) {
+                console.error("模型載入失敗:", error);
+                updateStatus("模型載入失敗", "error");
+                elements.uploadStatus.textContent = "錯誤: " + error.message;
+            }
+        }
+
+        // 開啟相機
+        async function startCamera() {
+            try {
+                state.stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                
+                elements.cameraView.srcObject = state.stream;
+                elements.cameraView.style.display = 'block';
+                elements.cameraPlaceholder.style.display = 'none';
+                
+                elements.startCamera.textContent = '關閉相機';
+                elements.startCamera.classList.remove('btn-primary');
+                elements.startCamera.classList.add('btn-danger');
+                elements.startCamera.onclick = stopCamera;
+                
+            } catch (error) {
+                console.error("無法開啟相機:", error);
+                updateStatus("無法開啟相機", "error");
+            }
+        }
+
+        // 關閉相機
+        function stopCamera() {
+            if (state.stream) {
+                state.stream.getTracks().forEach(track => track.stop());
+                state.stream = null;
+            }
+            
+            elements.cameraView.style.display = 'none';
+            elements.cameraPlaceholder.style.display = 'flex';
+            
+            elements.startCamera.textContent = '開啟相機';
+            elements.startCamera.classList.remove('btn-danger');
+            elements.startCamera.classList.add('btn-primary');
+            elements.startCamera.onclick = startCamera;
+        }
+
+        // 拍攝照片進行檢測
+        async function captureForDetection() {
+            if (!state.isModelReady) {
+                updateStatus("模型尚未載入", "error");
+                return;
+            }
+            
+            try {
+                updateStatus("正在分析圖像...", "loading");
+                
+                // 從相機獲取圖像
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = elements.cameraView.videoWidth;
+                canvas.height = elements.cameraView.videoHeight;
+                ctx.drawImage(elements.cameraView, 0, 0);
+                
+                // 使用特徵匹配進行識別
+                const detectedItems = await detectItemsWithFeatures(canvas);
+                
+                // 顯示檢測結果
+                displayDetectionResults(detectedItems);
+                
+                updateStatus("檢測完成", "ready");
+                
+            } catch (error) {
+                console.error("檢測失敗:", error);
+                updateStatus("檢測失敗", "error");
+            }
+        }
+
+        // 使用特徵匹配進行物品檢測
+        async function detectItemsWithFeatures(canvas) {
+            const results = [];
+            
+            // 如果沒有學習過的特徵，返回空結果
+            if (Object.keys(state.featureDatabase).length === 0) {
+                return results;
+            }
+            
+            // 提取當前圖像的特徵
+            const currentFeatures = FeatureExtractor.extractFeatures(canvas);
+            
+            // 與資料庫中的特徵進行比對
+            for (const itemId in state.featureDatabase) {
+                const itemFeatures = state.featureDatabase[itemId];
+                const similarity = FeatureExtractor.calculateSimilarity(currentFeatures, itemFeatures);
+                
+                if (similarity > 0.7) { // 相似度閾值
+                    const item = itemsDatabase.find(i => i.id === parseInt(itemId));
+                    if (item) {
+                        results.push({
+                            item: item,
+                            confidence: similarity,
+                            boundingBox: { x: 100, y: 100, width: 200, height: 200 } // 模擬邊界框
+                        });
+                    }
+                }
+            }
+            
+            // 按置信度排序
+            results.sort((a, b) => b.confidence - a.confidence);
+            
+            return results;
+        }
+
+        // 顯示檢測結果
+        function displayDetectionResults(detections) {
+            state.currentDetections = detections;
+            
+            if (detections.length === 0) {
+                elements.detectionList.innerHTML = `
+                    <div style="text-align: center; padding: 40px 20px; color: #7f8c8d;">
+                        <div style="font-size: 3rem; margin-bottom: 10px;">🔍</div>
+                        <div>未檢測到已知器皿</div>
+                        <div style="font-size: 0.9rem; margin-top: 10px;">請嘗試學習模式或手動選擇</div>
+                    </div>
+                `;
+            } else {
+                elements.detectionList.innerHTML = detections.map((detection, index) => `
+                    <div class="detected-item ${index === 0 ? 'selected' : ''}" onclick="selectDetection(${index})">
+                        <div class="item-name">${detection.item.name}</div>
+                        <div class="item-code">編號: ${detection.item.code}</div>
+                        <div class="item-price">價格: NT$ ${detection.item.price}</div>
+                        <div style="color: #3498db; font-size: 0.9rem;">
+                            匹配度: ${Math.round(detection.confidence * 100)}%
+                        </div>
+                    </div>
+                `).join('');
+            }
+            
+            elements.detectionResults.classList.add('active');
+        }
+
+        // 選擇檢測結果
+        function selectDetection(index) {
+            document.querySelectorAll('.detected-item').forEach((item, i) => {
+                if (i === index) {
+                    item.classList.add('selected');
+                    state.selectedItem = state.currentDetections[index].item;
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+
+        // 確認檢測結果
+        function confirmDetection() {
+            if (!state.selectedItem && state.currentDetections.length > 0) {
+                state.selectedItem = state.currentDetections[0].item;
+            }
+            
+            if (state.selectedItem) {
+                addScannedItem(state.selectedItem);
+                elements.detectionResults.classList.remove('active');
+                state.selectedItem = null;
+            }
+        }
+
+        // 顯示修正介面
+        function showCorrectionInterface() {
+            hideAllSections();
+            elements.manualSection.style.display = 'block';
+        }
+
+        // 取消檢測
+        function cancelDetection() {
+            elements.detectionResults.classList.remove('active');
+            state.selectedItem = null;
+        }
+
+        // 學習模式
+        function showTrainingSection() {
+            hideAllSections();
+            elements.trainingSection.style.display = 'block';
+        }
+
         function startLearning() {
             if (!state.selectedItem) {
-                elements.learningStatus.innerHTML = '<span style="color: #e74c3c;">請先選擇要學習的器皿</span>';
+                elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">請先選擇要學習的器皿</div>`;
                 return;
             }
             
             state.learningMode = true;
-            elements.learnBtn.disabled = false;
-            elements.learningStatus.innerHTML = `<span style="color: #3498db;">開始學習: ${state.selectedItem.name}</span>`;
+            elements.learningStatus.innerHTML = `
+                <div style="color: #2ecc71;">
+                    正在學習: ${state.selectedItem.name}
+                </div>
+                <div style="font-size: 0.9rem; margin-top: 5px;">
+                    請從不同角度拍攝3-5張照片
+                </div>
+            `;
         }
 
         function captureLearningPhoto() {
-            if (!state.stream || !state.selectedItem) return;
-            
-            const canvas = document.createElement('canvas');
-            canvas.width = elements.cameraView.videoWidth;
-            canvas.height = elements.cameraView.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(elements.cameraView, 0, 0);
-            
-            const features = FeatureExtractor.extractFeatures(elements.cameraView);
-            const itemId = state.selectedItem.id;
-            
-            // 儲存學習樣本
-            if (!state.learningSamples[itemId]) {
-                state.learningSamples[itemId] = [];
+            if (!state.learningMode || !state.selectedItem) {
+                elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">請先選擇器皿並開始學習</div>`;
+                return;
             }
-            state.learningSamples[itemId].push({
-                features: features,
-                timestamp: new Date()
+            
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = elements.cameraView.videoWidth;
+                canvas.height = elements.cameraView.videoHeight;
+                ctx.drawImage(elements.cameraView, 0, 0);
+                
+                // 提取特徵
+                const features = FeatureExtractor.extractFeatures(canvas);
+                
+                // 儲存特徵
+                const itemId = state.selectedItem.id;
+                if (!state.featureDatabase[itemId]) {
+                    state.featureDatabase[itemId] = features;
+                } else {
+                    // 合併特徵（簡單平均）
+                    state.featureDatabase[itemId] = mergeFeatures(state.featureDatabase[itemId], features);
+                }
+                
+                // 更新學習樣本計數
+                if (!state.learningSamples[itemId]) {
+                    state.learningSamples[itemId] = 0;
+                }
+                state.learningSamples[itemId]++;
+                
+                // 儲存到本地存儲
+                saveToLocalStorage('featureDatabase', state.featureDatabase);
+                saveToLocalStorage('learningSamples', state.learningSamples);
+                
+                // 更新顯示
+                updateLearningDisplay();
+                
+                elements.learningStatus.innerHTML = `
+                    <div style="color: #2ecc71;">
+                        已學習 ${state.learningSamples[itemId]} 張照片
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error("學習失敗:", error);
+                elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">學習失敗: ${error.message}</div>`;
+            }
+        }
+
+        function batchLearning() {
+            elements.learningStatus.innerHTML = `<div style="color: #f39c12;">批量學習所有器皿功能開發中...</div>`;
+        }
+
+        // 手動選擇
+        function showManualSection() {
+            hideAllSections();
+            elements.manualSection.style.display = 'block';
+        }
+
+        function initManualSelection() {
+            elements.manualItemsGrid.innerHTML = itemsDatabase.map(item => `
+                <div class="item-card" onclick="selectManualItem(${item.id})">
+                    <div class="item-name">${item.name}</div>
+                    <div class="item-code">編號: ${item.code}</div>
+                    <div class="item-price">價格: NT$ ${item.price}</div>
+                </div>
+            `).join('');
+        }
+
+        function initLearningSelection() {
+            elements.learningItemsGrid.innerHTML = itemsDatabase.map(item => {
+                const sampleCount = state.learningSamples[item.id] || 0;
+                const isLearned = sampleCount > 0;
+                
+                return `
+                    <div class="item-card ${isLearned ? 'learned' : ''} ${state.selectedItem && state.selectedItem.id === item.id ? 'selected' : ''}" 
+                         onclick="selectLearningItem(${item.id})">
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-code">編號: ${item.code}</div>
+                        <div class="item-price">價格: NT$ ${item.price}</div>
+                        <div class="item-samples">已學習: ${sampleCount} 張照片</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function selectManualItem(itemId) {
+            const item = itemsDatabase.find(i => i.id === itemId);
+            if (item) {
+                addScannedItem(item);
+            }
+        }
+
+        function selectLearningItem(itemId) {
+            state.selectedItem = itemsDatabase.find(i => i.id === itemId);
+            updateLearningDisplay();
+        }
+
+        function updateLearningDisplay() {
+            initLearningSelection();
+        }
+
+        // 添加掃描項目
+        function addScannedItem(item) {
+            state.scannedItems.push({
+                ...item,
+                timestamp: new Date().toLocaleString()
             });
             
-            // 更新特徵資料庫（取平均特徵）
-            state.featureDatabase[itemId] = computeAverageFeatures(state.learningSamples[itemId]);
-            
-            // 儲存到本地
-            saveToLocalStorage('learningSamples', state.learningSamples);
-            saveToLocalStorage('featureDatabase', state.featureDatabase);
-            
-            // 更新UI
-            updateLearningSelection();
-            elements.learningStatus.innerHTML = 
-                `<span style="color: #27ae60;">✅ 已學習 ${state.selectedItem.name} (${state.learningSamples[itemId].length}張照片)</span>`;
+            state.total += item.price;
+            updateDisplay();
         }
 
-        function computeAverageFeatures(samples) {
-            if (samples.length === 0) return null;
-            if (samples.length === 1) return samples[0].features;
+        // 更新顯示
+        function updateDisplay() {
+            elements.totalAmount.textContent = state.total.toLocaleString();
+            elements.itemsCount.textContent = state.scannedItems.length;
             
-            // 這裡應該實現特徵平均算法
-            // 為了簡化，返回最後一個樣本的特徵
-            return samples[samples.length - 1].features;
-        }
-
-        // 特徵匹配識別
-        function recognizeWithFeatures(image) {
-            const features = FeatureExtractor.extractFeatures(image);
-            let bestMatch = null;
-            let bestScore = 0;
-            
-            for (const [itemId, trainedFeatures] of Object.entries(state.featureDatabase)) {
-                const score = FeatureExtractor.calculateSimilarity(features, trainedFeatures);
-                if (score > bestScore && score > 0.6) {
-                    bestScore = score;
-                    bestMatch = itemsDatabase.find(item => item.id == itemId);
-                }
-            }
-            
-            return bestMatch ? { item: bestMatch, confidence: bestScore } : null;
-        }
-
-        // 改進的檢測功能
-        async function improvedDetection() {
-            if (!state.stream) return;
-            
-            let result = null;
-            
-            // 1. 先嘗試YOLO模型
-            if (state.isModelReady) {
-                try {
-                    result = await detectWithYOLO();
-                } catch (error) {
-                    console.log('YOLO檢測失敗');
-                }
-            }
-            
-            // 2. 如果YOLO失敗或置信度低，使用特徵匹配
-            if (!result || result.confidence < 0.6) {
-                result = recognizeWithFeatures(elements.cameraView);
-                if (result) result.method = '特徵匹配';
-            }
-            
-            if (result) {
-                showDetectionResult(result);
+            if (state.scannedItems.length === 0) {
+                elements.historyList.innerHTML = `
+                    <div style="text-align: center; color: #7f8c8d; padding: 40px 20px;">
+                        <div style="font-size: 3rem; margin-bottom: 10px;">🍽️</div>
+                        <div>尚未掃描任何器皿</div>
+                    </div>
+                `;
             } else {
-                elements.uploadStatus.innerHTML = '<span style="color: #e74c3c;">無法識別此器皿</span>';
+                elements.historyList.innerHTML = state.scannedItems.map(item => `
+                    <div class="history-item">
+                        <div>
+                            <div style="font-weight: 500;">${item.name}</div>
+                            <div style="font-size: 0.8rem; color: #7f8c8d;">${item.timestamp}</div>
+                        </div>
+                        <div style="font-weight: bold; color: #e74c3c;">NT$ ${item.price}</div>
+                    </div>
+                `).join('');
             }
         }
 
-        // 輔助函數
+        // 清除所有項目
+        function clearAllItems() {
+            state.scannedItems = [];
+            state.total = 0;
+            updateDisplay();
+        }
+
+        // 儲存盤點記錄
+        function saveInventory() {
+            if (state.scannedItems.length === 0) {
+                alert("沒有可儲存的盤點記錄");
+                return;
+            }
+            
+            const data = {
+                timestamp: new Date().toLocaleString(),
+                total: state.total,
+                items: state.scannedItems
+            };
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `盤點記錄_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            alert("盤點記錄已儲存！");
+        }
+
+        // 工具函數
         function updateStatus(message, type) {
             elements.modelStatus.textContent = message;
             elements.modelStatus.className = `status status-${type}`;
         }
 
-        function updateDisplay() {
-            elements.totalAmount.textContent = state.total;
-            elements.itemsCount.textContent = state.scannedItems.length;
-            updateHistoryList();
+        function hideAllSections() {
+            elements.trainingSection.style.display = 'none';
+            elements.manualSection.style.display = 'none';
+            elements.detectionResults.classList.remove('active');
         }
 
-        // 本地儲存
-        function saveToLocalStorage(key, data) {
-            localStorage.setItem(key, JSON.stringify(data));
+        function mergeFeatures(features1, features2) {
+            // 簡單的特徵合併（平均）
+            return {
+                colorHistogram: {
+                    r: features1.colorHistogram.r.map((val, i) => (val + features2.colorHistogram.r[i]) / 2),
+                    g: features1.colorHistogram.g.map((val, i) => (val + features2.colorHistogram.g[i]) / 2),
+                    b: features1.colorHistogram.b.map((val, i) => (val + features2.colorHistogram.b[i]) / 2)
+                },
+                brightness: (features1.brightness + features2.brightness) / 2,
+                contrast: (features1.contrast + features2.contrast) / 2,
+                edges: (features1.edges + features2.edges) / 2,
+                shape: features1.shape // 形狀保持不變
+            };
+        }
+
+        function saveToLocalStorage(key, value) {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (error) {
+                console.error("儲存到本地存儲失敗:", error);
+            }
         }
 
         function loadFromLocalStorage(key) {
-            const data = localStorage.getItem(key);
-            return data ? JSON.parse(data) : null;
+            try {
+                const item = localStorage.getItem(key);
+                return item ? JSON.parse(item) : null;
+            } catch (error) {
+                console.error("從本地存儲讀取失敗:", error);
+                return null;
+            }
         }
 
         // 初始化應用
-        init();
-
-        // 由於代碼較長，這裡只顯示了核心功能
-        // 完整實現需要包含所有界面更新、相機控制、歷史記錄等功能
+        window.onload = init;
     </script>
 </body>
 </html>
