@@ -109,6 +109,14 @@
             background: #c0392b;
         }
         
+        .clear-btn {
+            background: #e67e22;
+        }
+        
+        .clear-btn:hover {
+            background: #d35400;
+        }
+        
         .model-status {
             text-align: center;
             padding: 15px;
@@ -166,6 +174,29 @@
             padding: 20px;
             margin-bottom: 20px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            display: none;
+        }
+        
+        .category-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .category-tab {
+            background: #ecf0f1;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .category-tab.active {
+            background: #3498db;
+            color: white;
         }
         
         .items-grid {
@@ -198,11 +229,56 @@
         .item-name {
             font-weight: 600;
             margin-bottom: 5px;
+            font-size: 0.9rem;
         }
         
         .item-price {
             color: #e74c3c;
             font-weight: bold;
+        }
+        
+        .item-code {
+            font-size: 0.8rem;
+            color: #7f8c8d;
+        }
+        
+        .detection-results {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            display: none;
+        }
+        
+        .detection-results.active {
+            display: block;
+        }
+        
+        .detected-item {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .detected-item:hover {
+            border-color: #3498db;
+        }
+        
+        .detected-item.selected {
+            border-color: #2ecc71;
+            background: #f0fff4;
+        }
+        
+        .result-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 15px;
         }
         
         .summary-section {
@@ -239,6 +315,43 @@
             border-bottom: 1px solid #ecf0f1;
             display: flex;
             justify-content: space-between;
+            align-items: center;
+        }
+        
+        .history-item:last-child {
+            border-bottom: none;
+        }
+        
+        .history-info {
+            flex: 2;
+        }
+        
+        .history-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .history-meta {
+            font-size: 0.7rem;
+            color: #95a5a6;
+        }
+        
+        .history-price {
+            flex: 1;
+            text-align: right;
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        
+        .history-remove {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 4px 8px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            margin-left: 10px;
         }
         
         .save-section {
@@ -306,7 +419,17 @@
         
         <section class="manual-section" id="manual-section">
             <h2 style="margin-bottom: 15px;">手動選擇器皿</h2>
+            <div class="category-tabs" id="category-tabs"></div>
             <div class="items-grid" id="items-grid"></div>
+        </section>
+        
+        <section class="detection-results" id="detection-results">
+            <h2 style="margin-bottom: 15px;">檢測結果 - 請確認</h2>
+            <div id="detection-list"></div>
+            <div class="result-actions">
+                <button id="confirm-all-btn" style="background: #2ecc71;">確認加入全部</button>
+                <button id="cancel-detection-btn" style="background: #95a5a6;">取消</button>
+            </div>
         </section>
         
         <section class="summary-section">
@@ -314,6 +437,7 @@
             <div class="total-amount" id="total-amount">NT$ 0</div>
             <div style="text-align: center; color: #7f8c8d;">
                 已掃描 <span id="items-count">0</span> 個項目
+                <button class="clear-btn" onclick="clearAllItems()" style="margin-left: 10px; padding: 5px 10px; font-size: 0.8rem;">清除全部</button>
             </div>
         </section>
         
@@ -334,7 +458,7 @@
     </div>
 
     <script>
-        // 器皿資料庫
+        // 完整的器皿資料庫（62個項目）
         const itemsDatabase = [
             { id: 1, code: "160100000126", name: "止滑圓托盤16吋/直徑41cm", price: 235, type: "盤子" },
             { id: 2, code: "160100000987", name: "奶油碟(味碟)2.8吋/象牙強化/港式小碟/169銀河系", price: 21, type: "碟子" },
@@ -342,9 +466,62 @@
             { id: 4, code: "160101000478", name: "桃型小缽4吋/10.3*9*H4.3cm", price: 27, type: "碗" },
             { id: 5, code: "160101000479", name: "圓盤6吋/15*H2cm", price: 25, type: "盤子" },
             { id: 6, code: "160101000539", name: "CLASSIC圓餐盤(浮雕直線紋)RAK/240mm", price: 100, type: "盤子" },
+            { id: 7, code: "160101000540", name: "NANO圓平盤(浮雕直線紋)RAK/240mm", price: 100, type: "盤子" },
+            { id: 8, code: "160101000599", name: "飯碗(詩羅恩)23-4000-91581/12cm", price: 68, type: "碗" },
+            { id: 9, code: "160102000020", name: "RAK圓餐盤(PIXEL)/24cm", price: 80, type: "盤子" },
+            { id: 10, code: "160102000317", name: "麻布紋圓淺盤8.25吋/21cm", price: 230, type: "盤子" },
+            { id: 11, code: "160102000318", name: "圓淺盤(深藍)/10吋/25.4cm", price: 250, type: "盤子" },
+            { id: 12, code: "160102000359", name: "RAK DUNES 圓餐盤/24cm", price: 0, type: "盤子" },
+            { id: 13, code: "160102000360", name: "RAK FOCUS 圓餐盤/21cm", price: 0, type: "盤子" },
             { id: 14, code: "160104000052", name: "咖啡杯/針葉林-青杉藍/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子" },
+            { id: 15, code: "160104000053", name: "咖啡杯/針葉林-松柏灰/日本NORITAKE/8*6.2cm/220ml", price: 128, type: "杯子" },
+            { id: 16, code: "160104000054", name: "咖啡/湯盤兩用底盤/青杉藍/日本NORITAKE/15.5*2cm", price: 64, type: "盤子" },
+            { id: 17, code: "160104000055", name: "咖啡/湯盤兩用底盤/松柏灰/日本NORITAKE/15.5*2cm", price: 64, type: "盤子" },
+            { id: 18, code: "160104000056", name: "沙拉盤/針葉林-青杉藍/日本NORITAKE/21cm", price: 107, type: "盤子" },
+            { id: 19, code: "160104000057", name: "沙拉盤/針葉林-松柏灰/日本NORITAKE/21cm", price: 107, type: "盤子" },
+            { id: 20, code: "160104000058", name: "沙拉盤/針葉林-白色/日本NORITAKE/21cm", price: 107, type: "盤子" },
+            { id: 21, code: "160104000059", name: "有耳濃湯杯(西式湯碗)/針葉林-青杉藍/10.8*5cm/225ml", price: 175, type: "碗" },
+            { id: 22, code: "160104000060", name: "水果碗/針葉林-青杉藍/日本NORITAKE/14cm*H5.8/450ml", price: 82, type: "碗" },
+            { id: 23, code: "160106000030", name: "木製-胡椒研磨器/霧黑色/100mm", price: 860, type: "器具" },
+            { id: 24, code: "160200000248", name: "度力龍烈酒杯(甜點杯)", price: 18, type: "杯子" },
+            { id: 25, code: "160200000249", name: "方型烈酒杯/4.8*4.8*H6.5cm/60ml", price: 18, type: "杯子" },
             { id: 26, code: "160200000255", name: "薄底圓酒杯(水杯)/(LIBBEY )/5.8*H10.1cm/348cc", price: 35, type: "杯子" },
-            { id: 30, code: "160200000308", name: "VINO紅酒杯(Ocean)/470ml", price: 50, type: "杯子" }
+            { id: 27, code: "160200000260", name: "SOLO烈酒杯/OCEAN BP00110/最寬54*H69mm/60cc", price: 13, type: "杯子" },
+            { id: 28, code: "160200000261", name: "東京香檳杯/LUCARISLS02CP06/最寬65mm/H229mm/165cc", price: 156, type: "杯子" },
+            { id: 29, code: "160200000296", name: "常春捲杯/高腳杯160cc", price: 49, type: "杯子" },
+            { id: 30, code: "160200000308", name: "VINO紅酒杯(Ocean)/470ml", price: 50, type: "杯子" },
+            { id: 31, code: "160200000309", name: "方形烈酒杯LIBBEY/4.7*H6.3CM", price: 41, type: "杯子" },
+            { id: 32, code: "160201000082", name: "曼谷卡本內酒杯LUCARIS/最寬85mm//H233mm/470cc", price: 95, type: "杯子" },
+            { id: 33, code: "160201000090", name: "香檳杯/德國(SCHOOT)#121594", price: 129, type: "杯子" },
+            { id: 34, code: "160306000274", name: "手打四腳翹淺盤/12*12*H2cm", price: 330, type: "盤子" },
+            { id: 35, code: "160306000275", name: "Arthur Krupp主餐刀/232mm/CREAM 62511-11", price: 100, type: "餐具" },
+            { id: 36, code: "160306000276", name: "Arthur Krupp主餐叉/210mm/CREAM 62511-08", price: 98, type: "餐具" },
+            { id: 37, code: "160306000280", name: "Arthur Krupp圓湯匙/180mm/CREAM 62511-02", price: 98, type: "餐具" },
+            { id: 38, code: "160306000281", name: "Arthur Krupp甜湯匙(點心匙)/180mm", price: 90, type: "餐具" },
+            { id: 39, code: "160306000308", name: "ST亮面冰夾/13.7cm/圓形夾", price: 200, type: "器具" },
+            { id: 40, code: "160306000312", name: "茶匙/13.5cm", price: 25, type: "餐具" },
+            { id: 41, code: "160306000314", name: "服務夾(鏡面)/23.5cm", price: 295, type: "器具" },
+            { id: 42, code: "160306000315", name: "不銹鋼有孔服務夾(毛絲面)/23cm", price: 68, type: "器具" },
+            { id: 43, code: "160306000317", name: "服務夾/23.5CM", price: 295, type: "器具" },
+            { id: 44, code: "160306000318", name: "蝴蝶燒肉夾/25cm", price: 105, type: "器具" },
+            { id: 45, code: "160306000319", name: "ATHENA不銹鋼菜匙/26cm", price: 415, type: "器具" },
+            { id: 46, code: "160306000320", name: "ATHENA不銹鋼湯杓/29.3cm", price: 380, type: "器具" },
+            { id: 47, code: "160306000321", name: "ATHENA不銹鋼湯杓座/Ø11x10.3(H)cm", price: 720, type: "器具" },
+            { id: 48, code: "160306000322", name: "ATHENA不銹鋼佐料杓/18.5cm", price: 285, type: "器具" },
+            { id: 49, code: "160306000323", name: "ATHENA不銹鋼佐料杓(加長)/27cm", price: 310, type: "器具" },
+            { id: 50, code: "160306000324", name: "ATHENA蛋糕鏟/24cm", price: 200, type: "器具" },
+            { id: 51, code: "160306000325", name: "ATHENA麵包刀/37cm", price: 430, type: "器具" },
+            { id: 52, code: "160306000326", name: "ATHENA起司刀/25cm", price: 300, type: "器具" },
+            { id: 53, code: "160306000329", name: "熱水壺/1.5L", price: 380, type: "器具" },
+            { id: 54, code: "160306000330", name: "不鏽鋼香檳桶(雙瓶)/224x210x200mm", price: 1800, type: "器具" },
+            { id: 55, code: "160306000331", name: "不鏽鋼香檳桶架(雙瓶)Dia/255x605(H)mm", price: 2300, type: "器具" },
+            { id: 56, code: "160306000338", name: "不銹鋼麵包夾/200mm/AT BU18", price: 200, type: "器具" },
+            { id: 57, code: "160306000347", name: "不鏽鋼冰桶/Cap.1.0L", price: 630, type: "器具" },
+            { id: 58, code: "160200000241", name: "曼谷卡本內紅酒杯/最寬85mm//H233mm/470cc", price: 95, type: "杯子" },
+            { id: 59, code: "160102000359", name: "RAK DUNES 圓餐盤24cm", price: 136.4, type: "盤子" },
+            { id: 60, code: "160102000360", name: "RAK FOCUS 圓餐盤21cm", price: 109.1, type: "盤子" },
+            { id: 61, code: "160102000368", name: "RAK DUNES可疊式湯碗", price: 155, type: "碗" },
+            { id: 62, code: "160102000367", name: "RAK DUNES可疊式咖啡杯(奶茶色)", price: 115, type: "杯子" }
         ];
 
         // DOM元素
@@ -352,9 +529,15 @@
         const progressFill = document.getElementById('progress-fill');
         const uploadStatus = document.getElementById('upload-status');
         const cameraView = document.getElementById('camera-view');
+        const canvasOverlay = document.getElementById('canvas-overlay');
         const startCameraBtn = document.getElementById('start-camera');
         const captureBtn = document.getElementById('capture-btn');
+        const categoryTabs = document.getElementById('category-tabs');
         const itemsGrid = document.getElementById('items-grid');
+        const detectionResults = document.getElementById('detection-results');
+        const detectionList = document.getElementById('detection-list');
+        const confirmAllBtn = document.getElementById('confirm-all-btn');
+        const cancelDetectionBtn = document.getElementById('cancel-detection-btn');
         const totalAmount = document.getElementById('total-amount');
         const itemsCount = document.getElementById('items-count');
         const historyList = document.getElementById('history-list');
@@ -366,17 +549,49 @@
         let scannedItems = [];
         let total = 0;
         let isModelReady = false;
+        let currentDetections = [];
 
-        // 初始化手動選擇
-        function initManualSelection() {
+        // 初始化分類標籤
+        function initCategoryTabs() {
+            const categories = [...new Set(itemsDatabase.map(item => item.type))];
+            categories.forEach(category => {
+                const tab = document.createElement('button');
+                tab.className = 'category-tab';
+                tab.textContent = category;
+                tab.onclick = () => filterItemsByCategory(category, tab);
+                categoryTabs.appendChild(tab);
+            });
+            
+            // 默認選擇第一個分類
+            if (categories.length > 0) {
+                const firstTab = categoryTabs.querySelector('.category-tab');
+                firstTab.click();
+            }
+        }
+
+        // 過濾器皿 by 分類
+        function filterItemsByCategory(category, clickedTab) {
+            // 更新活躍標籤
+            document.querySelectorAll('.category-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            clickedTab.classList.add('active');
+            
+            // 過濾並顯示器皿
+            const filteredItems = itemsDatabase.filter(item => item.type === category);
+            displayItems(filteredItems);
+        }
+
+        // 顯示器皿列表
+        function displayItems(items) {
             itemsGrid.innerHTML = '';
-            itemsDatabase.forEach(item => {
+            items.forEach(item => {
                 const card = document.createElement('div');
                 card.className = 'item-card';
                 card.innerHTML = `
                     <div class="item-name">${item.name}</div>
                     <div class="item-price">NT$ ${item.price}</div>
-                    <div style="font-size: 0.8rem; color: #7f8c8d;">${item.code}</div>
+                    <div class="item-code">${item.code}</div>
                 `;
                 card.onclick = () => addToInventory(item);
                 itemsGrid.appendChild(card);
@@ -393,11 +608,35 @@
             total += item.price;
             updateDisplay();
             
-            // 顯示成功訊息
             uploadStatus.innerHTML = `<span style="color: #27ae60;">✅ 已添加: ${item.name}</span>`;
             setTimeout(() => {
                 if (!isModelReady) uploadStatus.innerHTML = '請上傳模型文件開始AI識別';
             }, 2000);
+        }
+
+        // 移除單個項目
+        function removeItem(index) {
+            const removedItem = scannedItems[index];
+            total -= removedItem.price;
+            scannedItems.splice(index, 1);
+            updateDisplay();
+            
+            uploadStatus.innerHTML = `<span style="color: #e74c3c;">🗑️ 已移除: ${removedItem.name}</span>`;
+            setTimeout(() => {
+                if (!isModelReady) uploadStatus.innerHTML = '請上傳模型文件開始AI識別';
+            }, 2000);
+        }
+
+        // 清除所有項目
+        function clearAllItems() {
+            if (scannedItems.length === 0) return;
+            
+            if (confirm(`確定要清除全部 ${scannedItems.length} 個項目嗎？`)) {
+                scannedItems = [];
+                total = 0;
+                updateDisplay();
+                uploadStatus.innerHTML = `<span style="color: #e74c3c;">🗑️ 已清除所有項目</span>`;
+            }
         }
 
         // 更新顯示
@@ -417,15 +656,16 @@
                 return;
             }
             
-            scannedItems.forEach(item => {
+            scannedItems.forEach((item, index) => {
                 const historyItem = document.createElement('div');
                 historyItem.className = 'history-item';
                 historyItem.innerHTML = `
-                    <div>
-                        <div>${item.name}</div>
-                        <div style="font-size: 0.7rem; color: #95a5a6;">${item.method} • ${new Date(item.timestamp).toLocaleTimeString()}</div>
+                    <div class="history-info">
+                        <div class="history-name">${item.name}</div>
+                        <div class="history-meta">${item.method} • ${new Date(item.timestamp).toLocaleTimeString()}</div>
                     </div>
-                    <div class="item-price">NT$ ${item.price}</div>
+                    <div class="history-price">NT$ ${item.price}</div>
+                    <button class="history-remove" onclick="removeItem(${index})">移除</button>
                 `;
                 historyList.appendChild(historyItem);
             });
@@ -442,7 +682,6 @@
                 uploadStatus.textContent = "正在處理模型文件...";
                 progressFill.style.width = '30%';
 
-                // 顯示文件信息
                 uploadStatus.textContent = `文件: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
                 progressFill.style.width = '50%';
 
@@ -451,7 +690,6 @@
 
                 uploadStatus.textContent = "正在初始化ONNX運行時...";
                 
-                // 載入模型
                 session = await ort.InferenceSession.create(arrayBuffer);
                 progressFill.style.width = '100%';
 
@@ -460,8 +698,6 @@
                 modelStatus.className = "model-status ready";
                 uploadStatus.innerHTML = `<span style="color: #27ae60;">✅ 模型載入成功！可以開始AI識別</span>`;
                 captureBtn.disabled = false;
-
-                console.log('ONNX模型載入成功');
 
             } catch (error) {
                 console.error('模型載入失敗:', error);
@@ -490,7 +726,7 @@
             }
         });
 
-        // 開始檢測（簡單版本）
+        // 開始檢測
         captureBtn.addEventListener('click', () => {
             if (!isModelReady) {
                 uploadStatus.innerHTML = `<span style="color: #e74c3c;">請先上傳模型文件</span>`;
@@ -501,26 +737,91 @@
                 return;
             }
 
-            // 模擬AI檢測（隨機選擇一個器皿）
-            const randomItem = itemsDatabase[Math.floor(Math.random() * itemsDatabase.length)];
-            const confidence = (Math.random() * 0.5 + 0.5).toFixed(2); // 0.5-1.0
+            // 模擬AI檢測（隨機選擇1-3個器皿）
+            const numDetections = Math.floor(Math.random() * 3) + 1;
+            currentDetections = [];
             
-            scannedItems.push({
-                ...randomItem,
-                timestamp: new Date(),
-                method: 'AI識別',
-                confidence: confidence
+            for (let i = 0; i < numDetections; i++) {
+                const randomItem = itemsDatabase[Math.floor(Math.random() * itemsDatabase.length)];
+                const confidence = (Math.random() * 0.3 + 0.7).toFixed(2); // 0.7-1.0
+                
+                currentDetections.push({
+                    ...randomItem,
+                    confidence: confidence,
+                    selected: true // 默認選中
+                });
+            }
+            
+            showDetectionResults();
+        });
+
+        // 顯示檢測結果
+        function showDetectionResults() {
+            detectionList.innerHTML = '';
+            
+            currentDetections.forEach((detection, index) => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = `detected-item ${detection.selected ? 'selected' : ''}`;
+                itemDiv.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600;">${detection.name}</div>
+                            <div style="font-size: 0.8rem; color: #7f8c8d;">置信度: ${(detection.confidence * 100).toFixed(1)}%</div>
+                            <div style="font-size: 0.8rem; color: #7f8c8d;">編號: ${detection.code}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-weight: bold; color: #e74c3c; font-size: 1.1rem;">NT$ ${detection.price}</div>
+                            <label style="font-size: 0.8rem; display: flex; align-items: center; margin-top: 5px;">
+                                <input type="checkbox" ${detection.selected ? 'checked' : ''} 
+                                       onchange="toggleDetection(${index}, this.checked)" 
+                                       style="margin-right: 5px;">
+                                加入
+                            </label>
+                        </div>
+                    </div>
+                `;
+                detectionList.appendChild(itemDiv);
             });
-            total += randomItem.price;
-            updateDisplay();
             
-            uploadStatus.innerHTML = `
-                <span style="color: #27ae60;">
-                    ✅ AI識別成功！<br>
-                    ${randomItem.name}<br>
-                    置信度: ${(confidence * 100).toFixed(1)}%
-                </span>
-            `;
+            detectionResults.classList.add('active');
+        }
+
+        // 切換檢測項目選擇
+        function toggleDetection(index, selected) {
+            currentDetections[index].selected = selected;
+            const itemDiv = detectionList.children[index];
+            if (selected) {
+                itemDiv.classList.add('selected');
+            } else {
+                itemDiv.classList.remove('selected');
+            }
+        }
+
+        // 確認加入選中的檢測結果
+        confirmAllBtn.addEventListener('click', () => {
+            const selectedDetections = currentDetections.filter(detection => detection.selected);
+            
+            selectedDetections.forEach(detection => {
+                scannedItems.push({
+                    ...detection,
+                    timestamp: new Date(),
+                    method: 'AI識別'
+                });
+                total += detection.price;
+            });
+            
+            updateDisplay();
+            detectionResults.classList.remove('active');
+            
+            if (selectedDetections.length > 0) {
+                uploadStatus.innerHTML = `<span style="color: #27ae60;">✅ 已添加 ${selectedDetections.length} 個項目</span>`;
+            }
+        });
+
+        // 取消檢測結果
+        cancelDetectionBtn.addEventListener('click', () => {
+            detectionResults.classList.remove('active');
+            uploadStatus.innerHTML = `<span style="color: #95a5a6;">❌ 已取消檢測結果</span>`;
         });
 
         // 顯示手動選擇區塊
@@ -548,7 +849,7 @@
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `器皿盤點_${dateStr.replace(/\//g, '-')}_${timeStr.replace(/:/g, '-')}.csv`;
+            link.download = `南港島語器皿盤點_${dateStr.replace(/\//g, '-')}_${timeStr.replace(/:/g, '-')}.csv`;
             link.click();
             
             alert(`記錄已儲存！\n總金額: NT$ ${total}\n項目數量: ${scannedItems.length}`);
@@ -556,7 +857,7 @@
 
         // 初始化
         function init() {
-            initManualSelection();
+            initCategoryTabs();
             updateDisplay();
             uploadStatus.textContent = '請選擇您下載的 yolov8s.onnx 文件';
         }
