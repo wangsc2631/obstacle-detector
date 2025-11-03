@@ -244,6 +244,32 @@
             background: #e8f4fd;
         }
         
+        .download-status {
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+        
+        .download-success {
+            background: #d1f2eb;
+            color: #27ae60;
+            border: 1px solid #a3e4d7;
+        }
+        
+        .download-error {
+            background: #fadbd8;
+            color: #e74c3c;
+            border: 1px solid #f5b7b1;
+        }
+        
+        .download-info {
+            background: #d6eaf8;
+            color: #3498db;
+            border: 1px solid #aed6f1;
+        }
+
         @media (min-width: 768px) {
             .container { max-width: 800px; margin: 0 auto; }
             .camera-container { height: 400px; }
@@ -290,6 +316,12 @@
                 <div class="progress-bar">
                     <div class="progress-fill" id="progress-fill"></div>
                 </div>
+                
+                <!-- 下載狀態顯示 -->
+                <div id="download-status" class="download-status download-info">
+                    準備下載模型...
+                </div>
+                
                 <div id="upload-status"></div>
             </div>
             
@@ -305,8 +337,8 @@
             <div class="controls">
                 <button id="start-camera" class="btn-primary">開啟相機</button>
                 <button id="capture-btn" disabled class="btn-danger">AI識別</button>
-                <button onclick="showManualSection()" class="btn-secondary">手動選擇</button>
-                <button onclick="showTrainingSection()" class="btn-warning">📚 學習模式</button>
+                <button id="manual-btn" class="btn-secondary">手動選擇</button>
+                <button id="training-btn" class="btn-warning">📚 學習模式</button>
             </div>
         </section>
         
@@ -318,9 +350,9 @@
             </p>
             
             <div class="controls">
-                <button onclick="startLearning()" class="btn-success">開始學習當前器皿</button>
-                <button onclick="captureLearningPhoto()" class="btn-primary" id="learn-btn" disabled>📸 拍攝學習照片</button>
-                <button onclick="batchLearning()" class="btn-warning">批量學習所有器皿</button>
+                <button id="start-learning-btn" class="btn-success">開始學習當前器皿</button>
+                <button id="learn-btn" class="btn-primary" disabled>📸 拍攝學習照片</button>
+                <button id="batch-learning-btn" class="btn-warning">批量學習所有器皿</button>
             </div>
             
             <div id="learning-status" style="margin: 15px 0;"></div>
@@ -357,7 +389,7 @@
             </div>
             <div style="text-align: center; color: #7f8c8d;">
                 已掃描 <span id="items-count">0</span> 個項目
-                <button onclick="clearAllItems()" class="btn-danger" style="margin-left: 10px; padding: 5px 10px; font-size: 0.8rem;">清除全部</button>
+                <button id="clear-all-btn" class="btn-danger" style="margin-left: 10px; padding: 5px 10px; font-size: 0.8rem;">清除全部</button>
             </div>
         </section>
         
@@ -455,7 +487,11 @@
             cameraPlaceholder: document.getElementById('camera-placeholder'),
             startCamera: document.getElementById('start-camera'),
             captureBtn: document.getElementById('capture-btn'),
+            manualBtn: document.getElementById('manual-btn'),
+            trainingBtn: document.getElementById('training-btn'),
             learnBtn: document.getElementById('learn-btn'),
+            startLearningBtn: document.getElementById('start-learning-btn'),
+            batchLearningBtn: document.getElementById('batch-learning-btn'),
             learningStatus: document.getElementById('learning-status'),
             learningItemsGrid: document.getElementById('learning-items-grid'),
             manualItemsGrid: document.getElementById('manual-items-grid'),
@@ -468,9 +504,11 @@
             itemsCount: document.getElementById('items-count'),
             historyList: document.getElementById('history-list'),
             saveBtn: document.getElementById('save-btn'),
+            clearAllBtn: document.getElementById('clear-all-btn'),
             localUploadSection: document.getElementById('local-upload-section'),
             onlineModel: document.getElementById('online-model'),
-            localModel: document.getElementById('local-model')
+            localModel: document.getElementById('local-model'),
+            downloadStatus: document.getElementById('download-status')
         };
 
         // 應用狀態
@@ -488,126 +526,9 @@
             modelType: 'online' // 預設使用線上模型
         };
 
-        // 特徵提取器
-        class FeatureExtractor {
-            static extractFeatures(image) {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = 100;
-                canvas.height = 100;
-                ctx.drawImage(image, 0, 0, 100, 100);
-                
-                const imageData = ctx.getImageData(0, 0, 100, 100);
-                const data = imageData.data;
-                
-                return {
-                    colorHistogram: this.getColorHistogram(data),
-                    brightness: this.getAverageBrightness(data),
-                    contrast: this.getContrast(data),
-                    edges: this.detectEdges(data, 100, 100),
-                    shape: this.detectShape(data, 100, 100)
-                };
-            }
-            
-            static getColorHistogram(data) {
-                const histogram = { r: Array(8).fill(0), g: Array(8).fill(0), b: Array(8).fill(0) };
-                for (let i = 0; i < data.length; i += 4) {
-                    histogram.r[Math.floor(data[i] / 32)]++;
-                    histogram.g[Math.floor(data[i + 1] / 32)]++;
-                    histogram.b[Math.floor(data[i + 2] / 32)]++;
-                }
-                return histogram;
-            }
-            
-            static getAverageBrightness(data) {
-                let total = 0;
-                for (let i = 0; i < data.length; i += 4) {
-                    total += (data[i] + data[i + 1] + data[i + 2]) / 3;
-                }
-                return total / (data.length / 4);
-            }
-            
-            static getContrast(data) {
-                let min = 255, max = 0;
-                for (let i = 0; i < data.length; i += 4) {
-                    const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                    if (brightness < min) min = brightness;
-                    if (brightness > max) max = brightness;
-                }
-                return max - min;
-            }
-            
-            static detectEdges(data, width, height) {
-                let edgeCount = 0;
-                for (let y = 1; y < height - 1; y++) {
-                    for (let x = 1; x < width - 1; x++) {
-                        const idx = (y * width + x) * 4;
-                        const current = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-                        const right = (data[idx + 4] + data[idx + 5] + data[idx + 6]) / 3;
-                        if (Math.abs(current - right) > 30) edgeCount++;
-                    }
-                }
-                return edgeCount / (width * height);
-            }
-            
-            static detectShape(data, width, height) {
-                const centerX = width / 2;
-                const centerY = height / 2;
-                let roundPixels = 0;
-                let totalPixels = 0;
-                
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        const idx = (y * width + x) * 4;
-                        const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-                        if (brightness > 50) {
-                            totalPixels++;
-                            const distance = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
-                            if (distance < 45) roundPixels++;
-                        }
-                    }
-                }
-                
-                const roundness = roundPixels / totalPixels;
-                if (roundness > 0.8) return "round";
-                if (roundness > 0.6) return "oval";
-                return "irregular";
-            }
-            
-            static calculateSimilarity(features1, features2) {
-                let score = 0;
-                
-                // 顏色相似度
-                let colorScore = 0;
-                for (let i = 0; i < 8; i++) {
-                    const rDiff = Math.abs(features1.colorHistogram.r[i] - features2.colorHistogram.r[i]);
-                    const gDiff = Math.abs(features1.colorHistogram.g[i] - features2.colorHistogram.g[i]);
-                    const bDiff = Math.abs(features1.colorHistogram.b[i] - features2.colorHistogram.b[i]);
-                    colorScore += (1 - rDiff / 1000) + (1 - gDiff / 1000) + (1 - bDiff / 1000);
-                }
-                score += colorScore * 0.4;
-                
-                // 亮度相似度
-                const brightnessDiff = Math.abs(features1.brightness - features2.brightness);
-                score += (1 - brightnessDiff / 255) * 0.2;
-                
-                // 對比度相似度
-                const contrastDiff = Math.abs(features1.contrast - features2.contrast);
-                score += (1 - contrastDiff / 255) * 0.2;
-                
-                // 邊緣相似度
-                const edgeDiff = Math.abs(features1.edges - features2.edges);
-                score += (1 - edgeDiff) * 0.1;
-                
-                // 形狀相似度
-                if (features1.shape === features2.shape) score += 0.1;
-                
-                return Math.min(score * 10, 1.0);
-            }
-        }
-
         // 初始化
         function init() {
+            console.log("初始化系統...");
             initManualSelection();
             initLearningSelection();
             updateDisplay();
@@ -615,9 +536,12 @@
             
             // 事件監聽器
             setupEventListeners();
+            console.log("系統初始化完成");
         }
 
         function setupEventListeners() {
+            console.log("設置事件監聽器...");
+            
             // 模型文件上傳
             document.getElementById('model-file').addEventListener('change', handleModelUpload);
             
@@ -630,12 +554,25 @@
             elements.correctBtn.addEventListener('click', showCorrectionInterface);
             elements.cancelBtn.addEventListener('click', cancelDetection);
             
-            // 儲存
+            // 學習模式
+            elements.trainingBtn.addEventListener('click', showTrainingSection);
+            elements.startLearningBtn.addEventListener('click', startLearning);
+            elements.learnBtn.addEventListener('click', captureLearningPhoto);
+            elements.batchLearningBtn.addEventListener('click', batchLearning);
+            
+            // 手動選擇
+            elements.manualBtn.addEventListener('click', showManualSection);
+            
+            // 其他功能
             elements.saveBtn.addEventListener('click', saveInventory);
+            elements.clearAllBtn.addEventListener('click', clearAllItems);
+            
+            console.log("事件監聽器設置完成");
         }
 
         // 模型選擇
         function selectModel(type) {
+            console.log(`選擇模型類型: ${type}`);
             state.modelType = type;
             
             if (type === 'online') {
@@ -654,20 +591,33 @@
         async function loadOnlineModel() {
             try {
                 updateStatus("正在下載AI模型...", "loading");
-                elements.progressFill.style.width = '30%';
-                elements.uploadStatus.textContent = "從Hugging Face下載模型...";
+                elements.downloadStatus.textContent = "正在從Hugging Face下載模型...";
+                elements.downloadStatus.className = "download-status download-info";
+                elements.progressFill.style.width = '10%';
 
                 // 使用您的Hugging Face模型鏈接
                 const modelUrl = "https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx";
                 
-                elements.progressFill.style.width = '60%';
-                elements.uploadStatus.textContent = "載入模型中...";
+                elements.progressFill.style.width = '30%';
+                elements.downloadStatus.textContent = "連接伺服器...";
+                
+                // 顯示檔案大小和下載進度
+                elements.progressFill.style.width = '50%';
+                elements.downloadStatus.textContent = "下載模型檔案 (約 22MB)...";
+                
+                elements.progressFill.style.width = '80%';
+                elements.downloadStatus.textContent = "載入模型中...";
                 
                 // 使用ONNX Runtime載入模型
-                state.session = await ort.InferenceSession.create(modelUrl);
+                console.log("開始載入ONNX模型...");
+                state.session = await ort.InferenceSession.create(modelUrl, {
+                    executionProviders: ['wasm']
+                });
                 
+                console.log("ONNX模型載入成功");
                 elements.progressFill.style.width = '100%';
-                elements.uploadStatus.textContent = "模型載入成功！";
+                elements.downloadStatus.textContent = "✅ 模型載入成功！";
+                elements.downloadStatus.className = "download-status download-success";
                 updateStatus("AI模型已就緒", "ready");
                 
                 state.isModelReady = true;
@@ -676,13 +626,15 @@
                 
                 setTimeout(() => {
                     elements.progressFill.style.width = '0%';
-                    elements.uploadStatus.textContent = "";
-                }, 2000);
+                    elements.downloadStatus.textContent = "模型已準備就緒，可以開始使用";
+                }, 3000);
                 
             } catch (error) {
                 console.error("模型載入失敗:", error);
                 updateStatus("模型載入失敗，請檢查網路連線", "error");
-                elements.uploadStatus.textContent = "錯誤: " + error.message;
+                elements.downloadStatus.textContent = "❌ 模型載入失敗: " + error.message;
+                elements.downloadStatus.className = "download-status download-error";
+                elements.progressFill.style.width = '0%';
             }
         }
 
@@ -693,17 +645,19 @@
             
             try {
                 updateStatus("正在載入模型...", "loading");
+                elements.downloadStatus.textContent = "讀取模型文件...";
+                elements.downloadStatus.className = "download-status download-info";
                 elements.progressFill.style.width = '30%';
-                elements.uploadStatus.textContent = "讀取模型文件...";
                 
                 const arrayBuffer = await file.arrayBuffer();
                 elements.progressFill.style.width = '70%';
-                elements.uploadStatus.textContent = "初始化模型...";
+                elements.downloadStatus.textContent = "初始化模型...";
                 
                 state.session = await ort.InferenceSession.create(arrayBuffer);
                 
                 elements.progressFill.style.width = '100%';
-                elements.uploadStatus.textContent = "模型載入成功！";
+                elements.downloadStatus.textContent = "✅ 模型載入成功！";
+                elements.downloadStatus.className = "download-status download-success";
                 updateStatus("AI模型已就緒", "ready");
                 
                 state.isModelReady = true;
@@ -712,19 +666,21 @@
                 
                 setTimeout(() => {
                     elements.progressFill.style.width = '0%';
-                    elements.uploadStatus.textContent = "";
-                }, 2000);
+                    elements.downloadStatus.textContent = "模型已準備就緒，可以開始使用";
+                }, 3000);
                 
             } catch (error) {
                 console.error("模型載入失敗:", error);
                 updateStatus("模型載入失敗", "error");
-                elements.uploadStatus.textContent = "錯誤: " + error.message;
+                elements.downloadStatus.textContent = "❌ 模型載入失敗: " + error.message;
+                elements.downloadStatus.className = "download-status download-error";
             }
         }
 
         // 開啟相機
         async function startCamera() {
             try {
+                console.log("嘗試開啟相機...");
                 state.stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: 'environment' } 
                 });
@@ -738,9 +694,12 @@
                 elements.startCamera.classList.add('btn-danger');
                 elements.startCamera.onclick = stopCamera;
                 
+                console.log("相機開啟成功");
+                
             } catch (error) {
                 console.error("無法開啟相機:", error);
                 updateStatus("無法開啟相機", "error");
+                alert("無法開啟相機，請確認相機權限設定");
             }
         }
 
@@ -758,12 +717,157 @@
             elements.startCamera.classList.remove('btn-danger');
             elements.startCamera.classList.add('btn-primary');
             elements.startCamera.onclick = startCamera;
+            
+            console.log("相機已關閉");
+        }
+
+        // 學習模式
+        function showTrainingSection() {
+            console.log("顯示學習模式");
+            hideAllSections();
+            elements.trainingSection.style.display = 'block';
+            updateLearningDisplay();
+        }
+
+        function startLearning() {
+            if (!state.selectedItem) {
+                elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">請先選擇要學習的器皿</div>`;
+                return;
+            }
+            
+            state.learningMode = true;
+            elements.learnBtn.disabled = false;
+            elements.learningStatus.innerHTML = `
+                <div style="color: #2ecc71;">
+                    正在學習: ${state.selectedItem.name}
+                </div>
+                <div style="font-size: 0.9rem; margin-top: 5px;">
+                    請從不同角度拍攝3-5張照片
+                </div>
+            `;
+            console.log(`開始學習: ${state.selectedItem.name}`);
+        }
+
+        function captureLearningPhoto() {
+            if (!state.learningMode || !state.selectedItem) {
+                elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">請先選擇器皿並開始學習</div>`;
+                return;
+            }
+            
+            if (!state.stream) {
+                elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">請先開啟相機</div>`;
+                return;
+            }
+            
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = elements.cameraView.videoWidth;
+                canvas.height = elements.cameraView.videoHeight;
+                ctx.drawImage(elements.cameraView, 0, 0);
+                
+                // 提取特徵
+                const features = extractFeatures(canvas);
+                
+                // 儲存特徵
+                const itemId = state.selectedItem.id;
+                if (!state.featureDatabase[itemId]) {
+                    state.featureDatabase[itemId] = [];
+                }
+                state.featureDatabase[itemId].push(features);
+                
+                // 更新學習樣本計數
+                if (!state.learningSamples[itemId]) {
+                    state.learningSamples[itemId] = 0;
+                }
+                state.learningSamples[itemId]++;
+                
+                // 儲存到本地存儲
+                saveToLocalStorage('featureDatabase', state.featureDatabase);
+                saveToLocalStorage('learningSamples', state.learningSamples);
+                
+                // 更新顯示
+                updateLearningDisplay();
+                
+                elements.learningStatus.innerHTML = `
+                    <div style="color: #2ecc71;">
+                        ✅ 已學習 ${state.learningSamples[itemId]} 張照片
+                    </div>
+                `;
+                
+                console.log(`已學習 ${state.selectedItem.name} 的照片，目前 ${state.learningSamples[itemId]} 張`);
+                
+            } catch (error) {
+                console.error("學習失敗:", error);
+                elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">學習失敗: ${error.message}</div>`;
+            }
+        }
+
+        function batchLearning() {
+            elements.learningStatus.innerHTML = `<div style="color: #f39c12;">批量學習所有器皿功能開發中...</div>`;
+        }
+
+        // 手動選擇
+        function showManualSection() {
+            console.log("顯示手動選擇模式");
+            hideAllSections();
+            elements.manualSection.style.display = 'block';
+        }
+
+        function initManualSelection() {
+            elements.manualItemsGrid.innerHTML = itemsDatabase.map(item => `
+                <div class="item-card" onclick="selectManualItem(${item.id})">
+                    <div class="item-name">${item.name}</div>
+                    <div class="item-code">編號: ${item.code}</div>
+                    <div class="item-price">價格: NT$ ${item.price}</div>
+                </div>
+            `).join('');
+        }
+
+        function initLearningSelection() {
+            elements.learningItemsGrid.innerHTML = itemsDatabase.map(item => {
+                const sampleCount = state.learningSamples[item.id] || 0;
+                const isLearned = sampleCount > 0;
+                
+                return `
+                    <div class="item-card ${isLearned ? 'learned' : ''} ${state.selectedItem && state.selectedItem.id === item.id ? 'selected' : ''}" 
+                         onclick="selectLearningItem(${item.id})">
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-code">編號: ${item.code}</div>
+                        <div class="item-price">價格: NT$ ${item.price}</div>
+                        <div class="item-samples">已學習: ${sampleCount} 張照片</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function selectManualItem(itemId) {
+            const item = itemsDatabase.find(i => i.id === itemId);
+            if (item) {
+                addScannedItem(item);
+                alert(`已添加: ${item.name}`);
+            }
+        }
+
+        function selectLearningItem(itemId) {
+            state.selectedItem = itemsDatabase.find(i => i.id === itemId);
+            updateLearningDisplay();
+            console.log(`選擇學習項目: ${state.selectedItem.name}`);
+        }
+
+        function updateLearningDisplay() {
+            initLearningSelection();
         }
 
         // 拍攝照片進行檢測
         async function captureForDetection() {
             if (!state.isModelReady) {
                 updateStatus("模型尚未載入", "error");
+                return;
+            }
+            
+            if (!state.stream) {
+                updateStatus("請先開啟相機", "error");
                 return;
             }
             
@@ -801,20 +905,30 @@
             }
             
             // 提取當前圖像的特徵
-            const currentFeatures = FeatureExtractor.extractFeatures(canvas);
+            const currentFeatures = extractFeatures(canvas);
             
             // 與資料庫中的特徵進行比對
             for (const itemId in state.featureDatabase) {
-                const itemFeatures = state.featureDatabase[itemId];
-                const similarity = FeatureExtractor.calculateSimilarity(currentFeatures, itemFeatures);
+                const itemFeaturesList = state.featureDatabase[itemId];
                 
-                if (similarity > 0.7) { // 相似度閾值
+                // 計算與所有學習樣本的平均相似度
+                let totalSimilarity = 0;
+                let count = 0;
+                
+                for (const itemFeatures of itemFeaturesList) {
+                    const similarity = calculateSimilarity(currentFeatures, itemFeatures);
+                    totalSimilarity += similarity;
+                    count++;
+                }
+                
+                const avgSimilarity = count > 0 ? totalSimilarity / count : 0;
+                
+                if (avgSimilarity > 0.7) { // 相似度閾值
                     const item = itemsDatabase.find(i => i.id === parseInt(itemId));
                     if (item) {
                         results.push({
                             item: item,
-                            confidence: similarity,
-                            boundingBox: { x: 100, y: 100, width: 200, height: 200 } // 模擬邊界框
+                            confidence: avgSimilarity
                         });
                     }
                 }
@@ -849,6 +963,9 @@
                         </div>
                     </div>
                 `).join('');
+                
+                // 自動選擇第一個結果
+                state.selectedItem = state.currentDetections[0].item;
             }
             
             elements.detectionResults.classList.add('active');
@@ -891,132 +1008,6 @@
             state.selectedItem = null;
         }
 
-        // 學習模式
-        function showTrainingSection() {
-            hideAllSections();
-            elements.trainingSection.style.display = 'block';
-        }
-
-        function startLearning() {
-            if (!state.selectedItem) {
-                elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">請先選擇要學習的器皿</div>`;
-                return;
-            }
-            
-            state.learningMode = true;
-            elements.learningStatus.innerHTML = `
-                <div style="color: #2ecc71;">
-                    正在學習: ${state.selectedItem.name}
-                </div>
-                <div style="font-size: 0.9rem; margin-top: 5px;">
-                    請從不同角度拍攝3-5張照片
-                </div>
-            `;
-        }
-
-        function captureLearningPhoto() {
-            if (!state.learningMode || !state.selectedItem) {
-                elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">請先選擇器皿並開始學習</div>`;
-                return;
-            }
-            
-            try {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = elements.cameraView.videoWidth;
-                canvas.height = elements.cameraView.videoHeight;
-                ctx.drawImage(elements.cameraView, 0, 0);
-                
-                // 提取特徵
-                const features = FeatureExtractor.extractFeatures(canvas);
-                
-                // 儲存特徵
-                const itemId = state.selectedItem.id;
-                if (!state.featureDatabase[itemId]) {
-                    state.featureDatabase[itemId] = features;
-                } else {
-                    // 合併特徵（簡單平均）
-                    state.featureDatabase[itemId] = mergeFeatures(state.featureDatabase[itemId], features);
-                }
-                
-                // 更新學習樣本計數
-                if (!state.learningSamples[itemId]) {
-                    state.learningSamples[itemId] = 0;
-                }
-                state.learningSamples[itemId]++;
-                
-                // 儲存到本地存儲
-                saveToLocalStorage('featureDatabase', state.featureDatabase);
-                saveToLocalStorage('learningSamples', state.learningSamples);
-                
-                // 更新顯示
-                updateLearningDisplay();
-                
-                elements.learningStatus.innerHTML = `
-                    <div style="color: #2ecc71;">
-                        已學習 ${state.learningSamples[itemId]} 張照片
-                    </div>
-                `;
-                
-            } catch (error) {
-                console.error("學習失敗:", error);
-                elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">學習失敗: ${error.message}</div>`;
-            }
-        }
-
-        function batchLearning() {
-            elements.learningStatus.innerHTML = `<div style="color: #f39c12;">批量學習所有器皿功能開發中...</div>`;
-        }
-
-        // 手動選擇
-        function showManualSection() {
-            hideAllSections();
-            elements.manualSection.style.display = 'block';
-        }
-
-        function initManualSelection() {
-            elements.manualItemsGrid.innerHTML = itemsDatabase.map(item => `
-                <div class="item-card" onclick="selectManualItem(${item.id})">
-                    <div class="item-name">${item.name}</div>
-                    <div class="item-code">編號: ${item.code}</div>
-                    <div class="item-price">價格: NT$ ${item.price}</div>
-                </div>
-            `).join('');
-        }
-
-        function initLearningSelection() {
-            elements.learningItemsGrid.innerHTML = itemsDatabase.map(item => {
-                const sampleCount = state.learningSamples[item.id] || 0;
-                const isLearned = sampleCount > 0;
-                
-                return `
-                    <div class="item-card ${isLearned ? 'learned' : ''} ${state.selectedItem && state.selectedItem.id === item.id ? 'selected' : ''}" 
-                         onclick="selectLearningItem(${item.id})">
-                        <div class="item-name">${item.name}</div>
-                        <div class="item-code">編號: ${item.code}</div>
-                        <div class="item-price">價格: NT$ ${item.price}</div>
-                        <div class="item-samples">已學習: ${sampleCount} 張照片</div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function selectManualItem(itemId) {
-            const item = itemsDatabase.find(i => i.id === itemId);
-            if (item) {
-                addScannedItem(item);
-            }
-        }
-
-        function selectLearningItem(itemId) {
-            state.selectedItem = itemsDatabase.find(i => i.id === itemId);
-            updateLearningDisplay();
-        }
-
-        function updateLearningDisplay() {
-            initLearningSelection();
-        }
-
         // 添加掃描項目
         function addScannedItem(item) {
             state.scannedItems.push({
@@ -1026,6 +1017,7 @@
             
             state.total += item.price;
             updateDisplay();
+            console.log(`已添加器皿: ${item.name}`);
         }
 
         // 更新顯示
@@ -1055,9 +1047,12 @@
 
         // 清除所有項目
         function clearAllItems() {
-            state.scannedItems = [];
-            state.total = 0;
-            updateDisplay();
+            if (confirm("確定要清除所有已掃描項目嗎？")) {
+                state.scannedItems = [];
+                state.total = 0;
+                updateDisplay();
+                console.log("已清除所有項目");
+            }
         }
 
         // 儲存盤點記錄
@@ -1084,6 +1079,7 @@
             URL.revokeObjectURL(url);
             
             alert("盤點記錄已儲存！");
+            console.log("盤點記錄已儲存");
         }
 
         // 工具函數
@@ -1098,19 +1094,36 @@
             elements.detectionResults.classList.remove('active');
         }
 
-        function mergeFeatures(features1, features2) {
-            // 簡單的特徵合併（平均）
+        // 特徵提取函數
+        function extractFeatures(canvas) {
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            // 簡單的特徵提取
+            let r = 0, g = 0, b = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                r += data[i];
+                g += data[i + 1];
+                b += data[i + 2];
+            }
+            
+            const pixelCount = data.length / 4;
             return {
-                colorHistogram: {
-                    r: features1.colorHistogram.r.map((val, i) => (val + features2.colorHistogram.r[i]) / 2),
-                    g: features1.colorHistogram.g.map((val, i) => (val + features2.colorHistogram.g[i]) / 2),
-                    b: features1.colorHistogram.b.map((val, i) => (val + features2.colorHistogram.b[i]) / 2)
-                },
-                brightness: (features1.brightness + features2.brightness) / 2,
-                contrast: (features1.contrast + features2.contrast) / 2,
-                edges: (features1.edges + features2.edges) / 2,
-                shape: features1.shape // 形狀保持不變
+                r: r / pixelCount,
+                g: g / pixelCount,
+                b: b / pixelCount
             };
+        }
+
+        // 相似度計算
+        function calculateSimilarity(features1, features2) {
+            const rDiff = Math.abs(features1.r - features2.r) / 255;
+            const gDiff = Math.abs(features1.g - features2.g) / 255;
+            const bDiff = Math.abs(features1.b - features2.b) / 255;
+            
+            const colorDiff = (rDiff + gDiff + bDiff) / 3;
+            return 1 - colorDiff;
         }
 
         function saveToLocalStorage(key, value) {
