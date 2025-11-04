@@ -270,6 +270,42 @@
             border: 1px solid #aed6f1;
         }
 
+        .learning-preview {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            overflow-x: auto;
+            padding: 10px 0;
+        }
+
+        .learning-preview-item {
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #3498db;
+            flex-shrink: 0;
+        }
+
+        .learning-preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .sample-count {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            text-align: center;
+            line-height: 20px;
+            font-size: 0.7rem;
+            margin-left: 5px;
+        }
+
         @media (min-width: 768px) {
             .container { max-width: 800px; margin: 0 auto; }
             .camera-container { height: 400px; }
@@ -348,6 +384,12 @@
             <p style="margin-bottom: 15px; color: #666;">
                 為每個器皿拍攝3-5張不同角度的照片，建立特徵資料庫
             </p>
+            
+            <div id="current-learning-item" style="background: #e8f4fd; padding: 15px; border-radius: 10px; margin-bottom: 15px; display: none;">
+                <h3>當前學習項目</h3>
+                <div id="learning-item-info"></div>
+                <div class="learning-preview" id="learning-preview"></div>
+            </div>
             
             <div class="controls">
                 <button id="start-learning-btn" class="btn-success">開始學習當前器皿</button>
@@ -510,7 +552,10 @@
             localUploadSection: document.getElementById('local-upload-section'),
             onlineModel: document.getElementById('online-model'),
             localModel: document.getElementById('local-model'),
-            downloadStatus: document.getElementById('download-status')
+            downloadStatus: document.getElementById('download-status'),
+            currentLearningItem: document.getElementById('current-learning-item'),
+            learningItemInfo: document.getElementById('learning-item-info'),
+            learningPreview: document.getElementById('learning-preview')
         };
 
         // 應用狀態
@@ -525,6 +570,7 @@
             learningMode: false,
             featureDatabase: loadFromLocalStorage('featureDatabase') || {},
             learningSamples: loadFromLocalStorage('learningSamples') || {},
+            learningImages: loadFromLocalStorage('learningImages') || {},
             modelType: 'online' // 預設使用線上模型
         };
 
@@ -535,6 +581,7 @@
             initLearningSelection();
             updateDisplay();
             loadOnlineModel(); // 自動載入線上模型
+            loadPredefinedImages(); // 加載預定義圖片
             
             // 事件監聽器
             setupEventListeners();
@@ -727,7 +774,7 @@
         function showTrainingSection() {
             console.log("顯示學習模式");
             hideAllSections();
-            elements.trainingSection.style.display = 'block';
+            document.getElementById('training-section').style.display = 'block';
             updateLearningDisplay();
         }
 
@@ -739,12 +786,25 @@
             
             state.learningMode = true;
             elements.learnBtn.disabled = false;
+            
+            // 顯示當前學習項目
+            elements.currentLearningItem.style.display = 'block';
+            elements.learningItemInfo.innerHTML = `
+                <div class="item-name">${state.selectedItem.name}</div>
+                <div class="item-code">編號: ${state.selectedItem.code}</div>
+                <div class="item-price">價格: NT$ ${state.selectedItem.price}</div>
+                <div class="item-samples">已學習照片: ${state.learningSamples[state.selectedItem.id] || 0} 張</div>
+            `;
+            
+            // 更新學習預覽
+            updateLearningPreview();
+            
             elements.learningStatus.innerHTML = `
                 <div style="color: #2ecc71;">
                     正在學習: ${state.selectedItem.name}
                 </div>
                 <div style="font-size: 0.9rem; margin-top: 5px;">
-                    請從不同角度拍攝3-5張照片
+                    請從不同角度拍攝3-5張照片，點擊"拍攝學習照片"按鈕
                 </div>
             `;
             console.log(`開始學習: ${state.selectedItem.name}`);
@@ -768,15 +828,24 @@
                 canvas.height = elements.cameraView.videoHeight;
                 ctx.drawImage(elements.cameraView, 0, 0);
                 
+                // 將照片轉換為DataURL保存
+                const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                
                 // 提取特徵
                 const features = extractFeatures(canvas);
                 
-                // 儲存特徵
+                // 儲存特徵和圖片
                 const itemId = state.selectedItem.id;
                 if (!state.featureDatabase[itemId]) {
                     state.featureDatabase[itemId] = [];
                 }
                 state.featureDatabase[itemId].push(features);
+                
+                // 儲存學習圖片
+                if (!state.learningImages[itemId]) {
+                    state.learningImages[itemId] = [];
+                }
+                state.learningImages[itemId].push(imageDataUrl);
                 
                 // 更新學習樣本計數
                 if (!state.learningSamples[itemId]) {
@@ -787,13 +856,18 @@
                 // 儲存到本地存儲
                 saveToLocalStorage('featureDatabase', state.featureDatabase);
                 saveToLocalStorage('learningSamples', state.learningSamples);
+                saveToLocalStorage('learningImages', state.learningImages);
                 
                 // 更新顯示
                 updateLearningDisplay();
+                updateLearningPreview();
                 
                 elements.learningStatus.innerHTML = `
                     <div style="color: #2ecc71;">
                         ✅ 已學習 ${state.learningSamples[itemId]} 張照片
+                    </div>
+                    <div style="font-size: 0.9rem; margin-top: 5px;">
+                        ${state.learningSamples[itemId] >= 5 ? '建議拍攝5張不同角度照片已達成最佳效果' : '建議再拍攝' + (5 - state.learningSamples[itemId]) + '張不同角度照片'}
                     </div>
                 `;
                 
@@ -805,6 +879,19 @@
             }
         }
 
+        function updateLearningPreview() {
+            if (!state.selectedItem) return;
+            
+            const itemId = state.selectedItem.id;
+            const images = state.learningImages[itemId] || [];
+            
+            elements.learningPreview.innerHTML = images.map((imgData, index) => `
+                <div class="learning-preview-item">
+                    <img src="${imgData}" alt="學習照片 ${index + 1}">
+                </div>
+            `).join('');
+        }
+
         function batchLearning() {
             elements.learningStatus.innerHTML = `<div style="color: #f39c12;">批量學習所有器皿功能開發中...</div>`;
         }
@@ -813,7 +900,7 @@
         function showManualSection() {
             console.log("顯示手動選擇模式");
             hideAllSections();
-            elements.manualSection.style.display = 'block';
+            document.getElementById('manual-section').style.display = 'block';
         }
 
         function initManualSelection() {
@@ -822,6 +909,7 @@
                     <div class="item-name">${item.name}</div>
                     <div class="item-code">編號: ${item.code}</div>
                     <div class="item-price">價格: NT$ ${item.price}</div>
+                    <div class="item-samples">已學習: ${state.learningSamples[item.id] || 0} 張照片</div>
                 </div>
             `).join('');
         }
@@ -856,17 +944,51 @@
         window.selectLearningItem = function(itemId) {
             state.selectedItem = itemsDatabase.find(i => i.id === itemId);
             updateLearningDisplay();
+            
+            // 如果正在學習模式，更新當前學習項目顯示
+            if (document.getElementById('training-section').style.display === 'block') {
+                elements.currentLearningItem.style.display = 'block';
+                elements.learningItemInfo.innerHTML = `
+                    <div class="item-name">${state.selectedItem.name}</div>
+                    <div class="item-code">編號: ${state.selectedItem.code}</div>
+                    <div class="item-price">價格: NT$ ${state.selectedItem.price}</div>
+                    <div class="item-samples">已學習照片: ${state.learningSamples[state.selectedItem.id] || 0} 張</div>
+                `;
+                updateLearningPreview();
+            }
+            
             console.log(`選擇學習項目: ${state.selectedItem.name}`);
         };
 
         window.hideAllSections = function() {
-            elements.trainingSection.style.display = 'none';
-            elements.manualSection.style.display = 'none';
+            document.getElementById('training-section').style.display = 'none';
+            document.getElementById('manual-section').style.display = 'none';
             elements.detectionResults.classList.remove('active');
+            elements.currentLearningItem.style.display = 'none';
+            state.learningMode = false;
+            elements.learnBtn.disabled = true;
         };
 
         function updateLearningDisplay() {
             initLearningSelection();
+        }
+
+        // 加載預定義圖片
+        async function loadPredefinedImages() {
+            console.log("開始加載預定義圖片...");
+            
+            // 這裡可以添加從服務器加載預定義圖片的邏輯
+            // 例如：const predefinedImages = await fetchPredefinedImages();
+            
+            // 暫時使用模擬數據進行測試
+            const predefinedFeatures = {
+                // 可以為每個物品預先定義一些特徵
+            };
+            
+            // 合併預定義特徵到現有特徵數據庫
+            Object.assign(state.featureDatabase, predefinedFeatures);
+            
+            console.log("預定義圖片加載完成");
         }
 
         // 拍攝照片進行檢測
@@ -1009,14 +1131,13 @@
                 addScannedItem(state.selectedItem);
                 elements.detectionResults.classList.remove('active');
                 state.selectedItem = null;
-                alert(`已添加: ${state.selectedItem.name}`);
             }
         }
 
         // 顯示修正介面
         function showCorrectionInterface() {
             hideAllSections();
-            elements.manualSection.style.display = 'block';
+            document.getElementById('manual-section').style.display = 'block';
         }
 
         // 取消檢測
