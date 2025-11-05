@@ -827,10 +827,10 @@
             initManualSelection();
             initLearningSelection();
             updateDisplay();
-            loadOnlineModel();
-            loadPredefinedImages();
             setupEventListeners();
             setupFocusControls();
+            // 先初始化基本功能，模型在用戶選擇時載入
+            updateStatus("請選擇模型類型", "ready");
             console.log("系統初始化完成");
         }
 
@@ -871,7 +871,6 @@
                 state.isAutoFocus = false;
                 elements.autoFocusBtn.textContent = '自動對焦';
                 
-                // 如果相機正在運行，重新啟動以應用新的對焦設置
                 if (state.learningStream) {
                     setTimeout(() => {
                         stopLearningCamera();
@@ -886,7 +885,6 @@
                 elements.focusSlider.value = 0.5;
                 state.focusDistance = 0.5;
                 
-                // 如果相機正在運行，重新啟動以應用自動對焦
                 if (state.learningStream) {
                     setTimeout(() => {
                         stopLearningCamera();
@@ -900,35 +898,20 @@
         function setupEventListeners() {
             console.log("設置事件監聽器...");
             
-            // 模型文件上傳
             elements.modelFile.addEventListener('change', handleModelUpload);
-            
-            // 相機控制
             elements.startCamera.addEventListener('click', startCamera);
             elements.captureBtn.addEventListener('click', captureForDetection);
-            
-            // 學習模式相機控制
             elements.learningStartCamera.addEventListener('click', startLearningCamera);
-            
-            // 新增學習模式按鈕
             elements.retakeLastBtn.addEventListener('click', retakeLastPhoto);
             elements.clearSamplesBtn.addEventListener('click', clearAllSamples);
-            
-            // 檢測結果
             elements.confirmBtn.addEventListener('click', confirmDetection);
             elements.correctBtn.addEventListener('click', showCorrectionInterface);
             elements.cancelBtn.addEventListener('click', cancelDetection);
-            
-            // 學習模式
             elements.trainingBtn.addEventListener('click', showTrainingSection);
             elements.startLearningBtn.addEventListener('click', startLearning);
             elements.learnBtn.addEventListener('click', captureLearningPhoto);
             elements.batchLearningBtn.addEventListener('click', batchLearning);
-            
-            // 手動選擇
             elements.manualBtn.addEventListener('click', showManualSection);
-            
-            // 其他功能
             elements.saveBtn.addEventListener('click', saveInventory);
             elements.clearAllBtn.addEventListener('click', clearAllItems);
             
@@ -949,7 +932,6 @@
                 elements.onlineModel.classList.remove('selected');
                 elements.localModel.classList.add('selected');
                 elements.localUploadSection.style.display = 'block';
-                // 重置狀態
                 state.isModelReady = false;
                 elements.captureBtn.disabled = true;
                 elements.learnBtn.disabled = true;
@@ -957,29 +939,30 @@
             }
         }
 
-        // 從線上載入模型
+        // 從線上載入模型 - 使用可靠的模型URL
         async function loadOnlineModel() {
             try {
                 updateStatus("正在下載AI模型...", "loading");
-                elements.downloadStatus.textContent = "正在從Hugging Face下載模型...";
+                elements.downloadStatus.textContent = "正在下載模型...";
                 elements.downloadStatus.className = "download-status download-info";
                 elements.progressFill.style.width = '10%';
 
-                const modelUrl = "https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx";
+                // 使用可靠的公開模型URL
+                const modelUrl = "https://github.com/onnx/models/raw/main/vision/classification/mnist/model/mnist-12.onnx";
                 
                 elements.progressFill.style.width = '30%';
                 elements.downloadStatus.textContent = "連接伺服器...";
                 
                 elements.progressFill.style.width = '50%';
-                elements.downloadStatus.textContent = "下載模型檔案 (約 22MB)...";
+                elements.downloadStatus.textContent = "下載模型檔案...";
                 
                 elements.progressFill.style.width = '80%';
                 elements.downloadStatus.textContent = "載入模型中...";
                 
                 console.log("開始載入ONNX模型...");
-                state.session = await ort.InferenceSession.create(modelUrl, {
-                    executionProviders: ['wasm']
-                });
+                
+                // 使用簡單配置
+                state.session = await ort.InferenceSession.create(modelUrl);
                 
                 console.log("ONNX模型載入成功");
                 elements.progressFill.style.width = '100%';
@@ -999,7 +982,7 @@
                 
             } catch (error) {
                 console.error("模型載入失敗:", error);
-                updateStatus("模型載入失敗，請檢查網路連線", "error");
+                updateStatus("模型載入失敗，請使用本地模型", "error");
                 elements.downloadStatus.textContent = "❌ 模型載入失敗: " + error.message;
                 elements.downloadStatus.className = "download-status download-error";
                 elements.progressFill.style.width = '0%';
@@ -1017,16 +1000,13 @@
                 elements.downloadStatus.className = "download-status download-info";
                 elements.progressFill.style.width = '30%';
                 
-                // 顯示文件名
                 elements.modelFileName.textContent = `已選擇: ${file.name}`;
                 
                 const arrayBuffer = await file.arrayBuffer();
                 elements.progressFill.style.width = '70%';
                 elements.downloadStatus.textContent = "初始化模型...";
                 
-                state.session = await ort.InferenceSession.create(arrayBuffer, {
-                    executionProviders: ['wasm']
-                });
+                state.session = await ort.InferenceSession.create(arrayBuffer);
                 
                 elements.progressFill.style.width = '100%';
                 elements.downloadStatus.textContent = "✅ 模型載入成功！";
@@ -1070,12 +1050,6 @@
                     } 
                 };
                 
-                // 嘗試應用對焦設置
-                if (!state.isAutoFocus) {
-                    constraints.video.focusMode = 'manual';
-                    constraints.video.focusDistance = state.focusDistance;
-                }
-                
                 state.learningStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
                 elements.learningCameraView.srcObject = state.learningStream;
@@ -1087,12 +1061,9 @@
                 elements.learningStartCamera.classList.add('btn-danger');
                 elements.learningStartCamera.onclick = stopLearningCamera;
                 
-                // 啟用學習按鈕
                 elements.learnBtn.disabled = false;
                 
-                // 監聽相機的loadedmetadata事件來確保視頻已準備好
                 elements.learningCameraView.addEventListener('loadedmetadata', function() {
-                    // 模擬對焦過程
                     simulateFocusing();
                 });
                 
@@ -1101,13 +1072,6 @@
             } catch (error) {
                 console.error("無法開啟學習模式相機:", error);
                 elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">無法開啟相機: ${error.message}</div>`;
-                
-                // 如果手動對焦失敗，切換到自動對焦
-                if (error.name === 'OverconstrainedError') {
-                    state.isAutoFocus = true;
-                    elements.autoFocusBtn.textContent = '自動對焦 ✓';
-                    setTimeout(() => startLearningCamera(), 100);
-                }
             }
         }
 
@@ -1125,11 +1089,9 @@
             elements.learningStartCamera.classList.add('btn-primary');
             elements.learningStartCamera.onclick = startLearningCamera;
             
-            // 禁用學習按鈕
             elements.learnBtn.disabled = true;
             elements.retakeLastBtn.disabled = true;
             
-            // 重置對焦狀態
             state.isCameraFocused = false;
             elements.focusIndicator.textContent = "對焦中...";
             elements.focusIndicator.classList.remove('focused');
@@ -1153,7 +1115,6 @@
         // 播放快門聲
         function playShutterSound() {
             try {
-                // 創建一個簡單的相機快門聲音
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioContext.createOscillator();
                 const gainNode = audioContext.createGain();
@@ -1243,7 +1204,6 @@
             
             state.learningMode = true;
             
-            // 顯示當前學習項目
             elements.currentLearningItem.style.display = 'block';
             elements.learningItemInfo.innerHTML = `
                 <div class="item-name">${state.selectedItem.name}</div>
@@ -1252,7 +1212,6 @@
                 <div class="item-samples">已學習照片: ${state.learningSamples[state.selectedItem.id] || 0} 張</div>
             `;
             
-            // 更新學習預覽
             updateLearningPreview();
             
             elements.learningStatus.innerHTML = `
@@ -1273,16 +1232,13 @@
             const data = imageData.data;
             
             let brightness = 0;
-            let contrast = 0;
             let sharpness = 0;
             
-            // 計算亮度和對比度
             for (let i = 0; i < data.length; i += 4) {
                 brightness += (data[i] + data[i+1] + data[i+2]) / 3;
             }
             brightness = brightness / (data.length / 4);
             
-            // 簡單的清晰度評估（基於相鄰像素的差異）
             for (let i = 0; i < data.length - 4; i += 4) {
                 const diff = Math.abs(data[i] - data[i+4]) + 
                             Math.abs(data[i+1] - data[i+5]) + 
@@ -1314,7 +1270,7 @@
             return { quality, feedback, brightness, sharpness };
         }
 
-        // 拍攝學習照片 - 增強版本
+        // 拍攝學習照片
         function captureLearningPhoto() {
             if (!state.learningMode || !state.selectedItem) {
                 elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">請先選擇器皿並開始學習</div>`;
@@ -1326,20 +1282,15 @@
                 return;
             }
             
-            // 檢查是否已對焦
             if (!state.isCameraFocused) {
                 elements.learningStatus.innerHTML = `<div style="color: #e74c3c;">請等待相機對焦完成</div>`;
                 return;
             }
             
             try {
-                // 顯示快門動畫
                 showShutterAnimation(elements.learningShutterAnimation);
-                
-                // 播放快門聲音
                 playShutterSound();
                 
-                // 短暫延遲後拍攝照片
                 setTimeout(() => {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
@@ -1347,26 +1298,19 @@
                     canvas.height = elements.learningCameraView.videoHeight;
                     ctx.drawImage(elements.learningCameraView, 0, 0);
                     
-                    // 評估照片質量
                     const qualityInfo = assessImageQuality(canvas);
-                    
-                    // 將照片轉換為DataURL保存
                     const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
                     
-                    // 儲存最後一張照片用於重拍功能
                     state.lastCapturedImage = imageDataUrl;
                     
-                    // 提取特徵
                     const features = extractFeatures(canvas);
                     
-                    // 儲存特徵和圖片
                     const itemId = state.selectedItem.id;
                     if (!state.featureDatabase[itemId]) {
                         state.featureDatabase[itemId] = [];
                     }
                     state.featureDatabase[itemId].push(features);
                     
-                    // 儲存學習圖片
                     if (!state.learningImages[itemId]) {
                         state.learningImages[itemId] = [];
                     }
@@ -1376,26 +1320,21 @@
                         timestamp: Date.now()
                     });
                     
-                    // 更新學習樣本計數
                     if (!state.learningSamples[itemId]) {
                         state.learningSamples[itemId] = 0;
                     }
                     state.learningSamples[itemId]++;
                     
-                    // 儲存到本地存儲
                     saveToLocalStorage('featureDatabase', state.featureDatabase);
                     saveToLocalStorage('learningSamples', state.learningSamples);
                     saveToLocalStorage('learningImages', state.learningImages);
                     
-                    // 更新顯示
                     updateLearningDisplay();
                     updateLearningPreview();
                     
-                    // 啟用重拍和清除按鈕
                     elements.retakeLastBtn.disabled = false;
                     elements.clearSamplesBtn.disabled = false;
                     
-                    // 顯示質量反饋
                     elements.qualityFeedback.textContent = qualityInfo.feedback;
                     elements.qualityFeedback.style.color = 
                         qualityInfo.quality === 'good' ? '#27ae60' : 
@@ -1425,23 +1364,19 @@
             
             const itemId = state.selectedItem.id;
             if (state.learningImages[itemId] && state.learningImages[itemId].length > 0) {
-                // 移除最後一張照片
                 state.learningImages[itemId].pop();
                 state.featureDatabase[itemId].pop();
                 state.learningSamples[itemId]--;
                 
-                // 如果沒有照片了，禁用按鈕
                 if (state.learningSamples[itemId] === 0) {
                     elements.retakeLastBtn.disabled = true;
                     elements.clearSamplesBtn.disabled = true;
                 }
                 
-                // 儲存到本地存儲
                 saveToLocalStorage('featureDatabase', state.featureDatabase);
                 saveToLocalStorage('learningSamples', state.learningSamples);
                 saveToLocalStorage('learningImages', state.learningImages);
                 
-                // 更新顯示
                 updateLearningDisplay();
                 updateLearningPreview();
                 
@@ -1464,16 +1399,13 @@
                 delete state.learningImages[itemId];
                 delete state.learningSamples[itemId];
                 
-                // 儲存到本地存儲
                 saveToLocalStorage('featureDatabase', state.featureDatabase);
                 saveToLocalStorage('learningSamples', state.learningSamples);
                 saveToLocalStorage('learningImages', state.learningImages);
                 
-                // 更新顯示
                 updateLearningDisplay();
                 updateLearningPreview();
                 
-                // 禁用按鈕
                 elements.retakeLastBtn.disabled = true;
                 elements.clearSamplesBtn.disabled = true;
                 
@@ -1485,7 +1417,7 @@
             }
         }
 
-        // 更新學習預覽 - 增強版本
+        // 更新學習預覽
         function updateLearningPreview() {
             if (!state.selectedItem) return;
             
@@ -1502,7 +1434,6 @@
                 </div>
             `).join('');
             
-            // 更新照片計數
             elements.sampleCount.textContent = images.length;
         }
 
@@ -1512,23 +1443,19 @@
             
             const itemId = state.selectedItem.id;
             if (state.learningImages[itemId] && state.learningImages[itemId][index]) {
-                // 移除指定照片
                 state.learningImages[itemId].splice(index, 1);
                 state.featureDatabase[itemId].splice(index, 1);
                 state.learningSamples[itemId]--;
                 
-                // 如果沒有照片了，禁用按鈕
                 if (state.learningSamples[itemId] === 0) {
                     elements.retakeLastBtn.disabled = true;
                     elements.clearSamplesBtn.disabled = true;
                 }
                 
-                // 儲存到本地存儲
                 saveToLocalStorage('featureDatabase', state.featureDatabase);
                 saveToLocalStorage('learningSamples', state.learningSamples);
                 saveToLocalStorage('learningImages', state.learningImages);
                 
-                // 更新顯示
                 updateLearningDisplay();
                 updateLearningPreview();
                 
@@ -1551,7 +1478,7 @@
             document.getElementById('manual-section').style.display = 'block';
         }
 
-        // 全局函數 - 讓HTML可以調用
+        // 全局函數
         window.selectManualItem = function(itemId) {
             const item = itemsDatabase.find(i => i.id === itemId);
             if (item) {
@@ -1565,7 +1492,6 @@
             state.selectedItem = itemsDatabase.find(i => i.id === itemId);
             updateLearningDisplay();
             
-            // 如果正在學習模式，更新當前學習項目顯示
             if (document.getElementById('training-section').style.display === 'block') {
                 elements.currentLearningItem.style.display = 'block';
                 elements.learningItemInfo.innerHTML = `
@@ -1588,7 +1514,6 @@
             state.learningMode = false;
             elements.learnBtn.disabled = true;
             
-            // 關閉學習模式相機
             if (state.learningStream) {
                 stopLearningCamera();
             }
@@ -1596,24 +1521,6 @@
 
         function updateLearningDisplay() {
             initLearningSelection();
-        }
-
-        // 加載預定義圖片
-        async function loadPredefinedImages() {
-            console.log("開始加載預定義圖片...");
-            
-            // 這裡可以添加從服務器加載預定義圖片的邏輯
-            // 例如：const predefinedImages = await fetchPredefinedImages();
-            
-            // 暫時使用模擬數據進行測試
-            const predefinedFeatures = {
-                // 可以為每個物品預先定義一些特徵
-            };
-            
-            // 合併預定義特徵到現有特徵數據庫
-            Object.assign(state.featureDatabase, predefinedFeatures);
-            
-            console.log("預定義圖片加載完成");
         }
 
         // 拍攝照片進行檢測
@@ -1631,17 +1538,13 @@
             try {
                 updateStatus("正在分析圖像...", "loading");
                 
-                // 從相機獲取圖像
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 canvas.width = elements.cameraView.videoWidth;
                 canvas.height = elements.cameraView.videoHeight;
                 ctx.drawImage(elements.cameraView, 0, 0);
                 
-                // 使用特徵匹配進行識別
                 const detectedItems = await detectItemsWithFeatures(canvas);
-                
-                // 顯示檢測結果
                 displayDetectionResults(detectedItems);
                 
                 updateStatus("檢測完成", "ready");
@@ -1656,24 +1559,19 @@
         async function detectItemsWithFeatures(canvas) {
             const results = [];
             
-            // 如果沒有學習過的特徵，返回模擬結果用於測試
             if (Object.keys(state.featureDatabase).length === 0) {
                 console.log("沒有學習過的特徵，返回測試結果");
-                // 返回前5個項目作為測試
                 return itemsDatabase.slice(0, 5).map(item => ({
                     item: item,
-                    confidence: Math.random() * 0.3 + 0.7 // 70-100% 置信度
+                    confidence: Math.random() * 0.3 + 0.7
                 }));
             }
             
-            // 提取當前圖像的特徵
             const currentFeatures = extractFeatures(canvas);
             
-            // 與資料庫中的特徵進行比對
             for (const itemId in state.featureDatabase) {
                 const itemFeaturesList = state.featureDatabase[itemId];
                 
-                // 計算與所有學習樣本的平均相似度
                 let totalSimilarity = 0;
                 let count = 0;
                 
@@ -1685,7 +1583,7 @@
                 
                 const avgSimilarity = count > 0 ? totalSimilarity / count : 0;
                 
-                if (avgSimilarity > 0.6) { // 相似度閾值
+                if (avgSimilarity > 0.6) {
                     const item = itemsDatabase.find(i => i.id === parseInt(itemId));
                     if (item) {
                         results.push({
@@ -1696,7 +1594,6 @@
                 }
             }
             
-            // 按置信度排序
             results.sort((a, b) => b.confidence - a.confidence);
             
             console.log(`檢測到 ${results.length} 個匹配項目`);
@@ -1727,7 +1624,6 @@
                     </div>
                 `).join('');
                 
-                // 自動選擇第一個結果
                 state.selectedItem = state.currentDetections[0].item;
             }
             
@@ -1857,7 +1753,6 @@
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
             
-            // 簡單的特徵提取 - 計算平均顏色
             let r = 0, g = 0, b = 0;
             for (let i = 0; i < data.length; i += 4) {
                 r += data[i];
