@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>盲人導航輔助系統 - 穩定手部檢測版</title>
+    <title>盲人導航輔助系統 - MediaPipe 手部檢測</title>
+    <!-- 載入 MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <style>
         * {
             margin: 0;
@@ -35,7 +40,7 @@
         
         .status-panel {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 8px;
             margin-bottom: 15px;
         }
@@ -55,7 +60,7 @@
             border-radius: 15px;
             overflow: hidden;
             background: black;
-            min-height: 300px;
+            min-height: 400px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -65,6 +70,7 @@
             width: 100%;
             height: auto;
             display: block;
+            transform: scaleX(-1);
         }
         
         #canvas {
@@ -73,6 +79,7 @@
             left: 0;
             width: 100%;
             height: 100%;
+            transform: scaleX(-1);
         }
         
         .controls {
@@ -83,10 +90,10 @@
         }
         
         button {
-            padding: 12px;
+            padding: 15px;
             border: none;
-            border-radius: 8px;
-            font-size: 14px;
+            border-radius: 10px;
+            font-size: 16px;
             font-weight: bold;
             cursor: pointer;
             background: rgba(255, 255, 255, 0.2);
@@ -96,30 +103,41 @@
         
         button:hover {
             background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
         }
         
         .primary {
-            background: #4CAF50;
+            background: linear-gradient(45deg, #4CAF50, #45a049);
         }
         
         .secondary {
-            background: #2196F3;
+            background: linear-gradient(45deg, #2196F3, #1976D2);
         }
         
         .instructions {
             background: rgba(255, 255, 255, 0.1);
-            padding: 12px;
+            padding: 15px;
             border-radius: 10px;
-            font-size: 12px;
-            line-height: 1.4;
+            font-size: 14px;
+            line-height: 1.5;
         }
         
         .detection-info {
             background: rgba(255, 255, 255, 0.1);
-            padding: 12px;
+            padding: 15px;
             border-radius: 10px;
-            margin-bottom: 10px;
-            font-size: 13px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .hand-gesture {
+            font-size: 24px;
+            margin: 10px 0;
         }
     </style>
 </head>
@@ -127,63 +145,81 @@
     <div class="container">
         <div class="header">
             <h1>👋 盲人導航輔助系統</h1>
-            <p>穩定手部檢測與追蹤</p>
+            <p>MediaPipe 精準手部檢測與追蹤</p>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="hand-gesture">⏳</div>
+            <div>載入 MediaPipe 手部檢測模型中...</div>
+            <div style="font-size: 12px; margin-top: 10px; opacity: 0.8;">
+                首次使用需要載入AI模型，請稍候10-20秒
+            </div>
         </div>
         
         <div class="status-panel">
             <div class="status-card">
                 <div>系統狀態</div>
-                <div id="systemStatus">準備就緒</div>
+                <div id="systemStatus">初始化中</div>
             </div>
             <div class="status-card">
                 <div>手部檢測</div>
-                <div id="handStatus">等待啟動</div>
+                <div id="handStatus">載入模型中</div>
+            </div>
+            <div class="status-card">
+                <div>手掌位置</div>
+                <div id="positionStatus">-</div>
             </div>
         </div>
         
         <div class="detection-info">
-            <div style="margin-bottom: 8px;"><strong>檢測資訊:</strong></div>
-            <div id="detectionInfo">點擊「啟動手部檢測」開始</div>
+            <div style="margin-bottom: 10px;"><strong>🎯 檢測資訊:</strong></div>
+            <div id="detectionInfo">等待模型載入完成...</div>
         </div>
         
         <div class="video-container">
             <video id="video" autoplay playsinline muted></video>
             <canvas id="canvas"></canvas>
-            <div id="videoPlaceholder" style="text-align: center;">
-                <div style="font-size: 48px; margin-bottom: 10px;">📷</div>
+            <div id="videoPlaceholder" style="text-align: center; position: absolute;">
+                <div class="hand-gesture">📷</div>
                 <div>準備啟動手部檢測</div>
             </div>
         </div>
         
         <div class="controls">
-            <button id="startBtn" class="primary">啟動手部檢測</button>
-            <button id="cameraBtn" class="secondary">切換鏡頭</button>
+            <button id="startBtn" class="primary" disabled>🚀 啟動手部檢測</button>
+            <button id="cameraBtn" class="secondary" disabled>📷 切換鏡頭</button>
         </div>
         
         <div class="instructions">
-            <strong>使用說明:</strong><br>
-            1. 點擊「啟動手部檢測」並允許攝像頭權限<br>
-            2. 將手掌對準鏡頭中央<br>
-            3. 緩慢移動手掌測試檢測效果<br>
-            4. 系統會顯示檢測區域和語音提示<br>
-            5. 綠色框: 檢測區域，紅色點: 手掌位置
+            <strong>💡 使用說明:</strong><br>
+            1. 等待模型載入完成（約10-20秒）<br>
+            2. 點擊「啟動手部檢測」並允許攝像頭權限<br>
+            3. 將手掌對準鏡頭（距離40-80公分）<br>
+            4. 系統會顯示21個手部關鍵點和邊界框<br>
+            5. 聽取語音位置提示和手勢識別<br><br>
+            
+            <strong>🎯 檢測提示:</strong><br>
+            • 綠色線條：手部骨骼連接<br>
+            • 紅色點點：21個手部關鍵點<br>
+            • 黃色邊框：手部檢測範圍<br>
+            • 語音提示：手掌位置和手勢
         </div>
     </div>
 
     <script>
-        class StableHandTrackingSystem {
+        class MediaPipeHandTracking {
             constructor() {
+                this.detector = null;
+                this.camera = null;
                 this.isRunning = false;
                 this.currentFacingMode = 'user';
                 this.lastSpeechTime = 0;
-                this.speechCooldown = 4000;
-                this.animationId = null;
-                this.handPosition = { x: 0, y: 0 };
-                this.handDetected = false;
-                this.detectionCount = 0;
+                this.speechCooldown = 3000;
+                this.handCount = 0;
                 
                 this.initializeElements();
                 this.setupEventListeners();
+                this.initializeMediaPipe();
             }
             
             initializeElements() {
@@ -194,13 +230,62 @@
                 this.cameraBtn = document.getElementById('cameraBtn');
                 this.systemStatus = document.getElementById('systemStatus');
                 this.handStatus = document.getElementById('handStatus');
+                this.positionStatus = document.getElementById('positionStatus');
                 this.detectionInfo = document.getElementById('detectionInfo');
                 this.videoPlaceholder = document.getElementById('videoPlaceholder');
+                this.loading = document.getElementById('loading');
             }
             
             setupEventListeners() {
                 this.startBtn.addEventListener('click', () => this.toggleSystem());
                 this.cameraBtn.addEventListener('click', () => this.switchCamera());
+            }
+            
+            async initializeMediaPipe() {
+                try {
+                    this.systemStatus.textContent = '載入 MediaPipe...';
+                    
+                    // 初始化 MediaPipe Hands
+                    this.detector = new Hands({
+                        locateFile: (file) => {
+                            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                        }
+                    });
+                    
+                    // 設定檢測參數
+                    this.detector.setOptions({
+                        selfieMode: true,
+                        maxNumHands: 2,
+                        modelComplexity: 1,
+                        minDetectionConfidence: 0.5,
+                        minTrackingConfidence: 0.5
+                    });
+                    
+                    // 設定檢測回調函數
+                    this.detector.onResults((results) => {
+                        this.handleDetectionResults(results);
+                    });
+                    
+                    // 隱藏載入畫面，顯示控制按鈕
+                    this.loading.style.display = 'none';
+                    this.startBtn.disabled = false;
+                    this.cameraBtn.disabled = false;
+                    this.systemStatus.textContent = '就緒';
+                    this.handStatus.textContent = '等待啟動';
+                    
+                    console.log('✅ MediaPipe Hands 模型載入成功！');
+                    
+                } catch (error) {
+                    console.error('MediaPipe 初始化失敗:', error);
+                    this.systemStatus.textContent = '載入失敗';
+                    this.loading.innerHTML = `
+                        <div class="hand-gesture">❌</div>
+                        <div>模型載入失敗</div>
+                        <div style="font-size: 12px; margin-top: 10px;">
+                            請刷新頁面重試，或檢查網絡連接
+                        </div>
+                    `;
+                }
             }
             
             async toggleSystem() {
@@ -218,216 +303,200 @@
                     const stream = await navigator.mediaDevices.getUserMedia({
                         video: { 
                             facingMode: this.currentFacingMode,
-                            width: { ideal: 640 },
-                            height: { ideal: 480 },
-                            frameRate: { ideal: 30 }
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 },
+                            frameRate: { ideal: 60 }
                         }
                     });
                     
                     this.video.srcObject = stream;
                     this.isRunning = true;
-                    this.startBtn.textContent = '停止檢測';
+                    this.startBtn.textContent = '🛑 停止檢測';
                     this.videoPlaceholder.style.display = 'none';
                     
                     this.video.addEventListener('loadedmetadata', () => {
                         this.canvas.width = this.video.videoWidth;
                         this.canvas.height = this.video.videoHeight;
-                        this.systemStatus.textContent = '開始手部檢測';
-                        this.startDetection();
+                        this.systemStatus.textContent = '檢測中...';
+                        this.startCamera();
                     });
                     
                 } catch (error) {
                     console.error('攝像頭啟動失敗:', error);
                     this.systemStatus.textContent = '攝像頭訪問失敗';
-                    alert('無法訪問攝像頭，請確保已授予權限');
+                    this.showError('無法訪問攝像頭，請確保已授予權限');
                 }
             }
             
-            startDetection() {
-                if (!this.isRunning) return;
+            startCamera() {
+                this.camera = new Camera(this.video, {
+                    onFrame: async () => {
+                        if (this.isRunning && this.detector) {
+                            await this.detector.send({image: this.video});
+                        }
+                    },
+                    width: 1280,
+                    height: 720
+                });
+                this.camera.start();
+            }
+            
+            handleDetectionResults(results) {
+                this.ctx.save();
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 
-                try {
-                    // 繪製視頻幀
-                    this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+                // 繪製攝像頭畫面
+                this.ctx.drawImage(results.image, 0, 0, this.canvas.width, this.canvas.height);
+                
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    this.handCount = results.multiHandLandmarks.length;
                     
-                    // 執行手部檢測
-                    this.detectHandMovement();
+                    // 更新界面狀態
+                    this.updateUI(results);
                     
                     // 繪製檢測結果
-                    this.drawDetectionResults();
+                    this.drawResults(results);
                     
-                    // 更新狀態
-                    this.updateStatus();
+                    // 提供語音指導
+                    this.provideVoiceGuidance(results);
                     
-                } catch (error) {
-                    console.error('檢測錯誤:', error);
-                    this.handStatus.textContent = '檢測錯誤';
-                }
-                
-                // 繼續下一帧檢測
-                this.animationId = requestAnimationFrame(() => this.startDetection());
-            }
-            
-            detectHandMovement() {
-                // 獲取當前幀的圖像數據
-                const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-                const data = imageData.data;
-                
-                let motionPixels = 0;
-                let totalX = 0;
-                let totalY = 0;
-                
-                // 簡單的運動檢測算法
-                for (let y = 0; y < this.canvas.height; y += 4) {
-                    for (let x = 0; x < this.canvas.width; x += 4) {
-                        const index = (y * this.canvas.width + x) * 4;
-                        const r = data[index];
-                        const g = data[index + 1];
-                        const b = data[index + 2];
-                        
-                        // 檢測膚色區域（簡單的膚色檢測）
-                        if (this.isSkinColor(r, g, b)) {
-                            motionPixels++;
-                            totalX += x;
-                            totalY += y;
-                        }
-                    }
-                }
-                
-                // 判斷是否檢測到手部
-                const detectionThreshold = 100; // 調整這個值來改變檢測靈敏度
-                
-                if (motionPixels > detectionThreshold) {
-                    this.handDetected = true;
-                    this.handPosition.x = totalX / motionPixels;
-                    this.handPosition.y = totalY / motionPixels;
-                    this.detectionCount++;
                 } else {
-                    this.handDetected = false;
-                    this.detectionCount = Math.max(0, this.detectionCount - 1);
+                    this.handCount = 0;
+                    this.handStatus.textContent = '❌ 未檢測到手部';
+                    this.handStatus.style.color = '#ff4444';
+                    this.positionStatus.textContent = '-';
+                    this.detectionInfo.innerHTML = `
+                        <span style="color: #ff6b6b;">請將手掌對準鏡頭：</span><br>
+                        • 確保手掌完全在畫面中<br>
+                        • 距離鏡頭40-80公分<br>
+                        • 光線充足，背景單純
+                    `;
+                }
+                
+                this.ctx.restore();
+            }
+            
+            updateUI(results) {
+                const hands = results.multiHandLandmarks;
+                const handedness = results.multiHandedness;
+                
+                this.handStatus.textContent = `✅ 檢測到 ${hands.length} 隻手`;
+                this.handStatus.style.color = '#4CAF50';
+                
+                // 更新手掌位置資訊
+                if (hands.length > 0) {
+                    const firstHand = hands[0];
+                    const wrist = firstHand[0]; // 手腕位置
+                    const screenX = Math.round(wrist.x * 100);
+                    const screenY = Math.round(wrist.y * 100);
+                    
+                    this.positionStatus.textContent = `X:${screenX}% Y:${screenY}%`;
+                    
+                    let handInfo = '';
+                    handedness.forEach((hand, index) => {
+                        handInfo += `${hand.label}手 (${Math.round(hand.score * 100)}%) `;
+                    });
+                    
+                    this.detectionInfo.innerHTML = `
+                        <span style="color: #4CAF50;">🎯 檢測成功！</span><br>
+                        • ${handInfo}<br>
+                        • 手掌位置: X${screenX}% Y${screenY}%<br>
+                        • 關鍵點: 21點手部模型
+                    `;
                 }
             }
             
-            isSkinColor(r, g, b) {
-                // 簡單的膚色檢測算法
-                const max = Math.max(r, g, b);
-                const min = Math.min(r, g, b);
+            drawResults(results) {
+                const { multiHandLandmarks, multiHandedness } = results;
                 
-                // 排除太暗或太亮的像素
-                if (max < 50 || min > 200) return false;
-                
-                // 膚色通常R > G > B
-                if (r <= g || g <= b) return false;
-                
-                // R值應該明顯高於G和B
-                if (r - g < 20) return false;
-                
-                return true;
-            }
-            
-            drawDetectionResults() {
-                if (this.handDetected && this.detectionCount > 5) {
-                    const x = this.handPosition.x;
-                    const y = this.handPosition.y;
-                    const handSize = 80;
+                for (let i = 0; i < multiHandLandmarks.length; i++) {
+                    const landmarks = multiHandLandmarks[i];
+                    const handedness = multiHandedness[i];
+                    
+                    // 繪製手部連接線
+                    drawConnectors(this.ctx, landmarks, HAND_CONNECTIONS, {
+                        color: handedness.label === 'Left' ? '#00FF00' : '#FF00FF',
+                        lineWidth: 4
+                    });
+                    
+                    // 繪製手部關鍵點
+                    drawLandmarks(this.ctx, landmarks, {
+                        color: handedness.label === 'Left' ? '#FF0000' : '#FF6B6B',
+                        lineWidth: 2,
+                        radius: (data) => {
+                            return 3 + (data.from?.z || 0) * 2;
+                        }
+                    });
                     
                     // 繪製手部邊界框
-                    this.ctx.strokeStyle = '#00FF00';
-                    this.ctx.lineWidth = 3;
-                    this.ctx.strokeRect(x - handSize/2, y - handSize/2, handSize, handSize);
-                    
-                    // 繪製手掌中心點
-                    this.ctx.fillStyle = '#FF0000';
-                    this.ctx.beginPath();
-                    this.ctx.arc(x, y, 8, 0, 2 * Math.PI);
-                    this.ctx.fill();
-                    
-                    // 繪製手部關鍵點（模擬）
-                    this.drawSimulatedLandmarks(x, y);
-                    
-                    // 顯示檢測資訊
-                    this.ctx.fillStyle = '#00FF00';
-                    this.ctx.font = '14px Arial';
-                    this.ctx.fillText('👋 檢測到手部', x - handSize/2, y - handSize/2 - 10);
+                    this.drawBoundingBox(landmarks, handedness.label);
                 }
             }
             
-            drawSimulatedLandmarks(x, y) {
-                this.ctx.fillStyle = '#FF6B6B';
+            drawBoundingBox(landmarks, handLabel) {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
                 
-                // 繪製模擬的手部關鍵點
-                const landmarks = [
-                    [x, y],           // 手掌中心
-                    [x - 15, y - 25], // 拇指
-                    [x + 15, y - 25], // 食指
-                    [x - 10, y - 15], // 中指
-                    [x + 10, y - 15], // 無名指
-                    [x, y - 5],       // 小指
-                    [x - 20, y + 10], // 手腕左
-                    [x + 20, y + 10]  // 手腕右
-                ];
-                
-                landmarks.forEach(([lx, ly]) => {
-                    this.ctx.beginPath();
-                    this.ctx.arc(lx, ly, 4, 0, 2 * Math.PI);
-                    this.ctx.fill();
+                landmarks.forEach(landmark => {
+                    minX = Math.min(minX, landmark.x);
+                    minY = Math.min(minY, landmark.y);
+                    maxX = Math.max(maxX, landmark.x);
+                    maxY = Math.max(maxY, landmark.y);
                 });
                 
-                // 繪製連接線
-                this.ctx.strokeStyle = '#00FF00';
-                this.ctx.lineWidth = 2;
+                const width = maxX - minX;
+                const height = maxY - minY;
                 
-                // 手掌輪廓
-                this.ctx.beginPath();
-                this.ctx.moveTo(x - 25, y);
-                this.ctx.lineTo(x - 20, y - 20);
-                this.ctx.lineTo(x, y - 30);
-                this.ctx.lineTo(x + 20, y - 20);
-                this.ctx.lineTo(x + 25, y);
-                this.ctx.lineTo(x + 20, y + 15);
-                this.ctx.lineTo(x - 20, y + 15);
-                this.ctx.closePath();
-                this.ctx.stroke();
+                // 轉換為畫布坐標
+                const canvasX = minX * this.canvas.width;
+                const canvasY = minY * this.canvas.height;
+                const canvasWidth = width * this.canvas.width;
+                const canvasHeight = height * this.canvas.height;
+                
+                // 繪製邊界框
+                this.ctx.strokeStyle = handLabel === 'Left' ? '#FFFF00' : '#00FFFF';
+                this.ctx.lineWidth = 3;
+                this.ctx.strokeRect(canvasX, canvasY, canvasWidth, canvasHeight);
+                
+                // 繪製標籤
+                this.ctx.fillStyle = handLabel === 'Left' ? '#FFFF00' : '#00FFFF';
+                this.ctx.font = 'bold 16px Arial';
+                this.ctx.fillText(
+                    `${handLabel} Hand`,
+                    canvasX,
+                    canvasY - 10
+                );
             }
             
-            updateStatus() {
-                if (this.handDetected && this.detectionCount > 5) {
-                    this.handStatus.textContent = '✅ 檢測到手部';
-                    this.handStatus.style.color = '#4CAF50';
-                    
-                    const screenX = Math.round((this.handPosition.x / this.canvas.width) * 100);
-                    const screenY = Math.round((this.handPosition.y / this.canvas.height) * 100);
-                    
-                    this.detectionInfo.textContent = 
-                        `手掌位置: X${screenX}% Y${screenY}% | 檢測穩定性: ${Math.min(100, this.detectionCount)}%`;
-                    
-                    // 提供語音提示
-                    this.provideVoiceGuidance(screenX, screenY);
-                } else {
-                    this.handStatus.textContent = '❌ 搜尋手部中...';
-                    this.handStatus.style.color = '#ff4444';
-                    this.detectionInfo.textContent = '請將手掌對準鏡頭中央區域';
-                }
-            }
-            
-            provideVoiceGuidance(screenX, screenY) {
+            provideVoiceGuidance(results) {
                 const now = Date.now();
                 if (now - this.lastSpeechTime < this.speechCooldown) return;
                 
-                let horizontal = '';
-                let vertical = '';
+                const hands = results.multiHandLandmarks;
+                const handedness = results.multiHandedness;
                 
-                if (screenX < 30) horizontal = '左邊';
-                else if (screenX > 70) horizontal = '右邊';
-                else horizontal = '中間';
-                
-                if (screenY < 30) vertical = '上方';
-                else if (screenY > 70) vertical = '下方';
-                else vertical = '中間';
-                
-                const message = `手掌在畫面${horizontal}${vertical}位置`;
-                this.speak(message);
-                this.lastSpeechTime = now;
+                if (hands.length > 0) {
+                    const firstHand = hands[0];
+                    const wrist = firstHand[0];
+                    const screenX = Math.round(wrist.x * 100);
+                    const screenY = Math.round(wrist.y * 100);
+                    
+                    let horizontal = '';
+                    let vertical = '';
+                    
+                    if (screenX < 30) horizontal = '左邊';
+                    else if (screenX > 70) horizontal = '右邊';
+                    else horizontal = '中間';
+                    
+                    if (screenY < 30) vertical = '上方';
+                    else if (screenY > 70) vertical = '下方';
+                    else vertical = '中間';
+                    
+                    const handType = handedness[0]?.label === 'Left' ? '左手' : '右手';
+                    const message = `檢測到${handType}在畫面${horizontal}${vertical}位置`;
+                    
+                    this.speak(message);
+                    this.lastSpeechTime = now;
+                }
             }
             
             speak(text) {
@@ -436,33 +505,29 @@
                     const utterance = new SpeechSynthesisUtterance(text);
                     utterance.lang = 'zh-TW';
                     utterance.rate = 0.8;
+                    utterance.pitch = 1.0;
                     utterance.volume = 1.0;
                     speechSynthesis.speak(utterance);
                 }
             }
             
             stopSystem() {
-                if (this.animationId) {
-                    cancelAnimationFrame(this.animationId);
-                    this.animationId = null;
+                if (this.camera) {
+                    this.camera.stop();
                 }
-                
                 if (this.video.srcObject) {
                     this.video.srcObject.getTracks().forEach(track => track.stop());
                     this.video.srcObject = null;
                 }
                 
                 this.isRunning = false;
-                this.startBtn.textContent = '啟動手部檢測';
+                this.startBtn.textContent = '🚀 啟動手部檢測';
                 this.systemStatus.textContent = '已停止';
                 this.handStatus.textContent = '等待啟動';
-                this.handStatus.style.color = 'white';
-                this.videoPlaceholder.style.display = 'flex';
+                this.positionStatus.textContent = '-';
+                this.videoPlaceholder.style.display = 'block';
                 this.detectionInfo.textContent = '檢測已停止';
-                this.handDetected = false;
-                this.detectionCount = 0;
                 
-                // 清空畫布
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             }
             
@@ -470,14 +535,18 @@
                 this.currentFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
                 if (this.isRunning) {
                     this.stopSystem();
-                    setTimeout(() => this.startSystem(), 500);
+                    setTimeout(() => this.startSystem(), 1000);
                 }
+            }
+            
+            showError(message) {
+                alert(message);
             }
         }
         
         // 初始化系統
         document.addEventListener('DOMContentLoaded', () => {
-            new StableHandTrackingSystem();
+            new MediaPipeHandTracking();
         });
     </script>
 </body>
