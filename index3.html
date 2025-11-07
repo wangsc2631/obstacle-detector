@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>盲人導航輔助系統</title>
+    <title>盲人導航輔助系統 - 精準版</title>
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <style>
         * {
@@ -14,7 +14,7 @@
         
         body {
             font-family: 'Arial', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
             min-height: 100vh;
             padding: 20px;
             color: white;
@@ -39,17 +39,29 @@
             margin-bottom: 10px;
         }
         
-        .status {
+        .status-panel {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .status-card {
             background: rgba(0, 0, 0, 0.3);
             padding: 15px;
             border-radius: 10px;
-            margin-bottom: 20px;
-            min-height: 80px;
+            text-align: center;
         }
         
-        .status-line {
-            margin: 5px 0;
+        .status-title {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+        
+        .status-value {
             font-size: 16px;
+            font-weight: bold;
         }
         
         .video-container {
@@ -60,6 +72,7 @@
             border-radius: 15px;
             overflow: hidden;
             background: black;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
         
         #video {
@@ -98,11 +111,6 @@
         
         button:hover {
             background: rgba(255, 255, 255, 0.3);
-            transform: translateY(-2px);
-        }
-        
-        button:active {
-            transform: translateY(0);
         }
         
         button:disabled {
@@ -122,15 +130,12 @@
             background: #ff9800;
         }
         
-        .danger {
-            background: #f44336;
-        }
-        
         .progress-container {
             background: rgba(0, 0, 0, 0.3);
             border-radius: 10px;
             padding: 15px;
             margin-bottom: 20px;
+            display: none;
         }
         
         .progress-bar {
@@ -148,63 +153,63 @@
             transition: width 0.3s ease;
         }
         
-        .progress-text {
-            text-align: center;
-            margin-top: 5px;
-            font-size: 14px;
-        }
-        
         .instructions {
             background: rgba(255, 255, 255, 0.1);
             padding: 15px;
             border-radius: 10px;
             margin-top: 20px;
-        }
-        
-        .instructions h3 {
-            margin-bottom: 10px;
-        }
-        
-        .instructions ul {
-            list-style-position: inside;
-            margin-left: 10px;
-        }
-        
-        .instructions li {
-            margin: 5px 0;
             font-size: 14px;
         }
         
-        @media (max-width: 768px) {
-            .controls {
-                grid-template-columns: 1fr;
-            }
-            
-            .header h1 {
-                font-size: 20px;
-            }
+        .detection-info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 10px;
+        }
+        
+        .object-list {
+            max-height: 100px;
+            overflow-y: auto;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>👁️ 盲人導航輔助系統</h1>
-            <p>使用AI技術幫助視障人士感知周圍環境</p>
+            <h1>👋 盲人導航輔助系統</h1>
+            <p>精準手部追蹤與物品識別</p>
         </div>
         
-        <div class="status">
-            <div class="status-line" id="status">狀態: 準備中...</div>
-            <div class="status-line" id="handStatus">手部位置: 未檢測到</div>
-            <div class="status-line" id="objectStatus">物品檢測: 無</div>
-            <div class="status-line" id="distanceStatus">距離提示: 無</div>
+        <div class="status-panel">
+            <div class="status-card">
+                <div class="status-title">手部狀態</div>
+                <div class="status-value" id="handStatus">搜尋中...</div>
+            </div>
+            <div class="status-card">
+                <div class="status-title">檢測物品</div>
+                <div class="status-value" id="objectCount">0個</div>
+            </div>
+            <div class="status-card">
+                <div class="status-title">系統狀態</div>
+                <div class="status-value" id="systemStatus">初始化</div>
+            </div>
+            <div class="status-card">
+                <div class="status-title">語音提示</div>
+                <div class="status-value" id="voiceStatus">開啟</div>
+            </div>
         </div>
         
-        <div class="progress-container" id="downloadSection" style="display: none;">
+        <div class="progress-container" id="downloadSection">
+            <div style="text-align: center; margin-bottom: 10px;">
+                <strong>下載AI模型中...</strong>
+            </div>
             <div class="progress-bar">
                 <div class="progress" id="downloadProgress"></div>
             </div>
-            <div class="progress-text" id="downloadText">下載模型中... 0%</div>
+            <div style="text-align: center; margin-top: 5px; font-size: 12px;" id="downloadText">
+                首次使用需要下載模型 (約20MB)
+            </div>
         </div>
         
         <div class="video-container">
@@ -212,48 +217,51 @@
             <canvas id="canvas"></canvas>
         </div>
         
+        <div class="detection-info">
+            <div style="margin-bottom: 10px;"><strong>檢測結果:</strong></div>
+            <div class="object-list" id="objectList">等待檢測...</div>
+        </div>
+        
         <div class="controls">
-            <button id="startBtn" class="primary">🚀 啟動系統</button>
+            <button id="startBtn" class="primary">🚀 啟動檢測</button>
             <button id="cameraBtn" class="secondary" disabled>📷 切換鏡頭</button>
-            <button id="voiceBtn" class="secondary">🔊 語音提示: 開啟</button>
-            <button id="helpBtn" class="warning">❓ 使用說明</button>
+            <button id="voiceBtn" class="secondary">🔊 語音開關</button>
+            <button id="debugBtn" class="warning">🐛 除錯模式</button>
         </div>
         
         <div class="instructions">
-            <h3>使用說明：</h3>
-            <ul>
-                <li>1. 點擊「啟動系統」開始使用</li>
-                <li>2. 將手放在鏡頭前進行手部追蹤</li>
-                <li>3. 系統會語音提示周圍物品和距離</li>
-                <li>4. 使用「切換鏡頭」調整前後鏡頭</li>
-                <li>5. 可開關語音提示功能</li>
-            </ul>
+            <strong>使用說明:</strong><br>
+            1. 點擊「啟動檢測」開始<br>
+            2. 將手掌對準鏡頭進行追蹤<br>
+            3. 系統會語音提示周圍物品<br>
+            4. 手掌位置用紅色框標示<br>
+            5. 物品用綠色框標示
         </div>
     </div>
 
     <script>
         class BlindNavigationSystem {
             constructor() {
-                this.model = null;
                 this.session = null;
                 this.isModelLoaded = false;
                 this.isRunning = false;
                 this.currentFacingMode = 'environment';
                 this.voiceEnabled = true;
+                this.debugMode = false;
                 this.lastSpeechTime = 0;
-                this.speechCooldown = 3000; // 3秒冷卻
+                this.speechCooldown = 4000; // 4秒冷卻
                 
-                // 物品類別名稱 (COCO數據集)
+                // COCO數據集類別名稱
                 this.classNames = [
-                    '人', '自行車', '汽車', '摩托車', '飛機', '公車', '火車', '卡車', '船',
-                    '交通燈', '消防栓', '停止標誌', '停車計時器', '長凳', '鳥', '貓', '狗', '馬',
-                    '羊', '牛', '大象', '熊', '斑馬', '長頸鹿', '背包', '雨傘', '手提包', '領帶',
-                    '行李箱', '飛盤', '滑雪板', '雪板', '運動球', '風箏', '棒球棒', '棒球手套',
-                    '滑板', '衝浪板', '網球拍', '瓶子', '酒杯', '杯子', '叉子', '刀', '湯匙',
-                    '碗', '香蕉', '蘋果', '三明治', '橘子', '花椰菜', '胡蘿蔔', '熱狗', '披薩',
-                    '甜甜圈', '蛋糕', '椅子', '沙發', '盆栽', '床', '餐桌', '廁所', '電視',
-                    '筆電', '滑鼠', '遙控器', '鍵盤', '手機', '微波爐', '烤箱', '烤麵包機',
-                    '水槽', '冰箱', '書', '時鐘', '花瓶', '剪刀', '泰迪熊', '吹風機', '牙刷'
+                    'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
+                    'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
+                    'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie',
+                    'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
+                    'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon',
+                    'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
+                    'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv',
+                    'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster',
+                    'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
                 ];
                 
                 this.initializeElements();
@@ -268,10 +276,12 @@
                 this.startBtn = document.getElementById('startBtn');
                 this.cameraBtn = document.getElementById('cameraBtn');
                 this.voiceBtn = document.getElementById('voiceBtn');
-                this.status = document.getElementById('status');
+                this.debugBtn = document.getElementById('debugBtn');
                 this.handStatus = document.getElementById('handStatus');
-                this.objectStatus = document.getElementById('objectStatus');
-                this.distanceStatus = document.getElementById('distanceStatus');
+                this.objectCount = document.getElementById('objectCount');
+                this.systemStatus = document.getElementById('systemStatus');
+                this.voiceStatus = document.getElementById('voiceStatus');
+                this.objectList = document.getElementById('objectList');
                 this.downloadSection = document.getElementById('downloadSection');
                 this.downloadProgress = document.getElementById('downloadProgress');
                 this.downloadText = document.getElementById('downloadText');
@@ -281,37 +291,26 @@
                 this.startBtn.addEventListener('click', () => this.toggleSystem());
                 this.cameraBtn.addEventListener('click', () => this.switchCamera());
                 this.voiceBtn.addEventListener('click', () => this.toggleVoice());
+                this.debugBtn.addEventListener('click', () => this.toggleDebug());
             }
             
             async checkModelStorage() {
-                // 檢查本地是否已有模型
-                if (await this.isModelCached()) {
-                    this.status.textContent = '狀態: 找到本地模型，準備載入...';
-                    await this.loadModelFromCache();
-                } else {
-                    this.status.textContent = '狀態: 需要下載AI模型...';
-                    this.showDownloadSection();
-                }
-            }
-            
-            async isModelCached() {
-                try {
-                    const cache = await caches.open('yolov8-model');
-                    const response = await cache.match('https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx?download=true');
-                    return response !== undefined;
-                } catch (error) {
-                    console.log('緩存檢查失敗:', error);
-                    return false;
-                }
+                this.showDownloadSection();
+                await this.downloadModel();
             }
             
             showDownloadSection() {
                 this.downloadSection.style.display = 'block';
-                this.downloadModel();
+            }
+            
+            hideDownloadSection() {
+                this.downloadSection.style.display = 'none';
             }
             
             async downloadModel() {
                 try {
+                    this.systemStatus.textContent = '下載模型中...';
+                    
                     const modelUrl = 'https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx?download=true';
                     
                     const response = await fetch(modelUrl);
@@ -331,68 +330,46 @@
                         chunks.push(value);
                         loaded += value.length;
                         
-                        const progress = (loaded / total) * 100;
-                        this.updateDownloadProgress(progress);
-                        
-                        // 更新下載進度
-                        this.downloadProgress.style.width = `${progress}%`;
-                        this.downloadText.textContent = `下載模型中... ${Math.round(progress)}%`;
+                        if (total) {
+                            const progress = (loaded / total) * 100;
+                            this.updateDownloadProgress(progress);
+                        }
                     }
                     
-                    // 合併數據並存儲
+                    // 合併數據
                     const blob = new Blob(chunks);
-                    await this.cacheModel(blob);
                     await this.loadModelFromBlob(blob);
                     
                 } catch (error) {
                     console.error('模型下載錯誤:', error);
-                    this.status.textContent = '狀態: 模型下載失敗，請檢查網絡連接';
+                    this.systemStatus.textContent = '下載失敗';
+                    this.downloadText.textContent = '下載失敗，請刷新頁面重試';
                 }
             }
             
             updateDownloadProgress(progress) {
                 this.downloadProgress.style.width = `${progress}%`;
-                this.downloadText.textContent = `下載模型中... ${Math.round(progress)}%`;
-            }
-            
-            async cacheModel(blob) {
-                try {
-                    const cache = await caches.open('yolov8-model');
-                    const response = new Response(blob);
-                    await cache.put('https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx?download=true', response);
-                    console.log('模型已緩存');
-                } catch (error) {
-                    console.error('緩存失敗:', error);
-                }
-            }
-            
-            async loadModelFromCache() {
-                try {
-                    const cache = await caches.open('yolov8-model');
-                    const response = await cache.match('https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx?download=true');
-                    const blob = await response.blob();
-                    await this.loadModelFromBlob(blob);
-                } catch (error) {
-                    console.error('從緩存載入失敗:', error);
-                    this.showDownloadSection();
-                }
+                this.downloadText.textContent = `下載進度: ${Math.round(progress)}%`;
             }
             
             async loadModelFromBlob(blob) {
                 try {
+                    this.systemStatus.textContent = '載入模型中...';
+                    
                     const arrayBuffer = await blob.arrayBuffer();
                     this.session = await ort.InferenceSession.create(arrayBuffer);
                     this.isModelLoaded = true;
                     
-                    this.downloadSection.style.display = 'none';
-                    this.status.textContent = '狀態: AI模型載入完成！';
+                    this.hideDownloadSection();
+                    this.systemStatus.textContent = '就緒';
                     this.startBtn.disabled = false;
                     this.cameraBtn.disabled = false;
                     
                     console.log('YOLOv8模型載入成功');
+                    
                 } catch (error) {
                     console.error('模型載入錯誤:', error);
-                    this.status.textContent = '狀態: 模型載入失敗';
+                    this.systemStatus.textContent = '模型載入失敗';
                 }
             }
             
@@ -416,10 +393,9 @@
                     
                     this.video.srcObject = stream;
                     this.isRunning = true;
-                    this.startBtn.textContent = '🛑 停止系統';
-                    this.status.textContent = '狀態: 系統運行中...';
+                    this.startBtn.textContent = '🛑 停止檢測';
+                    this.systemStatus.textContent = '檢測中...';
                     
-                    // 設置canvas尺寸
                     this.video.addEventListener('loadedmetadata', () => {
                         this.canvas.width = this.video.videoWidth;
                         this.canvas.height = this.video.videoHeight;
@@ -428,7 +404,8 @@
                     
                 } catch (error) {
                     console.error('攝像頭啟動失敗:', error);
-                    this.status.textContent = '狀態: 無法訪問攝像頭';
+                    this.systemStatus.textContent = '攝像頭訪問失敗';
+                    alert('無法訪問攝像頭，請確保已授予權限');
                 }
             }
             
@@ -439,11 +416,11 @@
                 }
                 
                 this.isRunning = false;
-                this.startBtn.textContent = '🚀 啟動系統';
-                this.status.textContent = '狀態: 系統已停止';
-                this.handStatus.textContent = '手部位置: 未檢測到';
-                this.objectStatus.textContent = '物品檢測: 無';
-                this.distanceStatus.textContent = '距離提示: 無';
+                this.startBtn.textContent = '🚀 啟動檢測';
+                this.systemStatus.textContent = '已停止';
+                this.handStatus.textContent = '未檢測';
+                this.objectCount.textContent = '0個';
+                this.objectList.textContent = '檢測已停止';
             }
             
             async switchCamera() {
@@ -456,265 +433,257 @@
             
             toggleVoice() {
                 this.voiceEnabled = !this.voiceEnabled;
-                this.voiceBtn.textContent = this.voiceEnabled ? '🔊 語音提示: 開啟' : '🔇 語音提示: 關閉';
+                this.voiceStatus.textContent = this.voiceEnabled ? '開啟' : '關閉';
+            }
+            
+            toggleDebug() {
+                this.debugMode = !this.debugMode;
+                this.debugBtn.textContent = this.debugMode ? '🐛 除錯開' : '🐛 除錯關';
             }
             
             async detectObjects() {
                 if (!this.isRunning || !this.session) return;
                 
                 try {
-                    // 準備輸入數據
                     const input = await this.preprocessFrame();
-                    
-                    // 執行推理
                     const outputs = await this.session.run({ images: input });
+                    const detections = this.processYOLOv8Output(outputs);
                     
-                    // 處理結果
-                    const detections = this.postprocessResults(outputs);
-                    
-                    // 分析手部和物品位置
-                    this.analyzePositions(detections);
-                    
-                    // 繪製結果
-                    this.drawResults(detections);
+                    this.analyzeAndDisplay(detections);
+                    this.drawDetections(detections);
                     
                 } catch (error) {
                     console.error('檢測錯誤:', error);
                 }
                 
-                // 繼續下一帧
                 requestAnimationFrame(() => this.detectObjects());
             }
             
             async preprocessFrame() {
+                // 繪製當前幀到canvas
                 this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
                 
-                const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-                const { data, width, height } = imageData;
+                // 創建臨時canvas進行預處理
+                const tempCanvas = document.createElement('canvas');
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCanvas.width = 640;
+                tempCanvas.height = 640;
                 
-                // 調整尺寸為640x640
-                const size = 640;
-                const input = new ort.Tensor('float32', new Float32Array(3 * size * size), [1, 3, size, size]);
+                // 繪製並調整尺寸
+                tempCtx.drawImage(this.video, 0, 0, 640, 640);
+                const imageData = tempCtx.getImageData(0, 0, 640, 640);
                 
-                const scale = Math.min(size / width, size / height);
-                const scaledWidth = Math.floor(width * scale);
-                const scaledHeight = Math.floor(height * scale);
+                // 轉換為模型輸入格式
+                const input = new ort.Tensor('float32', new Float32Array(3 * 640 * 640), [1, 3, 640, 640]);
                 
-                const xOffset = Math.floor((size - scaledWidth) / 2);
-                const yOffset = Math.floor((size - scaledHeight) / 2);
-                
-                for (let y = 0; y < scaledHeight; y++) {
-                    for (let x = 0; x < scaledWidth; x++) {
-                        const srcX = Math.floor(x / scale);
-                        const srcY = Math.floor(y / scale);
-                        
-                        const srcPos = (srcY * width + srcX) * 4;
-                        const dstPos = (0 * size * size) + ((y + yOffset) * size + (x + xOffset));
-                        
-                        // RGB通道並歸一化
-                        input.data[dstPos] = data[srcPos] / 255.0;         // R
-                        input.data[dstPos + size * size] = data[srcPos + 1] / 255.0; // G
-                        input.data[dstPos + 2 * size * size] = data[srcPos + 2] / 255.0; // B
-                    }
+                for (let i = 0; i < 640 * 640; i++) {
+                    input.data[i] = imageData.data[i * 4] / 255.0;     // R
+                    input.data[i + 640 * 640] = imageData.data[i * 4 + 1] / 255.0; // G
+                    input.data[i + 2 * 640 * 640] = imageData.data[i * 4 + 2] / 255.0; // B
                 }
                 
                 return input;
             }
             
-            postprocessResults(outputs) {
+            processYOLOv8Output(outputs) {
                 const detections = [];
-                const predictions = outputs.output0.data;
+                const output = outputs.output0;
                 
-                for (let i = 0; i < predictions.length; i += 84) {
-                    const confidence = predictions[i + 4];
+                // YOLOv8輸出格式: [1, 84, 8400]
+                for (let i = 0; i < 8400; i++) {
+                    const confidence = output.data[4 * 8400 + i];
                     
-                    if (confidence > 0.5) {
-                        const bbox = [
-                            predictions[i],     // x
-                            predictions[i + 1], // y
-                            predictions[i + 2], // width
-                            predictions[i + 3]  // height
-                        ];
-                        
-                        let maxScore = 0;
+                    if (confidence > 0.3) { // 降低置信度閾值以檢測更多對象
+                        let maxClassScore = 0;
                         let classId = -1;
                         
+                        // 找到最高分的類別
                         for (let j = 0; j < 80; j++) {
-                            const score = predictions[i + 5 + j];
-                            if (score > maxScore) {
-                                maxScore = score;
+                            const score = output.data[(5 + j) * 8400 + i];
+                            if (score > maxClassScore) {
+                                maxClassScore = score;
                                 classId = j;
                             }
                         }
                         
-                        if (classId !== -1 && maxScore > 0.5) {
+                        const totalScore = confidence * maxClassScore;
+                        
+                        if (totalScore > 0.2 && classId !== -1) { // 綜合得分閾值
+                            const x = output.data[i];
+                            const y = output.data[8400 + i];
+                            const w = output.data[2 * 8400 + i];
+                            const h = output.data[3 * 8400 + i];
+                            
                             detections.push({
-                                bbox: bbox,
-                                confidence: confidence,
+                                bbox: [x, y, w, h],
+                                confidence: totalScore,
                                 classId: classId,
-                                score: maxScore
+                                className: this.classNames[classId]
                             });
                         }
                     }
                 }
                 
-                return detections;
+                // 非極大值抑制
+                return this.nonMaxSuppression(detections);
             }
             
-            analyzePositions(detections) {
+            nonMaxSuppression(detections, iouThreshold = 0.5) {
+                detections.sort((a, b) => b.confidence - a.confidence);
+                const selected = [];
+                
+                while (detections.length > 0) {
+                    const current = detections[0];
+                    selected.push(current);
+                    
+                    // 移除與當前檢測框重疊度高的框
+                    detections = detections.filter(det => {
+                        const iou = this.calculateIOU(current.bbox, det.bbox);
+                        return iou < iouThreshold;
+                    });
+                }
+                
+                return selected;
+            }
+            
+            calculateIOU(box1, box2) {
+                const [x1, y1, w1, h1] = box1;
+                const [x2, y2, w2, h2] = box2;
+                
+                const x11 = x1 - w1 / 2;
+                const y1_1 = y1 - h1 / 2;
+                const x1_2 = x1 + w1 / 2;
+                const y1_2 = y1 + h1 / 2;
+                
+                const x2_1 = x2 - w2 / 2;
+                const y2_1 = y2 - h2 / 2;
+                const x2_2 = x2 + w2 / 2;
+                const y2_2 = y2 + h2 / 2;
+                
+                const xi1 = Math.max(x1_1, x2_1);
+                const yi1 = Math.max(y1_1, y2_1);
+                const xi2 = Math.min(x1_2, x2_2);
+                const yi2 = Math.min(y1_2, y2_2);
+                
+                const interArea = Math.max(0, xi2 - xi1) * Math.max(0, yi2 - yi1);
+                const box1Area = w1 * h1;
+                const box2Area = w2 * h2;
+                
+                return interArea / (box1Area + box2Area - interArea);
+            }
+            
+            analyzeAndDisplay(detections) {
                 let handDetected = false;
                 let handPosition = null;
                 const objects = [];
                 
-                // 尋找手部 (類別ID: 0是人，我們假設手在人的檢測中)
-                for (const detection of detections) {
-                    if (detection.classId === 0) { // 人
+                // 分析檢測結果
+                detections.forEach(detection => {
+                    if (detection.classId === 0) { // person
                         handDetected = true;
-                        handPosition = this.calculateCenter(detection.bbox);
-                        break;
+                        handPosition = detection.bbox;
+                    } else {
+                        objects.push({
+                            name: detection.className,
+                            confidence: detection.confidence,
+                            position: detection.bbox
+                        });
                     }
-                }
+                });
                 
-                // 收集其他物品
-                for (const detection of detections) {
-                    if (detection.classId !== 0) { // 非人物品
-                        const object = {
-                            name: this.classNames[detection.classId] || `物品${detection.classId}`,
-                            position: this.calculateCenter(detection.bbox),
-                            bbox: detection.bbox,
-                            confidence: detection.confidence
-                        };
-                        objects.push(object);
-                    }
-                }
-                
-                // 更新狀態顯示
-                this.updateStatusDisplay(handDetected, handPosition, objects);
+                // 更新界面顯示
+                this.updateDisplay(handDetected, handPosition, objects);
                 
                 // 語音提示
-                if (this.voiceEnabled && handDetected) {
-                    this.provideVoiceGuidance(handPosition, objects);
+                if (this.voiceEnabled) {
+                    this.provideVoiceFeedback(handDetected, objects);
                 }
             }
             
-            calculateCenter(bbox) {
-                return {
-                    x: bbox[0],
-                    y: bbox[1],
-                    width: bbox[2],
-                    height: bbox[3]
-                };
-            }
-            
-            updateStatusDisplay(handDetected, handPosition, objects) {
+            updateDisplay(handDetected, handPosition, objects) {
                 // 更新手部狀態
-                if (handDetected && handPosition) {
-                    const screenX = (handPosition.x / 640) * 100;
-                    this.handStatus.textContent = `手部位置: 畫面${screenX.toFixed(0)}%位置`;
+                if (handDetected) {
+                    this.handStatus.textContent = '已檢測';
+                    this.handStatus.style.color = '#4CAF50';
                 } else {
-                    this.handStatus.textContent = '手部位置: 未檢測到';
+                    this.handStatus.textContent = '未檢測';
+                    this.handStatus.style.color = '#ff4444';
                 }
                 
-                // 更新物品狀態
+                // 更新物品計數
+                this.objectCount.textContent = `${objects.length}個`;
+                
+                // 更新物品列表
                 if (objects.length > 0) {
-                    const objectNames = objects.map(obj => obj.name).slice(0, 3);
-                    this.objectStatus.textContent = `物品檢測: ${objectNames.join(', ')}`;
+                    const objectText = objects.slice(0, 5).map(obj => 
+                        `${obj.name}(${(obj.confidence * 100).toFixed(0)}%)`
+                    ).join(', ');
+                    this.objectList.textContent = objectText;
                 } else {
-                    this.objectStatus.textContent = '物品檢測: 無';
-                }
-                
-                // 更新距離提示
-                if (handDetected && objects.length > 0) {
-                    const closestObject = this.findClosestObject(handPosition, objects);
-                    if (closestObject) {
-                        const distance = this.calculateDistance(handPosition, closestObject.position);
-                        this.distanceStatus.textContent = `距離提示: 附近有${closestObject.name}`;
-                    }
-                } else {
-                    this.distanceStatus.textContent = '距離提示: 無';
+                    this.objectList.textContent = '未檢測到物品';
                 }
             }
             
-            findClosestObject(handPosition, objects) {
-                let closest = null;
-                let minDistance = Infinity;
-                
-                for (const object of objects) {
-                    const distance = this.calculateDistance(handPosition, object.position);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closest = object;
-                    }
-                }
-                
-                return closest;
-            }
-            
-            calculateDistance(pos1, pos2) {
-                const dx = pos1.x - pos2.x;
-                const dy = pos1.y - pos2.y;
-                return Math.sqrt(dx * dx + dy * dy);
-            }
-            
-            provideVoiceGuidance(handPosition, objects) {
+            provideVoiceFeedback(handDetected, objects) {
                 const now = Date.now();
                 if (now - this.lastSpeechTime < this.speechCooldown) return;
                 
-                if (objects.length > 0) {
-                    const closestObject = this.findClosestObject(handPosition, objects);
-                    if (closestObject) {
-                        const distance = this.calculateDistance(handPosition, closestObject.position);
-                        let distanceText = '';
-                        
-                        if (distance < 100) distanceText = '很近';
-                        else if (distance < 200) distanceText = '附近';
-                        else distanceText = '較遠';
-                        
-                        const message = `檢測到${closestObject.name}在您的${distanceText}處`;
-                        this.speak(message);
-                        this.lastSpeechTime = now;
-                    }
+                if (handDetected && objects.length > 0) {
+                    const closestObjects = objects.slice(0, 2);
+                    const objectNames = closestObjects.map(obj => obj.name).join('和');
+                    const message = `檢測到${objectNames}在附近`;
+                    this.speak(message);
+                    this.lastSpeechTime = now;
                 }
             }
             
             speak(text) {
                 if ('speechSynthesis' in window) {
                     const utterance = new SpeechSynthesisUtterance(text);
-                    utterance.lang = 'zh-TW';
-                    utterance.rate = 0.9;
+                    utterance.lang = 'zh-CN';
+                    utterance.rate = 0.8;
                     utterance.pitch = 1.0;
                     speechSynthesis.speak(utterance);
                 }
             }
             
-            drawResults(detections) {
+            drawDetections(detections) {
+                // 清空畫布
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 
-                for (const detection of detections) {
-                    const [x, y, width, height] = detection.bbox;
+                // 繪製每個檢測框
+                detections.forEach(detection => {
+                    const [x, y, w, h] = detection.bbox;
                     
-                    // 轉換坐標到canvas尺寸
+                    // 轉換坐標到原始圖像尺寸
                     const scaleX = this.canvas.width / 640;
                     const scaleY = this.canvas.height / 640;
                     
-                    const x1 = (x - width / 2) * scaleX;
-                    const y1 = (y - height / 2) * scaleY;
-                    const x2 = (x + width / 2) * scaleX;
-                    const y2 = (y + height / 2) * scaleY;
+                    const x1 = (x - w / 2) * scaleX;
+                    const y1 = (y - h / 2) * scaleY;
+                    const x2 = (x + w / 2) * scaleX;
+                    const y2 = (y + h / 2) * scaleY;
+                    
+                    // 設置顏色：人物用紅色，其他用綠色
+                    const isPerson = detection.classId === 0;
+                    this.ctx.strokeStyle = isPerson ? '#ff4444' : '#44ff44';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.fillStyle = isPerson ? '#ff4444' : '#44ff44';
                     
                     // 繪製邊界框
-                    this.ctx.strokeStyle = detection.classId === 0 ? '#FF0000' : '#00FF00';
-                    this.ctx.lineWidth = 2;
                     this.ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
                     
-                    // 繪製標籤
-                    const className = this.classNames[detection.classId] || `Class ${detection.classId}`;
-                    const label = `${className} ${(detection.confidence * 100).toFixed(1)}%`;
+                    // 繪製標籤背景
+                    const label = `${detection.className} ${(detection.confidence * 100).toFixed(1)}%`;
+                    this.ctx.font = '14px Arial';
+                    const textWidth = this.ctx.measureText(label).width;
                     
-                    this.ctx.fillStyle = detection.classId === 0 ? '#FF0000' : '#00FF00';
-                    this.ctx.font = '16px Arial';
-                    this.ctx.fillText(label, x1, y1 - 5);
-                }
+                    this.ctx.fillRect(x1, y1 - 20, textWidth + 10, 20);
+                    
+                    // 繪製文字
+                    this.ctx.fillStyle = 'white';
+                    this.ctx.fillText(label, x1 + 5, y1 - 5);
+                });
             }
         }
         
