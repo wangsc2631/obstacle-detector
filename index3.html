@@ -35,7 +35,7 @@
         }
         
         .status-panel {
-            /* 調整為三欄佈局以顯示距離狀態 */
+            /* 三欄佈局 */
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
             gap: 8px;
@@ -163,13 +163,23 @@
     </div>
 
     <script>
+        // ----------------------------------------------------
+        // ⭐ 針對手機/移動設備的 ONNX Runtime Wasm 配置優化 ⭐
+        // ----------------------------------------------------
+        // 禁用多執行緒和 SIMD 版本，確保在大多數移動設備上穩定加載。
+        ort.env.wasm.numThreads = 1;
+        ort.env.wasm.simd = false; 
+        ort.env.wasm.proxy = false; // 禁用 Web Worker 代理
+        // ----------------------------------------------------
+
+
         class BlindNavigationSystem {
             // --- 模型設定 ---
             // YOLOv8 物件偵測模型
             YOLO_MODEL_URL = 'https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx?download=true';
             
-            // MiDaS 單目深度估計模型 (已修正為公開且支援 CORS 的 URL)
-            DEPTH_MODEL_URL = 'https://huggingface.co/spaces/microsoft/MiDaS-v2.1-small/resolve/main/model.onnx'; 
+            // **已修正** MiDaS 單目深度估計模型 (MiDaS v2.1 Small, 256x256)
+            DEPTH_MODEL_URL = 'https://huggingface.co/julienkay/sentis-MiDaS/resolve/main/onnx/midas_v21_small_256.onnx'; 
             
             // MiDaS 模型需要的輸入尺寸
             DEPTH_INPUT_SIZE = 256; 
@@ -219,7 +229,7 @@
 
             async fetchAndInitializeModel(url, progressText) {
                 const response = await fetch(url);
-                if (!response.ok) throw new Error(`${progressText} 下載失敗: ${response.statusText}`);
+                if (!response.ok) throw new Error(`${progressText} 下載失敗: ${response.statusText || '網路/權限錯誤'}`);
                 
                 const reader = response.body.getReader();
                 const chunks = [];
@@ -242,18 +252,24 @@
                 
                 const blob = new Blob(chunks);
                 const arrayBuffer = await blob.arrayBuffer();
-                return ort.InferenceSession.create(arrayBuffer);
+                
+                // 使用 WebGL 作為執行提供者以獲得最佳效能，同時確保 Wasm 仍然是備用
+                const session = await ort.InferenceSession.create(arrayBuffer, {
+                    executionProviders: ['webgl', 'wasm']
+                });
+
+                return session;
             }
             
             async loadModels() {
                 try {
-                    // 1. 加載 YOLOv8 模型
-                    this.downloadText.textContent = '下載 YOLOv8 模型...';
+                    // 1. 加載 YOLOv8 模型 (顯示進度)
+                    this.downloadText.textContent = '下載 YOLOv8 模型 (1/2)...';
                     this.yoloSession = await this.fetchAndInitializeModel(this.YOLO_MODEL_URL, 'YOLOv8');
 
-                    // 2. 加載深度估計模型
-                    this.downloadText.textContent = '下載深度估計模型...';
-                    this.downloadProgress.style.width = '0%'; // 重置進度條
+                    // 2. 加載深度估計模型 (顯示進度，重置進度條)
+                    this.downloadText.textContent = '下載深度估計模型 (2/2)...';
+                    this.downloadProgress.style.width = '0%'; 
                     this.depthSession = await this.fetchAndInitializeModel(this.DEPTH_MODEL_URL, 'Depth Model');
 
                     this.isModelLoaded = true;
@@ -265,7 +281,8 @@
                     
                 } catch (error) {
                     console.error('模型加載錯誤:', error);
-                    this.downloadText.textContent = `模型加載失敗: ${error.message}`;
+                    // 提示使用者可能是因為記憶體或執行緒問題
+                    this.downloadText.textContent = `模型加載失敗: ${error.message}。可能原因：模型過大，或手機瀏覽器對 WebAssembly 執行緒不支援。`;
                 }
             }
             
@@ -326,22 +343,24 @@
                 
                 try {
                     // 1. 準備 YOLOv8 輸入 (640x640)
+                    this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+                    
                     const yoloInputTensor = await this.prepareYOLOInput();
                     
                     // 2. 準備 Depth Model 輸入 (256x256)
                     const depthInputResult = this.prepareDepthInput();
                     
-                    // 3. 模型推論
+                    // 3. 模型推論 (並行運行)
                     const [yoloOutputs, depthOutputs] = await Promise.all([
                         this.yoloSession.run({ images: yoloInputTensor }),
-                        this.depthSession.run({ input: depthInputResult.depthInputTensor }) // MiDaS 輸入名為 'input'
+                        this.depthSession.run({ input: depthInputResult.depthInputTensor }) 
                     ]);
                     
                     // 4. 處理 YOLO 輸出
                     const detections = this.processYOLOv8Output(yoloOutputs);
                     
                     // 5. 處理深度輸出並計算距離
-                    const depthMapTensor = depthOutputs.output; // MiDaS 輸出名為 'output'
+                    const depthMapTensor = depthOutputs.output; 
                     const detectionsWithDistance = this.calculateDistance(detections, depthMapTensor);
                     
                     // 6. 更新畫面與顯示
@@ -355,8 +374,8 @@
                 requestAnimationFrame(() => this.detectObjects());
             }
             
+            // 影像預處理函式 (YOLOv8)
             async prepareYOLOInput() {
-                // 畫布上已經有影像，此處只需進行預處理
                 const tempCanvas = document.createElement('canvas');
                 const tempCtx = tempCanvas.getContext('2d');
                 tempCanvas.width = 640;
@@ -368,7 +387,6 @@
                 const input = new ort.Tensor('float32', new Float32Array(3 * 640 * 640), [1, 3, 640, 640]);
                 
                 for (let i = 0; i < 640 * 640; i++) {
-                    // 簡單歸一化 (0-1)
                     input.data[i] = imageData.data[i * 4] / 255.0;
                     input.data[i + 640 * 640] = imageData.data[i * 4 + 1] / 255.0;
                     input.data[i + 2 * 640 * 640] = imageData.data[i * 4 + 2] / 255.0;
@@ -377,6 +395,7 @@
                 return input;
             }
 
+            // 影像預處理函式 (MiDaS 深度模型)
             prepareDepthInput() {
                 const size = this.DEPTH_INPUT_SIZE;
                 const tempCanvas = document.createElement('canvas');
@@ -384,30 +403,29 @@
                 tempCanvas.width = size;
                 tempCanvas.height = size;
                 
-                // 1. 調整大小到深度模型輸入尺寸
                 tempCtx.drawImage(this.video, 0, 0, size, size);
                 const imageData = tempCtx.getImageData(0, 0, size, size);
                 
                 const input = new ort.Tensor('float32', new Float32Array(3 * size * size), [1, 3, size, size]);
                 
-                // 2. 歸一化和 NCHW 格式轉換 (MiDaS 標準化參數)
                 const mean = [0.485, 0.456, 0.406];
                 const std = [0.229, 0.224, 0.225];
 
                 for (let i = 0; i < size * size; i++) {
-                    input.data[i] = ((imageData.data[i * 4] / 255.0) - mean[0]) / std[0];     // R
-                    input.data[i + size * size] = ((imageData.data[i * 4 + 1] / 255.0) - mean[1]) / std[1]; // G
-                    input.data[i + 2 * size * size] = ((imageData.data[i * 4 + 2] / 255.0) - mean[2]) / std[2]; // B
+                    input.data[i] = ((imageData.data[i * 4] / 255.0) - mean[0]) / std[0];     
+                    input.data[i + size * size] = ((imageData.data[i * 4 + 1] / 255.0) - mean[1]) / std[1]; 
+                    input.data[i + 2 * size * size] = ((imageData.data[i * 4 + 2] / 255.0) - mean[2]) / std[2]; 
                 }
                 
                 return { depthInputTensor: input };
             }
             
+            // YOLOv8 輸出後處理 (NMS)
             processYOLOv8Output(outputs) {
                 const detections = [];
                 const output = outputs.output0;
                 const outputData = output.data;
-                const numDetections = output.dims[2]; // 8400
+                const numDetections = output.dims[2]; 
                 const [videoW, videoH] = [this.canvas.width, this.canvas.height];
                 
                 for (let i = 0; i < numDetections; i++) {
@@ -422,14 +440,13 @@
                     
                     for (let j = 0; j < 80; j++) {
                         const confidence = outputData[startIdx + 4 + j];
-                        if (confidence > maxConfidence) {
+                        if (confidence > 0.5 && confidence > maxConfidence) {
                             maxConfidence = confidence;
                             classId = j;
                         }
                     }
                     
                     if (maxConfidence > 0.5) {
-                        // 將 640x640 的 YOLO 輸出座標縮放回原始視訊尺寸
                         const bbox = [
                             (x - w/2) * videoW / 640,
                             (y - h/2) * videoH / 640,
@@ -442,7 +459,7 @@
                             confidence: maxConfidence,
                             classId: classId,
                             className: this.classNames[classId] || `物品${classId}`,
-                            distance: null // 新增 distance 屬性
+                            distance: null 
                         });
                     }
                 }
@@ -485,28 +502,26 @@
                 return intersection / (area1 + area2 - intersection);
             }
 
+            // 結合深度圖計算相對距離
             calculateDistance(detections, depthMapTensor) {
                 const depthMapData = depthMapTensor.data;
-                // MiDaS 的輸出是相對深度，通常值越大代表越近 (但不是絕對距離)
                 const depthH = depthMapTensor.dims[2]; 
                 const depthW = depthMapTensor.dims[3]; 
 
                 let minDepthValue = Infinity;
                 let maxDepthValue = -Infinity;
                 
-                // 1. 找到深度圖的整體範圍 (用於正規化)
                 for (let i = 0; i < depthMapData.length; i++) {
                     minDepthValue = Math.min(minDepthValue, depthMapData[i]);
                     maxDepthValue = Math.max(maxDepthValue, depthMapData[i]);
                 }
 
                 detections.forEach(detection => {
-                    const [x, y, w, h] = detection.bbox; // 視訊畫布座標 (e.g., 640x480)
+                    const [x, y, w, h] = detection.bbox; 
                     
                     let sumDepth = 0;
                     let count = 0;
 
-                    // 2. 將 YOLO 框的座標縮放到深度圖的尺寸 (e.g., 256x256)
                     const x_scale = depthW / this.canvas.width;
                     const y_scale = depthH / this.canvas.height;
 
@@ -515,7 +530,6 @@
                     const depth_x_end = Math.ceil((x + w) * x_scale);
                     const depth_y_end = Math.ceil((y + h) * y_scale);
 
-                    // 3. 在深度圖的對應區域內採樣深度值
                     for (let row = depth_y_start; row < depth_y_end; row++) {
                         for (let col = depth_x_start; col < depth_x_end; col++) {
                             if (row >= 0 && row < depthH && col >= 0 && col < depthW) {
@@ -529,14 +543,12 @@
                     if (count > 0) {
                         const avgDepth = sumDepth / count;
                         
-                        // 4. 計算相對距離 (數值越大代表越近)
-                        // 正規化深度值，範圍縮放到 0-100
                         const relativeDepth = (avgDepth - minDepthValue) / (maxDepthValue - minDepthValue);
                         
-                        // 由於 MiDaS 輸出值越大代表越近，我們直接使用正規化後的值作為距離指標
+                        // MiDaS 輸出值越大越近，直接使用正規化後的值作為距離指標 (0-100)
                         const relativeDistanceIndicator = Math.round(relativeDepth * 100); 
 
-                        detection.distance = relativeDistanceIndicator; // 儲存相對距離指標 (0-100)
+                        detection.distance = relativeDistanceIndicator; 
                     }
                 });
 
@@ -550,13 +562,10 @@
 
                 detections.forEach(detection => {
                     if (detection.classId === 0) {
-                        // 假設 classId=0 代表「人」或「手」
                         handDetected = true;
                     } 
-                    // 排除人，只計算環境物體的距離 (例如障礙物)
                     if (detection.classId !== 0) { 
                         objects.push(detection);
-                        // 追蹤最近的物體 (數值越大越近)
                         if (detection.distance > closestObjectDistance) {
                             closestObjectDistance = detection.distance;
                         }
@@ -567,7 +576,6 @@
                 this.objectCount.textContent = `${objects.length}個`;
 
                 if (closestObjectDistance > 0) {
-                     // 根據相對距離 (0-100) 提供提示
                     let distanceText = `相對距離: ${closestObjectDistance}%`; 
                     if (closestObjectDistance > 80) {
                         distanceText = `🛑 非常近 (${closestObjectDistance}%)`;
@@ -587,16 +595,15 @@
                     const [x, y, w, h] = detection.bbox;
                     const isPerson = detection.classId === 0;
                     
-                    // 根據相對距離調整顏色
-                    let color = '#44ff44'; // 綠色 (默認/遠)
+                    let color = '#44ff44'; 
                     if (detection.distance && detection.distance > 50) {
-                        color = '#ffa500'; // 橙色 (靠近)
+                        color = '#ffa500'; 
                     }
                     if (detection.distance && detection.distance > 80) {
-                        color = '#ff4444'; // 紅色 (非常近/危險)
+                        color = '#ff4444'; 
                     }
 
-                    this.ctx.strokeStyle = isPerson ? '#44aaff' : color; // 人物用藍色，障礙物用距離顏色
+                    this.ctx.strokeStyle = isPerson ? '#44aaff' : color; 
                     this.ctx.lineWidth = 3;
                     this.ctx.fillStyle = isPerson ? '#44aaff' : color;
                     
