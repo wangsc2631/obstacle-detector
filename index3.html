@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>盲人導航輔助系統 - 手部追蹤版</title>
+    <title>盲人導航輔助系統 - 精準手部追蹤</title>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -33,6 +34,11 @@
             backdrop-filter: blur(10px);
         }
         
+        .header h1 {
+            font-size: 20px;
+            margin-bottom: 5px;
+        }
+        
         .status-panel {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -47,6 +53,17 @@
             text-align: center;
         }
         
+        .status-title {
+            font-size: 11px;
+            opacity: 0.8;
+            margin-bottom: 3px;
+        }
+        
+        .status-value {
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
         .video-container {
             position: relative;
             width: 100%;
@@ -55,10 +72,7 @@
             border-radius: 15px;
             overflow: hidden;
             background: black;
-            min-height: 300px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6);
         }
         
         #video {
@@ -89,21 +103,73 @@
             font-size: 14px;
             font-weight: bold;
             cursor: pointer;
+            transition: all 0.3s ease;
             background: rgba(255, 255, 255, 0.2);
             color: white;
-            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
         }
         
         button:hover {
             background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         
         .primary {
-            background: #4CAF50;
+            background: linear-gradient(45deg, #4CAF50, #45a049);
         }
         
         .secondary {
-            background: #2196F3;
+            background: linear-gradient(45deg, #2196F3, #1976D2);
+        }
+        
+        .warning {
+            background: linear-gradient(45deg, #ff9800, #f57c00);
+        }
+        
+        .danger {
+            background: linear-gradient(45deg, #f44336, #d32f2f);
+        }
+        
+        .progress-container {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .progress {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .detection-info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+        
+        .object-item {
+            margin: 3px 0;
+            padding: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
         }
         
         .instructions {
@@ -112,23 +178,6 @@
             border-radius: 10px;
             font-size: 12px;
             line-height: 1.4;
-        }
-        
-        .error-message {
-            background: rgba(244, 67, 54, 0.8);
-            padding: 12px;
-            border-radius: 10px;
-            margin-bottom: 15px;
-            text-align: center;
-            display: none;
-        }
-        
-        .permission-guide {
-            background: rgba(255, 193, 7, 0.8);
-            padding: 12px;
-            border-radius: 10px;
-            margin-bottom: 15px;
-            color: #333;
         }
     </style>
 </head>
@@ -139,62 +188,93 @@
             <p>精準手部追蹤與環境感知</p>
         </div>
         
-        <div class="permission-guide" id="permissionGuide">
-            <strong>📱 權限設定指南:</strong><br>
-            1. 點擊下方「啟動手部追蹤」按鈕<br>
-            2. 允許瀏覽器使用攝像頭<br>
-            3. 如果使用手機，請確保已授予相機權限
-        </div>
-        
-        <div class="error-message" id="errorMessage">
-            ❌ 無法訪問攝像頭，請檢查權限設定
-        </div>
-        
         <div class="status-panel">
             <div class="status-card">
-                <div>系統狀態</div>
-                <div id="systemStatus">準備就緒</div>
+                <div class="status-title">手部狀態</div>
+                <div class="status-value" id="handStatus">等待中</div>
             </div>
             <div class="status-card">
-                <div>手部檢測</div>
-                <div id="handStatus">等待啟動</div>
+                <div class="status-title">檢測物品</div>
+                <div class="status-value" id="objectCount">0個</div>
+            </div>
+            <div class="status-card">
+                <div class="status-title">系統狀態</div>
+                <div class="status-value" id="systemStatus">初始化</div>
+            </div>
+            <div class="status-card">
+                <div class="status-title">語音提示</div>
+                <div class="status-value" id="voiceStatus">開啟</div>
+            </div>
+        </div>
+        
+        <div class="progress-container" id="downloadSection">
+            <div style="text-align: center; margin-bottom: 8px; font-size: 14px;">
+                <strong>🎯 下載AI模型中...</strong>
+            </div>
+            <div class="progress-bar">
+                <div class="progress" id="downloadProgress"></div>
+            </div>
+            <div style="text-align: center; margin-top: 5px; font-size: 11px;" id="downloadText">
+                首次使用需要下載模型 (約20MB)
             </div>
         </div>
         
         <div class="video-container">
             <video id="video" autoplay playsinline muted></video>
             <canvas id="canvas"></canvas>
-            <div id="videoPlaceholder" style="text-align: center;">
-                <div style="font-size: 48px; margin-bottom: 10px;">📷</div>
-                <div>點擊「啟動手部追蹤」開始</div>
+        </div>
+        
+        <div class="detection-info">
+            <div style="margin-bottom: 8px; font-weight: bold;">📊 檢測結果:</div>
+            <div id="objectList" style="max-height: 80px; overflow-y: auto;">
+                <div class="object-item">等待檢測啟動...</div>
             </div>
         </div>
         
         <div class="controls">
-            <button id="startBtn" class="primary">啟動手部追蹤</button>
-            <button id="cameraBtn" class="secondary" disabled>切換鏡頭</button>
+            <button id="startBtn" class="primary" disabled>🚀 啟動檢測</button>
+            <button id="cameraBtn" class="secondary" disabled>📷 切換鏡頭</button>
+            <button id="voiceBtn" class="warning">🔊 語音開關</button>
+            <button id="resetBtn" class="danger">🔄 重新開始</button>
         </div>
         
         <div class="instructions">
-            <strong>使用說明:</strong><br>
-            1. 點擊「啟動手部追蹤」並允許攝像頭權限<br>
-            2. 將手掌對準鏡頭<br>
-            3. 系統會追蹤手掌位置並提供語音提示<br>
-            4. 綠色框顯示手掌邊界，紅點顯示關節位置
+            <strong>📝 使用說明:</strong><br>
+            1. 等待模型下載完成<br>
+            2. 點擊「啟動檢測」開始<br>
+            3. 將手掌對準鏡頭進行追蹤<br>
+            4. 系統會語音提示周圍物品<br>
+            5. 紅色框: 手部 | 綠色框: 物品
         </div>
     </div>
 
     <script>
-        class HandTrackingSystem {
+        class BlindNavigationSystem {
             constructor() {
+                this.session = null;
+                this.isModelLoaded = false;
                 this.isRunning = false;
                 this.currentFacingMode = 'environment';
+                this.voiceEnabled = true;
                 this.lastSpeechTime = 0;
-                this.speechCooldown = 3000;
-                this.handDetectionInterval = null;
+                this.speechCooldown = 5000; // 5秒冷卻
+                
+                // COCO數據集類別名稱 (繁體中文)
+                this.classNames = [
+                    '人', '自行車', '汽車', '摩托車', '飛機', '公車', '火車', '卡車', '船',
+                    '交通燈', '消防栓', '停止標誌', '停車計時器', '長凳', '鳥', '貓', '狗', '馬',
+                    '羊', '牛', '大象', '熊', '斑馬', '長頸鹿', '背包', '雨傘', '手提包', '領帶',
+                    '行李箱', '飛盤', '滑雪板', '雪板', '運動球', '風箏', '棒球棒', '棒球手套',
+                    '滑板', '衝浪板', '網球拍', '瓶子', '酒杯', '杯子', '叉子', '刀', '湯匙',
+                    '碗', '香蕉', '蘋果', '三明治', '橘子', '花椰菜', '胡蘿蔔', '熱狗', '披薩',
+                    '甜甜圈', '蛋糕', '椅子', '沙發', '盆栽', '床', '餐桌', '廁所', '電視',
+                    '筆電', '滑鼠', '遙控器', '鍵盤', '手機', '微波爐', '烤箱', '烤麵包機',
+                    '水槽', '冰箱', '書', '時鐘', '花瓶', '剪刀', '泰迪熊', '吹風機', '牙刷'
+                ];
                 
                 this.initializeElements();
                 this.setupEventListeners();
+                this.loadModel();
             }
             
             initializeElements() {
@@ -203,16 +283,89 @@
                 this.ctx = this.canvas.getContext('2d');
                 this.startBtn = document.getElementById('startBtn');
                 this.cameraBtn = document.getElementById('cameraBtn');
-                this.systemStatus = document.getElementById('systemStatus');
+                this.voiceBtn = document.getElementById('voiceBtn');
+                this.resetBtn = document.getElementById('resetBtn');
                 this.handStatus = document.getElementById('handStatus');
-                this.errorMessage = document.getElementById('errorMessage');
-                this.permissionGuide = document.getElementById('permissionGuide');
-                this.videoPlaceholder = document.getElementById('videoPlaceholder');
+                this.objectCount = document.getElementById('objectCount');
+                this.systemStatus = document.getElementById('systemStatus');
+                this.voiceStatus = document.getElementById('voiceStatus');
+                this.objectList = document.getElementById('objectList');
+                this.downloadSection = document.getElementById('downloadSection');
+                this.downloadProgress = document.getElementById('downloadProgress');
+                this.downloadText = document.getElementById('downloadText');
             }
             
             setupEventListeners() {
                 this.startBtn.addEventListener('click', () => this.toggleSystem());
                 this.cameraBtn.addEventListener('click', () => this.switchCamera());
+                this.voiceBtn.addEventListener('click', () => this.toggleVoice());
+                this.resetBtn.addEventListener('click', () => this.resetSystem());
+            }
+            
+            async loadModel() {
+                try {
+                    this.systemStatus.textContent = '下載模型中...';
+                    
+                    const modelUrl = 'https://huggingface.co/wang2631/YOLOv8s-web-deployment/resolve/main/yolov8s.onnx?download=true';
+                    
+                    const response = await fetch(modelUrl);
+                    if (!response.ok) throw new Error('下載失敗');
+                    
+                    const contentLength = response.headers.get('content-length');
+                    const total = parseInt(contentLength, 10);
+                    
+                    const reader = response.body.getReader();
+                    const chunks = [];
+                    let receivedLength = 0;
+                    
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        chunks.push(value);
+                        receivedLength += value.length;
+                        
+                        if (total) {
+                            const percent = Math.round((receivedLength / total) * 100);
+                            this.updateDownloadProgress(percent);
+                        }
+                    }
+                    
+                    // 合併數據並加載模型
+                    const blob = new Blob(chunks);
+                    await this.initializeModel(blob);
+                    
+                } catch (error) {
+                    console.error('模型加載錯誤:', error);
+                    this.systemStatus.textContent = '加載失敗';
+                    this.downloadText.textContent = '加載失敗，請刷新頁面重試';
+                }
+            }
+            
+            updateDownloadProgress(percent) {
+                this.downloadProgress.style.width = `${percent}%`;
+                this.downloadText.textContent = `下載進度: ${percent}%`;
+            }
+            
+            async initializeModel(blob) {
+                try {
+                    this.systemStatus.textContent = '初始化模型中...';
+                    
+                    const arrayBuffer = await blob.arrayBuffer();
+                    this.session = await ort.InferenceSession.create(arrayBuffer);
+                    this.isModelLoaded = true;
+                    
+                    this.downloadSection.style.display = 'none';
+                    this.systemStatus.textContent = '就緒';
+                    this.startBtn.disabled = false;
+                    this.cameraBtn.disabled = false;
+                    
+                    console.log('✅ YOLOv8模型加載成功');
+                    
+                } catch (error) {
+                    console.error('模型初始化錯誤:', error);
+                    this.systemStatus.textContent = '初始化失敗';
+                }
             }
             
             async toggleSystem() {
@@ -225,193 +378,47 @@
             
             async startSystem() {
                 try {
-                    this.systemStatus.textContent = '請求攝像頭權限...';
-                    this.hideError();
-                    
-                    // 嘗試不同的攝像頭配置
-                    const constraints = {
-                        video: {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { 
                             facingMode: this.currentFacingMode,
                             width: { ideal: 640 },
-                            height: { ideal: 480 },
-                            frameRate: { ideal: 30 }
+                            height: { ideal: 480 }
                         }
-                    };
-                    
-                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    });
                     
                     this.video.srcObject = stream;
                     this.isRunning = true;
-                    this.startBtn.textContent = '停止追蹤';
-                    this.cameraBtn.disabled = false;
-                    this.videoPlaceholder.style.display = 'none';
+                    this.startBtn.textContent = '🛑 停止檢測';
+                    this.startBtn.className = 'danger';
+                    this.systemStatus.textContent = '檢測中...';
                     
+                    // 設置canvas尺寸
                     this.video.addEventListener('loadedmetadata', () => {
                         this.canvas.width = this.video.videoWidth;
                         this.canvas.height = this.video.videoHeight;
-                        this.systemStatus.textContent = '攝像頭啟動成功';
-                        this.startHandDetection();
-                    });
-                    
-                    this.video.addEventListener('play', () => {
-                        this.systemStatus.textContent = '開始手部檢測...';
+                        this.detectObjects();
                     });
                     
                 } catch (error) {
                     console.error('攝像頭啟動失敗:', error);
-                    this.showError('無法訪問攝像頭: ' + this.getErrorMessage(error));
                     this.systemStatus.textContent = '攝像頭訪問失敗';
-                }
-            }
-            
-            getErrorMessage(error) {
-                if (error.name === 'NotAllowedError') {
-                    return '請允許攝像頭權限';
-                } else if (error.name === 'NotFoundError') {
-                    return '未找到攝像頭設備';
-                } else if (error.name === 'NotReadableError') {
-                    return '攝像頭被其他應用占用';
-                } else {
-                    return error.message;
-                }
-            }
-            
-            startHandDetection() {
-                // 使用簡單的顏色檢測來模擬手部檢測
-                this.handDetectionInterval = setInterval(() => {
-                    this.detectHands();
-                }, 100);
-            }
-            
-            detectHands() {
-                if (!this.isRunning || this.video.paused || this.video.ended) return;
-                
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                
-                // 繪製視頻幀
-                this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
-                
-                // 簡單的手部檢測模擬（基於膚色）
-                this.simulateHandDetection();
-            }
-            
-            simulateHandDetection() {
-                // 在畫面中央模擬一個手部檢測區域
-                const centerX = this.canvas.width / 2;
-                const centerY = this.canvas.height / 2;
-                const handSize = 100;
-                
-                // 繪製手部邊界框
-                this.ctx.strokeStyle = '#00FF00';
-                this.ctx.lineWidth = 3;
-                this.ctx.strokeRect(centerX - handSize/2, centerY - handSize/2, handSize, handSize);
-                
-                // 繪製手部關鍵點（模擬）
-                this.drawHandLandmarks(centerX, centerY, handSize);
-                
-                // 更新狀態
-                this.handStatus.textContent = '✅ 檢測到手部';
-                this.handStatus.style.color = '#4CAF50';
-                
-                // 提供語音提示
-                this.provideVoiceGuidance(centerX, centerY);
-            }
-            
-            drawHandLandmarks(centerX, centerY, handSize) {
-                this.ctx.fillStyle = '#FF0000';
-                
-                // 繪製手掌基部
-                this.ctx.beginPath();
-                this.ctx.arc(centerX, centerY, 8, 0, 2 * Math.PI);
-                this.ctx.fill();
-                
-                // 繪製手指關鍵點
-                const landmarks = [
-                    [centerX - 20, centerY - 30], [centerX, centerY - 40], [centerX + 20, centerY - 30],
-                    [centerX - 15, centerY - 15], [centerX, centerY - 25], [centerX + 15, centerY - 15],
-                    [centerX - 10, centerY], [centerX, centerY - 10], [centerX + 10, centerY],
-                    [centerX - 5, centerY + 15], [centerX, centerY + 5], [centerX + 5, centerY + 15],
-                    [centerX, centerY + 30]
-                ];
-                
-                landmarks.forEach(([x, y]) => {
-                    this.ctx.beginPath();
-                    this.ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                    this.ctx.fill();
-                });
-                
-                // 繪製連接線
-                this.ctx.strokeStyle = '#00FF00';
-                this.ctx.lineWidth = 2;
-                
-                // 手掌輪廓
-                this.ctx.beginPath();
-                this.ctx.moveTo(centerX - 30, centerY);
-                this.ctx.lineTo(centerX - 20, centerY - 30);
-                this.ctx.lineTo(centerX, centerY - 40);
-                this.ctx.lineTo(centerX + 20, centerY - 30);
-                this.ctx.lineTo(centerX + 30, centerY);
-                this.ctx.lineTo(centerX + 20, centerY + 30);
-                this.ctx.lineTo(centerX - 20, centerY + 30);
-                this.ctx.closePath();
-                this.ctx.stroke();
-            }
-            
-            provideVoiceGuidance(x, y) {
-                const now = Date.now();
-                if (now - this.lastSpeechTime < this.speechCooldown) return;
-                
-                const screenX = Math.round((x / this.canvas.width) * 100);
-                const screenY = Math.round((y / this.canvas.height) * 100);
-                
-                let horizontal = '';
-                let vertical = '';
-                
-                if (screenX < 30) horizontal = '左邊';
-                else if (screenX > 70) horizontal = '右邊';
-                else horizontal = '中間';
-                
-                if (screenY < 30) vertical = '上方';
-                else if (screenY > 70) vertical = '下方';
-                else vertical = '中間';
-                
-                const message = `手掌在畫面${horizontal}${vertical}位置`;
-                this.speak(message);
-                this.lastSpeechTime = now;
-            }
-            
-            speak(text) {
-                if ('speechSynthesis' in window) {
-                    speechSynthesis.cancel();
-                    const utterance = new SpeechSynthesisUtterance(text);
-                    utterance.lang = 'zh-TW';
-                    utterance.rate = 0.8;
-                    utterance.volume = 1.0;
-                    speechSynthesis.speak(utterance);
+                    alert('無法訪問攝像頭，請確保已授予權限');
                 }
             }
             
             stopSystem() {
-                if (this.handDetectionInterval) {
-                    clearInterval(this.handDetectionInterval);
-                    this.handDetectionInterval = null;
-                }
-                
                 if (this.video.srcObject) {
                     this.video.srcObject.getTracks().forEach(track => track.stop());
                     this.video.srcObject = null;
                 }
                 
                 this.isRunning = false;
-                this.startBtn.textContent = '啟動手部追蹤';
-                this.cameraBtn.disabled = true;
+                this.startBtn.textContent = '🚀 啟動檢測';
+                this.startBtn.className = 'primary';
                 this.systemStatus.textContent = '已停止';
-                this.handStatus.textContent = '等待啟動';
-                this.handStatus.style.color = 'white';
-                this.videoPlaceholder.style.display = 'flex';
-                
-                // 清空畫布
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.handStatus.textContent = '未檢測';
+                this.objectCount.textContent = '0個';
+                this.objectList.innerHTML = '<div class="object-item">檢測已停止</div>';
             }
             
             async switchCamera() {
@@ -422,27 +429,274 @@
                 }
             }
             
-            showError(message) {
-                this.errorMessage.textContent = message;
-                this.errorMessage.style.display = 'block';
+            toggleVoice() {
+                this.voiceEnabled = !this.voiceEnabled;
+                this.voiceStatus.textContent = this.voiceEnabled ? '開啟' : '關閉';
+                this.voiceBtn.textContent = this.voiceEnabled ? '🔊 語音開' : '🔇 語音關';
             }
             
-            hideError() {
-                this.errorMessage.style.display = 'none';
+            resetSystem() {
+                this.stopSystem();
+                this.loadModel();
+                this.downloadSection.style.display = 'block';
+            }
+            
+            async detectObjects() {
+                if (!this.isRunning || !this.session) return;
+                
+                try {
+                    // 準備輸入數據
+                    const inputTensor = await this.prepareInput();
+                    
+                    // 執行推理
+                    const outputs = await this.session.run({ images: inputTensor });
+                    
+                    // 處理YOLOv8輸出
+                    const detections = this.processDetections(outputs);
+                    
+                    // 分析和顯示結果
+                    this.analyzeResults(detections);
+                    
+                    // 繪製檢測框
+                    this.drawDetections(detections);
+                    
+                } catch (error) {
+                    console.error('檢測錯誤:', error);
+                }
+                
+                // 繼續下一帧檢測
+                requestAnimationFrame(() => this.detectObjects());
+            }
+            
+            async prepareInput() {
+                // 繪製當前幀到canvas
+                this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+                
+                // 創建臨時canvas進行預處理
+                const tempCanvas = document.createElement('canvas');
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCanvas.width = 640;
+                tempCanvas.height = 640;
+                
+                // 調整尺寸並繪製
+                tempCtx.drawImage(this.video, 0, 0, 640, 640);
+                const imageData = tempCtx.getImageData(0, 0, 640, 640);
+                
+                // 轉換為模型輸入格式 [1, 3, 640, 640]
+                const input = new ort.Tensor('float32', new Float32Array(3 * 640 * 640), [1, 3, 640, 640]);
+                
+                // 填充數據 (RGB格式，歸一化到0-1)
+                for (let i = 0; i < 640 * 640; i++) {
+                    input.data[i] = imageData.data[i * 4] / 255.0;         // R
+                    input.data[i + 640 * 640] = imageData.data[i * 4 + 1] / 255.0;     // G
+                    input.data[i + 2 * 640 * 640] = imageData.data[i * 4 + 2] / 255.0; // B
+                }
+                
+                return input;
+            }
+            
+            processDetections(outputs) {
+                const detections = [];
+                const output = outputs.output0; // YOLOv8輸出格式: [1, 84, 8400]
+                
+                // 遍歷8400個預測
+                for (let i = 0; i < 8400; i++) {
+                    // 獲取置信度
+                    const confidence = output.data[4 * 8400 + i];
+                    
+                    if (confidence > 0.25) { // 置信度閾值
+                        let maxScore = 0;
+                        let classId = -1;
+                        
+                        // 找到最高分的類別
+                        for (let j = 0; j < 80; j++) {
+                            const score = output.data[(5 + j) * 8400 + i];
+                            if (score > maxScore) {
+                                maxScore = score;
+                                classId = j;
+                            }
+                        }
+                        
+                        const totalScore = confidence * maxScore;
+                        
+                        if (totalScore > 0.3) { // 綜合得分閾值
+                            const x = output.data[i] * this.canvas.width / 640;
+                            const y = output.data[8400 + i] * this.canvas.height / 640;
+                            const w = output.data[2 * 8400 + i] * this.canvas.width / 640;
+                            const h = output.data[3 * 8400 + i] * this.canvas.height / 640;
+                            
+                            detections.push({
+                                bbox: [x - w/2, y - h/2, w, h], // 轉換為[x1, y1, w, h]
+                                confidence: totalScore,
+                                classId: classId,
+                                className: this.classNames[classId] || `物品${classId}`
+                            });
+                        }
+                    }
+                }
+                
+                // 應用非極大值抑制
+                return this.nonMaxSuppression(detections);
+            }
+            
+            nonMaxSuppression(detections, iouThreshold = 0.5) {
+                detections.sort((a, b) => b.confidence - a.confidence);
+                const selected = [];
+                
+                while (detections.length > 0) {
+                    const current = detections[0];
+                    selected.push(current);
+                    
+                    // 移除與當前檢測框重疊度高的框
+                    detections = detections.filter(det => {
+                        const iou = this.calculateIOU(current.bbox, det.bbox);
+                        return iou < iouThreshold;
+                    });
+                }
+                
+                return selected;
+            }
+            
+            calculateIOU(box1, box2) {
+                const [x1, y1, w1, h1] = box1;
+                const [x2, y2, w2, h2] = box2;
+                
+                const x1_2 = x1 + w1;
+                const y1_2 = y1 + h1;
+                const x2_2 = x2 + w2;
+                const y2_2 = y2 + h2;
+                
+                const xi1 = Math.max(x1, x2);
+                const yi1 = Math.max(y1, y2);
+                const xi2 = Math.min(x1_2, x2_2);
+                const yi2 = Math.min(y1_2, y2_2);
+                
+                const interArea = Math.max(0, xi2 - xi1) * Math.max(0, yi2 - yi1);
+                const box1Area = w1 * h1;
+                const box2Area = w2 * h2;
+                
+                return interArea / (box1Area + box2Area - interArea);
+            }
+            
+            analyzeResults(detections) {
+                let handDetected = false;
+                const objects = [];
+                
+                // 分析檢測結果
+                detections.forEach(detection => {
+                    if (detection.classId === 0) { // 人（手部）
+                        handDetected = true;
+                    } else {
+                        objects.push({
+                            name: detection.className,
+                            confidence: Math.round(detection.confidence * 100)
+                        });
+                    }
+                });
+                
+                // 更新界面顯示
+                this.updateDisplay(handDetected, objects);
+                
+                // 語音提示
+                if (this.voiceEnabled && handDetected && objects.length > 0) {
+                    this.provideVoiceGuidance(objects);
+                }
+            }
+            
+            updateDisplay(handDetected, objects) {
+                // 更新手部狀態
+                if (handDetected) {
+                    this.handStatus.textContent = '✅ 已檢測';
+                    this.handStatus.style.color = '#4CAF50';
+                } else {
+                    this.handStatus.textContent = '❌ 未檢測';
+                    this.handStatus.style.color = '#ff4444';
+                }
+                
+                // 更新物品計數
+                this.objectCount.textContent = `${objects.length}個`;
+                
+                // 更新物品列表
+                this.objectList.innerHTML = '';
+                if (objects.length > 0) {
+                    objects.slice(0, 5).forEach(obj => {
+                        const item = document.createElement('div');
+                        item.className = 'object-item';
+                        item.textContent = `${obj.name} (${obj.confidence}%)`;
+                        this.objectList.appendChild(item);
+                    });
+                } else {
+                    const item = document.createElement('div');
+                    item.className = 'object-item';
+                    item.textContent = '未檢測到物品';
+                    this.objectList.appendChild(item);
+                }
+            }
+            
+            provideVoiceGuidance(objects) {
+                const now = Date.now();
+                if (now - this.lastSpeechTime < this.speechCooldown) return;
+                
+                const topObjects = objects.slice(0, 2);
+                if (topObjects.length > 0) {
+                    const objectNames = topObjects.map(obj => obj.name).join('和');
+                    const message = `檢測到${objectNames}在附近`;
+                    this.speak(message);
+                    this.lastSpeechTime = now;
+                }
+            }
+            
+            speak(text) {
+                if ('speechSynthesis' in window) {
+                    // 停止之前的語音
+                    speechSynthesis.cancel();
+                    
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = 'zh-TW';
+                    utterance.rate = 0.8;
+                    utterance.pitch = 1.0;
+                    utterance.volume = 1.0;
+                    
+                    speechSynthesis.speak(utterance);
+                }
+            }
+            
+            drawDetections(detections) {
+                // 清空畫布
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // 繪製每個檢測框
+                detections.forEach(detection => {
+                    const [x, y, w, h] = detection.bbox;
+                    const isPerson = detection.classId === 0;
+                    
+                    // 設置樣式
+                    this.ctx.strokeStyle = isPerson ? '#ff4444' : '#44ff44';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.fillStyle = isPerson ? '#ff4444' : '#44ff44';
+                    
+                    // 繪製邊界框
+                    this.ctx.strokeRect(x, y, w, h);
+                    
+                    // 繪製標籤
+                    const label = `${detection.className} ${Math.round(detection.confidence * 100)}%`;
+                    this.ctx.font = 'bold 14px Arial';
+                    const textWidth = this.ctx.measureText(label).width;
+                    
+                    // 標籤背景
+                    this.ctx.fillRect(x, y - 20, textWidth + 10, 20);
+                    
+                    // 標籤文字
+                    this.ctx.fillStyle = 'white';
+                    this.ctx.fillText(label, x + 5, y - 5);
+                });
             }
         }
         
         // 初始化系統
         document.addEventListener('DOMContentLoaded', () => {
-            new HandTrackingSystem();
+            new BlindNavigationSystem();
         });
-        
-        // 檢查攝像頭支持
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            document.getElementById('errorMessage').textContent = '您的瀏覽器不支持攝像頭功能';
-            document.getElementById('errorMessage').style.display = 'block';
-            document.getElementById('startBtn').disabled = true;
-        }
     </script>
 </body>
 </html>
