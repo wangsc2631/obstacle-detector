@@ -487,6 +487,9 @@
         this.videoHeight = 0; // 相機畫面高度
         this.lastDetectedObstacles = []; // 跟蹤歷史障礙物數據（判斷動態）
         this.scanInterval = null; // 障礙物檢測循環
+        this.detectionCanvas = document.createElement('canvas'); // 用於對象檢測的畫布
+        this.isCameraInitialized = false; // 相機初始化狀態
+        this.lastSpeakTime = 0; // 最後語音提示時間（防止過度提示）
         
         this.loadHomePosition();
         this.initModel(); // 初始化模型（異步，需處理）
@@ -515,13 +518,21 @@
           this.speak('已切換到室內避障模式，開始環境感知');
           document.getElementById('avoidanceIndicator').classList.add('active');
           document.getElementById('btnFollow').disabled = true;
-          this.startObstacleDetection(); // 啟動真實檢測（每2秒一次）
+          
+          // 如果已經在導航中，立即啟動障礙物檢測
+          if (this.isNavigating) {
+            this.startObstacleDetection();
+          }
         } else {
           this.speak('已切換到室外導航模式');
           document.getElementById('avoidanceIndicator').classList.remove('active');
           document.getElementById('btnFollow').disabled = !this.isNavigating;
-          // 戶外模式可能需降低檢測頻率（或停用，根據需求）
-          clearInterval(this.scanInterval); // 停止室內模式的頻繁檢測
+          
+          // 停止室內模式的頻繁檢測
+          if (this.scanInterval) {
+            clearInterval(this.scanInterval);
+            this.scanInterval = null;
+          }
         }
       }
       
@@ -536,37 +547,115 @@
         }, this.obstacleScanInterval); // 每2秒檢測一次
       }
       
-      // 開始障礙物檢測
-      startObstacleDetection() {
-        setInterval(() => {
-          if (this.isNavigating && this.isIndoorMode) {
-            this.scanEnvironment();
-          }
-        }, this.obstacleScanInterval);
-      }
       
-      // 真實障礙物檢測（替換原模擬scanEnvironment）
+      // 真實障礙物檢測
       async detectObstacles() {
-        if (!this.model) { // 模型不可用時回退模擬
-          this.scanEnvironment(); // 原有模擬方法（可保留）
+        // 檢查是否正在導航且在室內模式
+        if (!this.isNavigating || !this.isIndoorMode) {
+          return;
+        }
+
+        // 檢查模型是否已加載
+        if (!this.model) { 
+          // 模型不可用時回退模擬
+          this.scanEnvironment(); // 原有模擬方法
           return;
         }
 
         const video = document.getElementById('video');
-        if (!video.srcObject) throw new Error('相機未授權'); // 檢查相機是否已打開
+        if (!video || !video.srcObject || !video.videoWidth || !video.videoHeight) {
+          console.warn('相機未準備好');
+          // 回退到模擬數據
+          this.scanEnvironment();
+          return;
+        }
 
-        // 捕獲視頻幀並降低分辨率（提升效率）
-        this.videoWidth = video.videoWidth;
-        this.videoHeight = video.videoHeight;
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.min(this.videoWidth, 640); // 最大寬度640像素
-        canvas.height = Math.min(this.videoHeight, (640 / this.videoWidth) * this.videoHeight); // 保持比例
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height); // 繪製當前幀到畫布
+        try {
+          // 更新視頻尺寸
+          this.videoWidth = video.videoWidth;
+          this.videoHeight = video.videoHeight;
+          
+          // 設置畫布尺寸（根據設備調整）
+          const targetWidth = Math.min(this.videoWidth, 320); // 降低分辨率以提高性能
+          const targetHeight = Math.floor((targetWidth / this.videoWidth) * this.videoHeight);
+          
+          this.detectionCanvas.width = targetWidth;
+          this.detectionCanvas.height = targetHeight;
+          
+          const ctx = this.detectionCanvas.getContext('2d');
+          // 添加圖像預處理（提高檢測準確度）
+          ctx.filter = 'brightness(1.1) contrast(1.1)';
+          
+          // 繪製當前幀到畫布
+          ctx.drawImage(video, 0, 0, this.detectionCanvas.width, this.detectionCanvas.height);
 
-        // 運行模型預測（獲取畫面中的障礙物）
-        const predictions = await this.model.detect(canvas);
-        this.processPredictions(predictions); // 處理預測結果為系統可用的障礙物數據
+          // 運行模型預測（獲取畫面中的障礙物）
+          const predictions = await this.model.detect(this.detectionCanvas);
+          
+          // 過濾重複檢測（根據IOU）
+          const filteredPredictions = this.nonMaxSuppression(predictions);
+          
+          // 處理預測結果為系統可用的障礙物數據
+          this.processPredictions(filteredPredictions);
+        } catch (error) {
+          console.error('障礙物檢測失敗:', error);
+          // 出錯時回退到模擬數據
+          this.scanEnvironment();
+        }
+      }
+      
+      // 非極大值抑制（NMS）來過濾重複檢測
+      nonMaxSuppression(predictions, iouThreshold = 0.5) {
+        // 按置信度排序
+        predictions.sort((a, b) => b.score - a.score);
+        
+        const result = [];
+        const usedBoxes = [];
+        
+        for (const pred of predictions) {
+          const predBox = pred.bbox;
+          let overlap = false;
+          
+          for (const usedBox of usedBoxes) {
+            // 計算IOU（交並比）
+            const iou = this.calculateIOU(predBox, usedBox);
+            if (iou > iouThreshold) {
+              overlap = true;
+              break;
+            }
+          }
+          
+          if (!overlap) {
+            result.push(pred);
+            usedBoxes.push(predBox);
+          }
+        }
+        
+        return result;
+      }
+      
+      // 計算兩個框的IOU（交並比）
+      calculateIOU(boxA, boxB) {
+        // box格式: [x, y, width, height]
+        const [xA, yA, wA, hA] = boxA;
+        const [xB, yB, wB, hB] = boxB;
+        
+        // 計算交集區域
+        const x1 = Math.max(xA, xB);
+        const y1 = Math.max(yA, yB);
+        const x2 = Math.min(xA + wA, xB + wB);
+        const y2 = Math.min(yA + hA, yB + hB);
+        
+        const interWidth = Math.max(0, x2 - x1);
+        const interHeight = Math.max(0, y2 - y1);
+        const interArea = interWidth * interHeight;
+        
+        // 計算並集區域
+        const areaA = wA * hA;
+        const areaB = wB * hB;
+        const unionArea = areaA + areaB - interArea;
+        
+        return interArea / unionArea;
       }
 
       // 處理模型預測結果
@@ -644,13 +733,12 @@
       // 判斷障礙物是否動態
       checkMovement(currentObstacle) {
         if (!this.lastDetectedObstacles.length) { // 首次檢測無歷史數據
-          this.lastDetectedObstacles.push(currentObstacle);
           return false;
         }
 
         // 查找上一次檢測中相同類型且位置接近的障礙物（簡化匹配）
         const lastObstacle = this.lastDetectedObstacles.find(o => 
-          o.type === currentObstacle.type &&
+          o.type === currentObstacle.class &&
           Math.abs(o.bbox.x - currentObstacle.bbox.x) < 50 && // X坐標變化閾值（像素）
           Math.abs(o.bbox.y - currentObstacle.bbox.y) < 50 // Y坐標變化閾值
         );
@@ -666,11 +754,26 @@
       // 更新障礙物顯示
       updateObstacleDisplay() {
         const markersContainer = document.getElementById('obstacleMarkers');
+        if (!markersContainer) return;
+        
         markersContainer.innerHTML = ''; // 清空舊標記
 
         let totalRisk = 0; // 總風險（用於計算安全指數）
         let closestDistance = Infinity; // 最近距離
         let closestType = '未知'; // 最近障礙物類型
+        let closestPosition = 'front'; // 最近障礙物位置
+
+        // 如果沒有檢測到障礙物，顯示提示信息
+        if (this.obstacles.length === 0) {
+          document.getElementById('avoidanceAdvice').textContent = '環境中未檢測到障礙物';
+          document.getElementById('safetyScore').textContent = '100%';
+          document.getElementById('closestObstacle').textContent = '-- 公尺';
+          
+          // 顯示前進箭頭
+          this.hideAllArrows();
+          document.getElementById('arrowForward').classList.add('active');
+          return;
+        }
 
         this.obstacles.forEach(obstacle => {
           // 計算類型風險（不同障礙物類型風險不同）
@@ -688,16 +791,29 @@
           if (obstacle.distance < closestDistance) {
             closestDistance = obstacle.distance;
             closestType = obstacle.type;
+            closestPosition = obstacle.position;
           }
 
           // 創建障礙物標記（根據真實邊框位置渲染）
           const marker = document.createElement('div');
           marker.className = 'obstacle-marker';
+          
+          // 根據障礙物大小調整標記尺寸
+          const sizeFactor = Math.max(0.5, 1 - (obstacle.distance / 5)); // 最大距離5米
+          const markerSize = 20 * sizeFactor;
+          marker.style.width = `${markerSize}px`;
+          marker.style.height = `${markerSize}px`;
+          
           // 標記位置：邊框中心（轉換為畫面百分比）
           const left = (obstacle.bbox.x / this.videoWidth) * 100 + '%'; // 相機畫面原始寬度
           const top = (obstacle.bbox.y / this.videoHeight) * 100 + '%';
           marker.style.left = left;
           marker.style.top = top;
+          
+          // 根據距離調整透明度
+          const opacity = Math.max(0.3, 1 - (obstacle.distance / 5)); // 最大距離5米
+          marker.style.opacity = opacity.toString();
+          
           markersContainer.appendChild(marker);
         });
 
@@ -781,15 +897,21 @@
         document.getElementById('arrowForward').classList.remove('active');
       }
       
-      // 其他方法保持不變...
+      // 加載家的位置
       loadHomePosition() {
-        const savedHome = localStorage.getItem('homePosition');
-        if (savedHome) {
-          this.homePosition = JSON.parse(savedHome);
-          this.updateHomeInfo();
-          this.speak('家的位置已載入，可以開始導航');
-        } else {
-          this.speak('歡迎使用盲人導航助手，請先設定家的位置');
+        try {
+          const savedHome = localStorage.getItem('homePosition');
+          if (savedHome) {
+            this.homePosition = JSON.parse(savedHome);
+            this.updateHomeInfo();
+            this.speak('家的位置已載入，可以開始導航');
+          } else {
+            this.speak('歡迎使用智能避障導航系統，請先設定家的位置');
+          }
+        } catch (error) {
+          console.error('加載家的位置失敗:', error);
+          this.homePosition = null;
+          this.speak('家的位置數據損壞，請重新設定');
         }
       }
       
@@ -958,12 +1080,32 @@
         const startBtn = document.getElementById('btnStart');
         const followBtn = document.getElementById('btnFollow');
         
-        startBtn.textContent = this.isNavigating ? '停止導航' : '開始導航';
-        startBtn.classList.toggle('btn-danger', this.isNavigating);
-        startBtn.classList.toggle('btn-primary', !this.isNavigating);
+        if (startBtn) {
+          startBtn.textContent = this.isNavigating ? '停止導航' : '開始導航';
+          startBtn.classList.toggle('btn-danger', this.isNavigating);
+          startBtn.classList.toggle('btn-primary', !this.isNavigating);
+          
+          // 添加按鈕提示文本
+          if (this.isIndoorMode && !this.isNavigating) {
+            startBtn.title = '室內模式：啟動避障導航';
+          } else if (!this.isIndoorMode && !this.isNavigating) {
+            startBtn.title = '室外模式：啟動GPS導航';
+          }
+        }
         
-        followBtn.textContent = this.isFollowing ? '停止跟隨' : '人員跟隨';
-        followBtn.disabled = !this.isNavigating || this.isIndoorMode;
+        if (followBtn) {
+          followBtn.textContent = this.isFollowing ? '停止跟隨' : '人員跟隨';
+          followBtn.disabled = !this.isNavigating || this.isIndoorMode;
+          
+          // 添加按鈕提示文本
+          if (this.isIndoorMode) {
+            followBtn.title = '室內模式不支持人員跟隨';
+          } else if (this.isNavigating) {
+            followBtn.title = this.isFollowing ? '停止跟隨引導者' : '啟動人員跟隨模式';
+          } else {
+            followBtn.title = '請先啟動導航';
+          }
+        }
       }
       
       speak(message) {
