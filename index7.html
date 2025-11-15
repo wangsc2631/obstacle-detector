@@ -7,6 +7,9 @@
   <meta name="description" content="智能避障導航系統 - 即時障礙物檢測與GPS返航" />
   <title>🧭 智能避障導航系統</title>
   
+  <!-- 添加ONNX Runtime庫 -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  
   <!-- 添加TensorFlow.js和SSD模型 -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/ssd@3.0.0/dist/ssd.min.js"></script>
@@ -500,6 +503,9 @@
         this.detectionCanvas = document.createElement('canvas'); // 用於對象檢測的畫布
         this.isCameraInitialized = false; // 相機初始化狀態
         this.lastSpeakTime = 0; // 最後語音提示時間（防止過度提示）
+        
+        // 設定ONNX模型路徑
+        this.MODEL_PATH = './yolov8s.onnx';
         
         this.loadHomePosition();
         this.initModel(); // 初始化模型（異步，需處理）
