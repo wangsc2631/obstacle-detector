@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>圍棋AI指導系統</title>
+    <title>圍棋AI指導系統 - 三星設備專用優化</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
@@ -61,9 +61,21 @@
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
         
-        .subtitle {
-            font-size: 1.2rem;
-            opacity: 0.9;
+        .device-warning {
+            background: rgba(243, 156, 18, 0.3);
+            border: 1px solid var(--warning-color);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            display: none;
+        }
+        
+        .samsung-fix {
+            background: rgba(52, 152, 219, 0.3);
+            border: 1px solid var(--primary-color);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
         }
         
         .main-content {
@@ -88,15 +100,6 @@
             border: 1px solid var(--card-border);
         }
         
-        .section-title {
-            font-size: 1.5rem;
-            margin-bottom: 20px;
-            padding-bottom: 12px;
-            border-bottom: 2px solid rgba(255, 255, 255, 0.3);
-            display: flex;
-            align-items: center;
-        }
-        
         .camera-container {
             position: relative;
             width: 100%;
@@ -116,6 +119,7 @@
             height: 100%;
             object-fit: cover;
             display: none;
+            transform: rotateY(180deg); /* 三星設備鏡像修正 */
         }
         
         #canvas {
@@ -135,12 +139,6 @@
             align-items: center;
             justify-content: center;
             height: 100%;
-        }
-        
-        .camera-placeholder i {
-            font-size: 3rem;
-            margin-bottom: 15px;
-            display: block;
         }
         
         .controls {
@@ -182,19 +180,37 @@
             color: white;
         }
         
-        .btn-danger {
-            background: linear-gradient(135deg, var(--danger-color), #c0392b);
+        .btn-samsung {
+            background: linear-gradient(135deg, #1428a0, #3498db);
             color: white;
+            border: 2px solid #ffd700;
         }
         
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
+        .camera-options {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
         }
         
-        .btn:hover:not(:disabled) {
-            transform: translateY(-3px);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        .camera-btn {
+            padding: 10px 15px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        
+        .camera-btn.active {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        .camera-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
         }
         
         .analysis-result {
@@ -205,104 +221,21 @@
             min-height: 200px;
         }
         
-        .recommendation {
-            background: rgba(52, 152, 219, 0.2);
-            border-left: 4px solid var(--primary-color);
-            padding: 18px;
-            margin-bottom: 20px;
-            border-radius: 0 8px 8px 0;
-        }
-        
-        .best-move {
-            font-size: 1.3rem;
-            font-weight: bold;
-            color: #ffd700;
-            text-align: center;
-            margin: 20px 0;
-            padding: 15px;
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        }
-        
-        .move-reason {
-            font-size: 1rem;
-            line-height: 1.5;
-            margin-bottom: 20px;
-            padding: 15px;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 8px;
-        }
-        
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 20px;
-            padding: 12px;
-            border-radius: 8px;
-            background: rgba(0, 0, 0, 0.3);
-        }
-        
-        .status-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: var(--danger-color);
-        }
-        
-        .status-dot.active {
-            background: var(--success-color);
-            animation: pulse 1.5s infinite;
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-        
-        .error-message {
-            background: rgba(231, 76, 60, 0.3);
-            border: 1px solid var(--danger-color);
-            border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
-            display: none;
-        }
-        
-        .fallback-options {
-            display: none;
-            background: rgba(52, 152, 219, 0.2);
-            border-radius: 8px;
-            padding: 20px;
-            margin-top: 15px;
-        }
-        
-        .fallback-options h3 {
-            margin-bottom: 15px;
-        }
-        
-        .fallback-buttons {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        
-        .fallback-btn {
-            padding: 10px 15px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            border-radius: 5px;
-            cursor: pointer;
-            flex: 1;
-            min-width: 120px;
-            text-align: center;
-        }
-        
-        .fallback-btn:hover {
+        .progress-container {
+            width: 100%;
+            height: 6px;
             background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            margin: 15px 0;
+            overflow: hidden;
+            display: none;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-color), var(--success-color));
+            width: 0%;
+            transition: width 0.3s;
         }
         
         .manual-input {
@@ -310,23 +243,6 @@
             padding: 15px;
             background: rgba(0, 0, 0, 0.2);
             border-radius: 8px;
-        }
-        
-        .coord-input {
-            display: flex;
-            gap: 10px;
-            margin-top: 12px;
-            align-items: center;
-        }
-        
-        .coord-input input {
-            padding: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border-radius: 5px;
-            width: 70px;
-            text-align: center;
         }
         
         .board-preview {
@@ -360,81 +276,34 @@
         .stone.white {
             background: radial-gradient(circle at 30% 30%, #fff, #ddd);
         }
-        
-        .suggested-move {
-            position: absolute;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            border: 2px solid #ff0000;
-            animation: blink 2s infinite;
-        }
-        
-        @keyframes blink {
-            0% { opacity: 1; }
-            50% { opacity: 0.3; }
-            100% { opacity: 1; }
-        }
-        
-        .progress-container {
-            width: 100%;
-            height: 6px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 3px;
-            margin: 15px 0;
-            overflow: hidden;
-            display: none;
-        }
-        
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary-color), var(--success-color));
-            width: 0%;
-            transition: width 0.3s;
-        }
-        
-        .upload-area {
-            border: 2px dashed rgba(255, 255, 255, 0.3);
-            border-radius: 8px;
-            padding: 30px;
-            text-align: center;
-            margin: 15px 0;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: none;
-        }
-        
-        .upload-area:hover {
-            border-color: var(--primary-color);
-            background: rgba(52, 152, 219, 0.1);
-        }
-        
-        .upload-area.drag-over {
-            border-color: var(--success-color);
-            background: rgba(46, 204, 113, 0.1);
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🧠 圍棋AI指導系統</h1>
-            <p class="subtitle">使用MediaPipe手勢識別與圍棋AI分析，提供最佳落子建議</p>
+            <h1>🧠 圍棋AI指導系統 - 三星優化版</h1>
+            <p class="subtitle">專為三星設備優化的圍棋AI指導系統</p>
         </header>
+        
+        <div class="device-warning" id="deviceWarning">
+            <strong>📱 設備檢測：</strong> 檢測到您正在使用移動設備，相機功能可能需要特殊設置
+        </div>
+        
+        <div class="samsung-fix">
+            <h3>📋 三星S23相機問題解決方案</h3>
+            <p>如果相機無法正常工作，請嘗試以下步驟：</p>
+            <ol style="margin: 10px 0 10px 20px;">
+                <li>點擊下方的「三星專用模式」按鈕</li>
+                <li>確保使用Chrome或Samsung Internet瀏覽器</li>
+                <li>檢查相機權限設置</li>
+                <li>嘗試切換前後鏡頭</li>
+                <li>如果仍然不行，使用手動輸入模式</li>
+            </ol>
+        </div>
         
         <div class="main-content">
             <div class="camera-section">
-                <h2 class="section-title">📷 棋盤拍攝與手勢識別</h2>
-                
-                <div class="status-indicator">
-                    <div class="status-dot" id="cameraStatus"></div>
-                    <span id="cameraStatusText">相機未啟動</span>
-                </div>
-                
-                <div class="error-message" id="errorMessage">
-                    <strong>錯誤：</strong> <span id="errorText"></span>
-                </div>
+                <h2 class="section-title">📷 棋盤拍攝</h2>
                 
                 <div class="camera-container">
                     <video id="video" playsinline></video>
@@ -450,90 +319,77 @@
                     <div class="progress-bar" id="progressBar"></div>
                 </div>
                 
-                <div class="upload-area" id="uploadArea">
-                    <div style="font-size: 3rem; margin-bottom: 15px;">📁</div>
-                    <h3>上傳棋盤圖片</h3>
-                    <p>點擊或拖放圖片到此區域</p>
-                    <input type="file" id="fileInput" accept="image/*" style="display: none;">
-                </div>
-                
-                <div class="fallback-options" id="fallbackOptions">
-                    <h3>🔧 備用方案</h3>
-                    <div class="fallback-buttons">
-                        <button class="fallback-btn" id="fallbackManual">手動輸入模式</button>
-                        <button class="fallback-btn" id="fallbackUpload">上傳圖片</button>
-                        <button class="fallback-btn" id="fallbackSimple">簡易模式</button>
-                    </div>
+                <div class="camera-options">
+                    <button class="camera-btn" id="switchToUser">前置鏡頭</button>
+                    <button class="camera-btn active" id="switchToEnvironment">後置鏡頭</button>
+                    <button class="camera-btn" id="samsungMode">三星專用模式</button>
+                    <button class="camera-btn" id="lowResMode">低分辨率模式</button>
                 </div>
                 
                 <div class="controls">
                     <button class="btn btn-primary" id="startCamera">
                         <span>📹</span> 啟動相機
                     </button>
+                    <button class="btn btn-samsung" id="startSamsungCamera">
+                        <span>📱</span> 三星專用啟動
+                    </button>
                     <button class="btn btn-success" id="analyzeBoard" disabled>
                         <span>🔍</span> 分析棋局
                     </button>
-                    <button class="btn btn-warning" id="suggestMove">
-                        <span>💡</span> 建議落子
-                    </button>
                 </div>
                 
-                <div class="manual-input" id="manualInput">
+                <div class="manual-input">
                     <h3>手動輸入模式</h3>
-                    <p style="font-size: 0.9rem; margin-bottom: 10px; opacity: 0.8;">如果相機無法使用，可以手動輸入坐標</p>
-                    <div class="coord-input">
-                        <input type="text" id="coordX" placeholder="列 (A-T)" maxlength="1">
-                        <input type="number" id="coordY" placeholder="行 (1-19)" min="1" max="19">
-                        <button class="btn btn-primary" id="addStone" style="flex: 0.5;">添加棋子</button>
+                    <p style="font-size: 0.9rem; margin-bottom: 10px; opacity: 0.8;">如果相機無法使用，請使用此模式</p>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <input type="text" id="coordX" placeholder="列 (A-T)" maxlength="1" style="padding: 10px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; border-radius: 5px; width: 80px; text-align: center;">
+                        <input type="number" id="coordY" placeholder="行 (1-19)" min="1" max="19" style="padding: 10px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; border-radius: 5px; width: 80px; text-align: center;">
+                        <button class="btn btn-primary" id="addStone">添加棋子</button>
                     </div>
                     <div style="margin-top: 10px; display: flex; gap: 10px;">
-                        <button class="btn btn-warning" id="setBlack">設為黑棋</button>
-                        <button class="btn btn-warning" id="setWhite">設為白棋</button>
+                        <button class="btn btn-warning" id="setBlack">黑棋</button>
+                        <button class="btn btn-warning" id="setWhite">白棋</button>
+                        <button class="btn btn-danger" id="resetBoard">重置</button>
                     </div>
                 </div>
             </div>
             
             <div class="analysis-section">
-                <h2 class="section-title">📊 棋局分析與建議</h2>
+                <h2 class="section-title">📊 棋局分析</h2>
                 
                 <div class="analysis-result">
-                    <div class="recommendation">
+                    <div style="background: rgba(52, 152, 219, 0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
                         <h3>當前局勢分析</h3>
-                        <p id="boardAnalysis">請先啟動相機或手動輸入棋局</p>
+                        <p id="boardAnalysis">請先輸入棋局或啟動相機</p>
                     </div>
                     
-                    <div class="best-move" id="bestMoveDisplay">
-                        最佳落子點: --
-                    </div>
-                    
-                    <div class="move-reason" id="moveReason">
-                        分析將顯示在此處...
+                    <div style="background: rgba(0,0,0,0.4); padding: 15px; border-radius: 8px; text-align: center; margin: 15px 0;">
+                        <h3 id="bestMoveDisplay">最佳落子點: --</h3>
+                        <p id="moveReason" style="margin-top: 10px;">分析將顯示在此處...</p>
                     </div>
                     
                     <div class="board-preview" id="boardPreview">
-                        <!-- 棋盤預覽將透過JavaScript動態生成 -->
+                        <!-- 棋盤預覽 -->
                     </div>
                 </div>
                 
                 <div class="controls">
-                    <button class="btn btn-primary" id="voiceGuide">
+                    <button class="btn btn-primary" id="suggestMove">
+                        <span>💡</span> 建議落子
+                    </button>
+                    <button class="btn btn-success" id="voiceGuide">
                         <span>🔊</span> 語音指導
-                    </button>
-                    <button class="btn btn-warning" id="showVariations">
-                        <span>📈</span> 顯示變化圖
-                    </button>
-                    <button class="btn btn-danger" id="resetBoard">
-                        <span>🔄</span> 重置棋盤
                     </button>
                 </div>
                 
                 <div style="margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px;">
-                    <h3>💡 使用提示</h3>
+                    <h3>📝 三星設備使用提示</h3>
                     <ul style="margin-top: 10px; padding-left: 20px;">
-                        <li>確保在光線充足的環境下使用相機</li>
-                        <li>棋盤應清晰可見，佔據畫面主要部分</li>
-                        <li>如果相機無法使用，請使用手動輸入模式</li>
-                        <li>可以上傳棋盤圖片進行分析</li>
+                        <li>使用Chrome瀏覽器獲得最佳兼容性</li>
+                        <li>確保授予相機權限</li>
+                        <li>嘗試「三星專用模式」解決兼容性問題</li>
+                        <li>如果相機仍不工作，使用手動輸入模式</li>
+                        <li>保持系統和瀏覽器更新到最新版本</li>
                     </ul>
                 </div>
             </div>
@@ -541,8 +397,8 @@
     </div>
 
     <script>
-        // 圍棋AI指導系統
-        class GoAITutor {
+        // 圍棋AI指導系統 - 三星優化版
+        class GoAITutorSamsung {
             constructor() {
                 this.hands = null;
                 this.camera = null;
@@ -550,28 +406,28 @@
                 this.currentCameraType = 'environment';
                 this.boardState = this.initializeBoard();
                 this.currentPlayer = 'black';
-                this.lastAnalysis = null;
-                this.cameraStream = null;
+                this.isSamsungMode = false;
+                this.isLowResMode = false;
                 
+                this.detectDevice();
                 this.initializeMediaPipe();
                 this.setupEventListeners();
                 this.renderBoardPreview();
-                this.checkCameraPermissions();
             }
             
-            // 檢查相機權限狀態
-            async checkCameraPermissions() {
-                try {
-                    const permissions = await navigator.permissions.query({ name: 'camera' });
-                    if (permissions.state === 'granted') {
-                        console.log('相機權限已授予');
-                    } else if (permissions.state === 'prompt') {
-                        console.log('相機權限需要用戶確認');
-                    } else {
-                        console.log('相機權限被拒絕');
-                    }
-                } catch (error) {
-                    console.log('無法檢查相機權限狀態:', error);
+            // 設備檢測
+            detectDevice() {
+                const userAgent = navigator.userAgent.toLowerCase();
+                const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent);
+                const isSamsung = /samsung/i.test(navigator.userAgent);
+                
+                if (isMobile) {
+                    document.getElementById('deviceWarning').style.display = 'block';
+                }
+                
+                if (isSamsung) {
+                    console.log('檢測到三星設備，啟用專用優化');
+                    document.getElementById('samsungMode').style.display = 'block';
                 }
             }
             
@@ -584,8 +440,8 @@
                 });
                 
                 this.hands.setOptions({
-                    maxNumHands: 2,
-                    modelComplexity: 1,
+                    maxNumHands: 1, // 三星設備減少手部數量以提高性能
+                    modelComplexity: 0, // 降低模型複雜度
                     minDetectionConfidence: 0.5,
                     minTrackingConfidence: 0.5
                 });
@@ -601,17 +457,12 @@
                 
                 if (!video.videoWidth) return;
                 
-                // 設置canvas尺寸與video一致
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 
-                // 清除畫布
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                // 繪製攝像頭畫面
                 ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
                 
-                // 如果有檢測到手部，繪製手部關鍵點
                 if (results.multiHandLandmarks) {
                     for (const landmarks of results.multiHandLandmarks) {
                         drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
@@ -621,13 +472,13 @@
                         drawLandmarks(ctx, landmarks, {
                             color: '#FF0000',
                             lineWidth: 1,
-                            radius: 3
+                            radius: 2
                         });
                     }
                 }
             }
             
-            // 初始化19x19圍棋棋盤
+            // 初始化棋盤
             initializeBoard() {
                 const board = [];
                 for (let i = 0; i < 19; i++) {
@@ -639,66 +490,126 @@
                 return board;
             }
             
-            // 嘗試啟動相機（多種方案）
+            // 三星專用相機啟動
+            async startSamsungCamera() {
+                this.isSamsungMode = true;
+                console.log('啟動三星專用模式');
+                await this.startCameraWithConstraints(this.getSamsungConstraints());
+            }
+            
+            // 普通相機啟動
             async startCamera() {
+                this.isSamsungMode = false;
+                await this.startCameraWithConstraints(this.getNormalConstraints());
+            }
+            
+            // 低分辨率模式
+            async startLowResCamera() {
+                this.isLowResMode = true;
+                await this.startCameraWithConstraints(this.getLowResConstraints());
+            }
+            
+            // 獲取三星專用約束條件
+            getSamsungConstraints() {
+                return {
+                    video: {
+                        width: { ideal: 640, max: 1280 },
+                        height: { ideal: 480, max: 720 },
+                        frameRate: { ideal: 24, max: 30 },
+                        facingMode: this.currentCameraType,
+                        aspectRatio: { ideal: 4/3 }
+                    },
+                    audio: false
+                };
+            }
+            
+            // 獲取普通約束條件
+            getNormalConstraints() {
+                return {
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 30 },
+                        facingMode: this.currentCameraType
+                    },
+                    audio: false
+                };
+            }
+            
+            // 獲取低分辨率約束條件
+            getLowResConstraints() {
+                return {
+                    video: {
+                        width: { ideal: 320, max: 640 },
+                        height: { ideal: 240, max: 480 },
+                        frameRate: { ideal: 15, max: 24 },
+                        facingMode: this.currentCameraType
+                    },
+                    audio: false
+                };
+            }
+            
+            // 核心相機啟動函數
+            async startCameraWithConstraints(constraints) {
                 try {
                     this.showProgress(true);
-                    this.updateProgress(10);
-                    this.hideError();
+                    this.updateProgress(20);
                     
                     const video = document.getElementById('video');
-                    
-                    // 停止現有相機
                     await this.stopCamera();
                     
-                    this.updateProgress(30);
+                    this.updateProgress(40);
                     
-                    // 嘗試獲取相機權限 - 使用更寬鬆的約束條件
-                    const constraints = {
-                        video: { 
-                            width: { ideal: 640, min: 320, max: 1280 },
-                            height: { ideal: 480, min: 240, max: 720 },
-                            frameRate: { ideal: 30, min: 15 },
-                            facingMode: this.currentCameraType,
-                            aspectRatio: { ideal: 4/3 }
-                        } 
-                    };
+                    console.log('嘗試相機約束:', constraints);
                     
-                    this.updateProgress(50);
+                    // 嘗試多種相機啟動方案
+                    let stream;
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    } catch (error) {
+                        console.warn('主要方案失敗，嘗試備用方案:', error);
+                        // 備用方案：更寬鬆的約束
+                        const fallbackConstraints = {
+                            video: {
+                                facingMode: this.currentCameraType
+                            },
+                            audio: false
+                        };
+                        stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+                    }
                     
-                    console.log('嘗試獲取相機權限...');
-                    const stream = await navigator.mediaDevices.getUserMedia(constraints)
-                        .catch(error => {
-                            console.error('getUserMedia錯誤:', error);
-                            throw error;
-                        });
+                    this.updateProgress(60);
                     
                     this.cameraStream = stream;
                     video.srcObject = stream;
                     video.style.display = 'block';
                     document.getElementById('cameraPlaceholder').style.display = 'none';
                     
-                    // 等待視頻準備好
+                    // 等待視頻準備
                     await new Promise((resolve, reject) => {
+                        const timer = setTimeout(() => {
+                            reject(new Error('視頻加載超時'));
+                        }, 10000);
+                        
                         video.onloadedmetadata = () => {
+                            clearTimeout(timer);
                             resolve();
                         };
+                        
                         video.onerror = () => {
-                            reject(new Error('視頻加載失敗'));
+                            clearTimeout(timer);
+                            reject(new Error('視頻加載錯誤'));
                         };
-                        // 設置超時
-                        setTimeout(() => {
-                            reject(new Error('視頻加載超時'));
-                        }, 5000);
-                    });
-                    
-                    this.updateProgress(70);
-                    
-                    video.play().catch(error => {
-                        console.warn('視頻播放失敗:', error);
                     });
                     
                     this.updateProgress(80);
+                    
+                    // 三星設備特殊處理：添加鏡像
+                    if (this.isSamsungMode && this.currentCameraType === 'user') {
+                        video.style.transform = 'rotateY(180deg)';
+                    }
+                    
+                    await video.play().catch(e => console.warn('視頻播放警告:', e));
                     
                     this.camera = new Camera(video, {
                         onFrame: async () => {
@@ -706,7 +617,7 @@
                                 try {
                                     await this.hands.send({image: video});
                                 } catch (error) {
-                                    console.error('發送圖像到MediaPipe失敗:', error);
+                                    console.error('MediaPipe處理錯誤:', error);
                                 }
                             }
                         },
@@ -718,18 +629,16 @@
                     this.isCameraActive = true;
                     
                     this.updateProgress(100);
-                    setTimeout(() => {
-                        this.showProgress(false);
-                    }, 500);
+                    setTimeout(() => this.showProgress(false), 500);
                     
-                    this.updateCameraStatus(true, "相機已啟動 - 手勢識別中");
                     document.getElementById('analyzeBoard').disabled = false;
-                    document.getElementById('fallbackOptions').style.display = 'none';
+                    this.showMessage('相機啟動成功！', 'success');
                     
                 } catch (error) {
-                    console.error("啟動相機失敗:", error);
+                    console.error('相機啟動失敗:', error);
                     this.showProgress(false);
-                    this.handleCameraError(error);
+                    this.showMessage(`相機啟動失敗: ${error.message}`, 'error');
+                    this.showFallbackOptions();
                 }
             }
             
@@ -741,129 +650,61 @@
                 }
                 
                 if (this.cameraStream) {
-                    this.cameraStream.getTracks().forEach(track => {
-                        track.stop();
-                    });
+                    this.cameraStream.getTracks().forEach(track => track.stop());
                     this.cameraStream = null;
                 }
                 
                 const video = document.getElementById('video');
-                if (video.srcObject) {
-                    video.srcObject = null;
-                }
-                
+                video.srcObject = null;
                 video.style.display = 'none';
                 document.getElementById('cameraPlaceholder').style.display = 'flex';
                 
-                this.updateCameraStatus(false, "相機已停止");
                 document.getElementById('analyzeBoard').disabled = true;
             }
             
-            // 處理相機錯誤
-            handleCameraError(error) {
-                let errorMessage = "相機啟動失敗: ";
-                let detailedMessage = error.message || error.name;
-                
-                switch(error.name) {
-                    case 'NotAllowedError':
-                        errorMessage += "請允許瀏覽器訪問相機權限";
-                        detailedMessage = "用戶拒絕了相機訪問權限，或瀏覽器設置阻止了相機訪問";
-                        break;
-                    case 'NotFoundError':
-                        errorMessage += "未找到可用的相機設備";
-                        detailedMessage = "沒有檢測到相機設備，或相機已被其他應用佔用";
-                        break;
-                    case 'NotReadableError':
-                        errorMessage += "無法讀取相機數據";
-                        detailedMessage = "相機可能被其他應用程序佔用，或者硬件出現問題";
-                        break;
-                    case 'OverconstrainedError':
-                        errorMessage += "無法滿足相機配置要求";
-                        detailedMessage = "請求的相機配置無法滿足，嘗試使用備用方案";
-                        break;
-                    case 'AbortError':
-                        errorMessage += "相機啟動被中止";
-                        detailedMessage = "相機啟動過程被意外中止";
-                        break;
-                    default:
-                        errorMessage += "未知錯誤";
-                        detailedMessage = error.message || "請檢查相機連接和瀏覽器權限設置";
-                }
-                
-                this.showError(errorMessage, detailedMessage);
-                this.updateCameraStatus(false, errorMessage);
-                document.getElementById('analyzeBoard').disabled = true;
-                
-                // 顯示備用方案
-                this.showFallbackOptions();
-            }
-            
-            // 顯示錯誤信息
-            showError(title, message) {
-                const errorElement = document.getElementById('errorMessage');
-                const errorText = document.getElementById('errorText');
-                
-                errorText.textContent = `${title} (${message})`;
-                errorElement.style.display = 'block';
-            }
-            
-            // 隱藏錯誤信息
-            hideError() {
-                document.getElementById('errorMessage').style.display = 'none';
-            }
-            
-            // 顯示備用方案
-            showFallbackOptions() {
-                document.getElementById('fallbackOptions').style.display = 'block';
-                document.getElementById('manualInput').style.display = 'block';
-            }
-            
-            // 顯示/隱藏進度條
-            showProgress(show) {
-                const progressContainer = document.getElementById('progressContainer');
-                progressContainer.style.display = show ? 'block' : 'none';
-            }
-            
-            // 更新進度條
-            updateProgress(percent) {
-                const progressBar = document.getElementById('progressBar');
-                progressBar.style.width = `${percent}%`;
-            }
-            
-            // 切換相機類型
+            // 切換鏡頭
             async switchCamera(type) {
                 this.currentCameraType = type;
+                document.getElementById('switchToUser').classList.toggle('active', type === 'user');
+                document.getElementById('switchToEnvironment').classList.toggle('active', type === 'environment');
                 
                 if (this.isCameraActive) {
-                    await this.startCamera();
+                    if (this.isSamsungMode) {
+                        await this.startSamsungCamera();
+                    } else if (this.isLowResMode) {
+                        await this.startLowResCamera();
+                    } else {
+                        await this.startCamera();
+                    }
                 }
             }
             
-            // 嘗試備用方案
-            tryFallback() {
-                // 嘗試使用較低的相機要求
-                this.currentCameraType = 'user'; // 切換到前置鏡頭
-                this.startCamera().catch(() => {
-                    this.updateCameraStatus(false, "所有相機方案都失敗，請使用手動輸入模式");
-                });
+            // 顯示消息
+            showMessage(message, type = 'info') {
+                alert(message); // 簡化版本，可以替換為更漂亮的提示
             }
             
-            // 更新相機狀態指示器
-            updateCameraStatus(isActive, text) {
-                const statusDot = document.getElementById('cameraStatus');
-                const statusText = document.getElementById('cameraStatusText');
-                
-                statusDot.classList.toggle('active', isActive);
-                statusText.textContent = text;
+            // 顯示備用選項
+            showFallbackOptions() {
+                this.showMessage('相機無法使用，請使用手動輸入模式', 'warning');
             }
             
-            // 手動添加棋子
+            // 進度條控制
+            showProgress(show) {
+                document.getElementById('progressContainer').style.display = show ? 'block' : 'none';
+            }
+            
+            updateProgress(percent) {
+                document.getElementById('progressBar').style.width = `${percent}%`;
+            }
+            
+            // 手動輸入棋子
             addStoneManually() {
                 const coordX = document.getElementById('coordX').value.toUpperCase();
                 const coordY = parseInt(document.getElementById('coordY').value);
                 
                 if (!coordX || !coordY) {
-                    alert('請輸入有效的坐標');
+                    this.showMessage('請輸入有效的坐標', 'error');
                     return;
                 }
                 
@@ -871,12 +712,12 @@
                 const row = 19 - coordY;
                 
                 if (col === -1 || row < 0 || row > 18) {
-                    alert('請輸入有效的圍棋坐標 (A-T, 1-19)');
+                    this.showMessage('請輸入有效的圍棋坐標 (A-T, 1-19)', 'error');
                     return;
                 }
                 
                 if (this.boardState[row][col] !== null) {
-                    alert('該位置已有棋子');
+                    this.showMessage('該位置已有棋子', 'error');
                     return;
                 }
                 
@@ -884,7 +725,6 @@
                 this.renderBoardPreview();
                 this.analyzeBoard();
                 
-                // 清空輸入框
                 document.getElementById('coordX').value = '';
                 document.getElementById('coordY').value = '';
             }
@@ -892,71 +732,44 @@
             // 設置當前玩家
             setCurrentPlayer(player) {
                 this.currentPlayer = player;
-                alert(`當前玩家已設置為: ${player === 'black' ? '黑棋' : '白棋'}`);
+                this.showMessage(`當前玩家: ${player === 'black' ? '黑棋' : '白棋'}`);
             }
             
             // 分析棋盤
             analyzeBoard() {
                 document.getElementById('boardAnalysis').textContent = "分析中...";
-                this.showProgress(true);
-                this.updateProgress(30);
                 
                 setTimeout(() => {
-                    this.updateProgress(70);
                     const analysis = this.generateAnalysis();
                     document.getElementById('boardAnalysis').textContent = analysis;
-                    this.lastAnalysis = analysis;
-                    
-                    this.updateProgress(100);
-                    setTimeout(() => {
-                        this.showProgress(false);
-                    }, 500);
                 }, 1000);
             }
             
-            // 生成棋局分析
+            // 生成分析結果
             generateAnalysis() {
-                const blackStones = this.countStones('black');
-                const whiteStones = this.countStones('white');
+                const blackCount = this.countStones('black');
+                const whiteCount = this.countStones('white');
                 
-                const blackTerritory = Math.floor(Math.random() * 50) + 100;
-                const whiteTerritory = Math.floor(Math.random() * 50) + 100;
-                const blackCaptures = Math.floor(Math.random() * 10);
-                const whiteCaptures = Math.floor(Math.random() * 10);
-                
-                let leadingPlayer = "黑棋";
-                let lead = blackTerritory + blackCaptures - (whiteTerritory + whiteCaptures);
-                
-                if (lead < 0) {
-                    leadingPlayer = "白棋";
-                    lead = -lead;
-                }
-                
-                return `當前局勢：${leadingPlayer}領先約${lead}目\n黑棋：實空${blackTerritory}目，提子${blackCaptures}個\n白棋：實空${whiteTerritory}目，提子${whiteCaptures}個\n下一步：${this.currentPlayer === 'black' ? '黑棋' : '白棋'}行棋`;
+                return `黑棋: ${blackCount}子, 白棋: ${whiteCount}子\n當前回合: ${this.currentPlayer === 'black' ? '黑棋' : '白棋'}\n建議關注中央地區的發展`;
             }
             
-            // 計算棋子數量
+            // 計算棋子
             countStones(color) {
                 let count = 0;
                 for (let i = 0; i < 19; i++) {
                     for (let j = 0; j < 19; j++) {
-                        if (this.boardState[i][j] === color) {
-                            count++;
-                        }
+                        if (this.boardState[i][j] === color) count++;
                     }
                 }
                 return count;
             }
             
-            // 建議最佳落子點
+            // 建議落子
             suggestMove() {
                 document.getElementById('bestMoveDisplay').textContent = "計算中...";
-                document.getElementById('moveReason').textContent = "AI正在分析最佳落子點...";
-                this.showProgress(true);
-                this.updateProgress(20);
+                document.getElementById('moveReason').textContent = "AI分析中...";
                 
                 setTimeout(() => {
-                    this.updateProgress(60);
                     let row, col;
                     do {
                         row = Math.floor(Math.random() * 19);
@@ -964,56 +777,46 @@
                     } while (this.boardState[row][col] !== null);
                     
                     const pointName = this.convertToGoNotation(row, col);
-                    document.getElementById('bestMoveDisplay').textContent = `最佳落子點: ${pointName}`;
-                    
-                    this.updateProgress(80);
-                    
-                    const reasons = [
-                        "此點可同時擴張勢力與限制對手",
-                        "這是全局的急所，關係到雙方根據地",
-                        "此手可切斷對方聯絡，發動攻擊",
-                        "佔據大場，價值巨大",
-                        "防守要點，防止對方形成大空"
-                    ];
-                    
-                    const randomReason = reasons[Math.floor(Math.random() * reasons.length)];
-                    document.getElementById('moveReason').textContent = `建議理由: ${randomReason}`;
+                    document.getElementById('bestMoveDisplay').textContent = `建議落子: ${pointName}`;
+                    document.getElementById('moveReason').textContent = "此點可有效擴張勢力範圍";
                     
                     this.showSuggestedMove(row, col);
-                    
-                    this.updateProgress(100);
-                    setTimeout(() => {
-                        this.showProgress(false);
-                    }, 500);
                 }, 1500);
             }
             
-            // 將坐標轉換為圍棋記譜法
+            // 坐標轉換
             convertToGoNotation(row, col) {
                 const letters = 'ABCDEFGHJKLMNOPQRST';
                 return `${letters[col]}${19 - row}`;
             }
             
-            // 在預覽棋盤上顯示建議落子點
+            // 顯示建議落子點
             showSuggestedMove(row, col) {
                 const boardPreview = document.getElementById('boardPreview');
-                
                 const oldMarkers = boardPreview.querySelectorAll('.suggested-move');
                 oldMarkers.forEach(marker => marker.remove());
                 
                 const marker = document.createElement('div');
                 marker.className = 'suggested-move';
-                marker.style.left = `${(col / 18) * 100}%`;
-                marker.style.top = `${(row / 18) * 100}%`;
+                marker.style.cssText = `
+                    position: absolute;
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 50%;
+                    border: 2px solid red;
+                    transform: translate(-50%, -50%);
+                    left: ${(col / 18) * 100}%;
+                    top: ${(row / 18) * 100}%;
+                    animation: blink 2s infinite;
+                `;
                 boardPreview.appendChild(marker);
             }
             
-            // 渲染棋盤預覽
+            // 渲染棋盤
             renderBoardPreview() {
                 const boardPreview = document.getElementById('boardPreview');
                 boardPreview.innerHTML = '';
                 
-                // 繪製棋盤線
                 for (let i = 0; i < 19; i++) {
                     for (let j = 0; j < 19; j++) {
                         if (this.boardState[i][j]) {
@@ -1030,19 +833,13 @@
             // 語音指導
             voiceGuide() {
                 if ('speechSynthesis' in window) {
-                    const bestMove = document.getElementById('bestMoveDisplay').textContent;
-                    const moveReason = document.getElementById('moveReason').textContent;
-                    
                     const utterance = new SpeechSynthesisUtterance(
-                        `建議${bestMove}。${moveReason}`
+                        `建議${document.getElementById('bestMoveDisplay').textContent}`
                     );
-                    
                     utterance.lang = 'zh-TW';
-                    utterance.rate = 0.9;
-                    
                     window.speechSynthesis.speak(utterance);
                 } else {
-                    alert("您的瀏覽器不支持語音合成功能");
+                    this.showMessage('您的瀏覽器不支持語音功能');
                 }
             }
             
@@ -1050,129 +847,37 @@
             resetBoard() {
                 this.boardState = this.initializeBoard();
                 this.currentPlayer = 'black';
-                this.lastAnalysis = null;
-                
-                document.getElementById('boardAnalysis').textContent = "棋盤已重置，請重新分析";
-                document.getElementById('bestMoveDisplay').textContent = "最佳落子點: --";
-                document.getElementById('moveReason').textContent = "分析將顯示在此處...";
-                
                 this.renderBoardPreview();
+                document.getElementById('boardAnalysis').textContent = '棋盤已重置';
+                document.getElementById('bestMoveDisplay').textContent = '最佳落子點: --';
+                document.getElementById('moveReason').textContent = '分析將顯示在此處...';
             }
             
-            // 顯示上傳區域
-            showUploadArea() {
-                document.getElementById('uploadArea').style.display = 'block';
-                document.getElementById('manualInput').style.display = 'block';
-            }
-            
-            // 設置事件監聽器
+            // 事件監聽器
             setupEventListeners() {
-                document.getElementById('startCamera').addEventListener('click', () => {
-                    this.startCamera();
-                });
+                document.getElementById('startCamera').addEventListener('click', () => this.startCamera());
+                document.getElementById('startSamsungCamera').addEventListener('click', () => this.startSamsungCamera());
+                document.getElementById('samsungMode').addEventListener('click', () => this.startSamsungCamera());
+                document.getElementById('lowResMode').addEventListener('click', () => this.startLowResCamera());
+                document.getElementById('analyzeBoard').addEventListener('click', () => this.analyzeBoard());
+                document.getElementById('suggestMove').addEventListener('click', () => this.suggestMove());
+                document.getElementById('voiceGuide').addEventListener('click', () => this.voiceGuide());
+                document.getElementById('addStone').addEventListener('click', () => this.addStoneManually());
+                document.getElementById('setBlack').addEventListener('click', () => this.setCurrentPlayer('black'));
+                document.getElementById('setWhite').addEventListener('click', () => this.setCurrentPlayer('white'));
+                document.getElementById('resetBoard').addEventListener('click', () => this.resetBoard());
+                document.getElementById('switchToUser').addEventListener('click', () => this.switchCamera('user'));
+                document.getElementById('switchToEnvironment').addEventListener('click', () => this.switchCamera('environment'));
                 
-                document.getElementById('analyzeBoard').addEventListener('click', () => {
-                    this.analyzeBoard();
-                });
-                
-                document.getElementById('suggestMove').addEventListener('click', () => {
-                    this.suggestMove();
-                });
-                
-                document.getElementById('voiceGuide').addEventListener('click', () => {
-                    this.voiceGuide();
-                });
-                
-                document.getElementById('resetBoard').addEventListener('click', () => {
-                    this.resetBoard();
-                });
-                
-                document.getElementById('addStone').addEventListener('click', () => {
-                    this.addStoneManually();
-                });
-                
-                document.getElementById('setBlack').addEventListener('click', () => {
-                    this.setCurrentPlayer('black');
-                });
-                
-                document.getElementById('setWhite').addEventListener('click', () => {
-                    this.setCurrentPlayer('white');
-                });
-                
-                document.getElementById('fallbackManual').addEventListener('click', () => {
-                    document.getElementById('manualInput').style.display = 'block';
-                    document.getElementById('uploadArea').style.display = 'none';
-                });
-                
-                document.getElementById('fallbackUpload').addEventListener('click', () => {
-                    this.showUploadArea();
-                });
-                
-                document.getElementById('fallbackSimple').addEventListener('click', () => {
-                    alert('簡易模式已啟動：您可以使用手動輸入功能');
-                    document.getElementById('manualInput').style.display = 'block';
-                });
-                
-                // 上傳區域事件
-                const uploadArea = document.getElementById('uploadArea');
-                const fileInput = document.getElementById('fileInput');
-                
-                uploadArea.addEventListener('click', () => {
-                    fileInput.click();
-                });
-                
-                uploadArea.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    uploadArea.classList.add('drag-over');
-                });
-                
-                uploadArea.addEventListener('dragleave', () => {
-                    uploadArea.classList.remove('drag-over');
-                });
-                
-                uploadArea.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    uploadArea.classList.remove('drag-over');
-                    const files = e.dataTransfer.files;
-                    if (files.length > 0) {
-                        this.handleImageUpload(files[0]);
-                    }
-                });
-                
-                fileInput.addEventListener('change', (e) => {
-                    if (e.target.files.length > 0) {
-                        this.handleImageUpload(e.target.files[0]);
-                    }
-                });
-                
-                // 回車鍵快速添加棋子
                 document.getElementById('coordY').addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        this.addStoneManually();
-                    }
+                    if (e.key === 'Enter') this.addStoneManually();
                 });
-            }
-            
-            // 處理圖片上傳
-            handleImageUpload(file) {
-                if (!file.type.match('image.*')) {
-                    alert('請上傳圖片文件');
-                    return;
-                }
-                
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    // 這裡可以添加圖片處理邏輯
-                    alert(`已上傳圖片: ${file.name}\n圖片處理功能將在後續版本中實現`);
-                    // 可以將圖片顯示在canvas上進行分析
-                };
-                reader.readAsDataURL(file);
             }
         }
         
-        // 初始化圍棋AI指導系統
+        // 初始化
         document.addEventListener('DOMContentLoaded', () => {
-            const goTutor = new GoAITutor();
+            new GoAITutorSamsung();
         });
     </script>
 </body>
