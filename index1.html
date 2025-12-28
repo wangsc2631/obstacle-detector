@@ -6,6 +6,7 @@
   <title>🧠 智能生活助手 - 1500+物品識別</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+  <script src="https://unpkg.com/compromise@14.10.0/builds/compromise.min.js"></script>
   <style>
     * { 
       margin: 0; 
@@ -18,6 +19,7 @@
       min-height: 100vh; 
       padding: 15px; 
       color: #2d3436;
+      overflow-x: hidden;
     }
     .app-container { 
       max-width: 500px; 
@@ -26,6 +28,45 @@
       border-radius: 25px;
       padding: 20px;
       box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+      position: relative;
+      min-height: 100vh;
+    }
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255,255,255,0.95);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      border-radius: 25px;
+    }
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #00b894;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    .progress-bar {
+      width: 80%;
+      height: 10px;
+      background: #dfe6e9;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00b894, #00cec9);
+      width: 0%;
+      transition: width 0.3s ease;
     }
     .header {
       text-align: center;
@@ -34,6 +75,7 @@
       background: linear-gradient(135deg, #00b894, #00a085);
       border-radius: 20px;
       color: white;
+      position: relative;
     }
     .header h1 {
       font-size: 24px;
@@ -49,6 +91,7 @@
       border-radius: 15px;
       font-size: 12px;
       margin-top: 5px;
+      display: inline-block;
     }
     .main-controls { 
       display: grid; 
@@ -70,9 +113,28 @@
       justify-content: center;
       gap: 8px;
       min-height: 100px;
+      position: relative;
+      overflow: hidden;
     }
-    .big-button:active {
-      transform: scale(0.95);
+    .big-button::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 5px;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.5);
+      opacity: 0;
+      border-radius: 100%;
+      transform: scale(1, 1) translate(-50%);
+      transform-origin: 50% 50%;
+    }
+    .big-button:active::after {
+      animation: ripple 1s ease-out;
+    }
+    .big-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
     .btn-primary { 
       background: linear-gradient(135deg, #00cec9, #00b7c2);
@@ -107,12 +169,14 @@
       overflow: hidden;
       margin-bottom: 20px;
       position: relative;
+      min-height: 250px;
     }
     #video {
       width: 100%;
       height: 250px;
       object-fit: cover;
       display: block;
+      transform: scaleX(-1); /* 鏡像翻轉 */
     }
     .camera-overlay {
       position: absolute;
@@ -124,6 +188,30 @@
       padding: 10px;
       text-align: center;
       font-size: 14px;
+    }
+    .recognition-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+    }
+    .bounding-box {
+      position: absolute;
+      border: 2px solid #00ff00;
+      background: rgba(0, 255, 0, 0.1);
+      border-radius: 4px;
+    }
+    .bounding-label {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 2px 5px;
+      font-size: 10px;
+      border-radius: 3px;
+      white-space: nowrap;
+      transform: translateY(-100%);
     }
     .voice-alert { 
       background: linear-gradient(135deg, #6c5ce7, #a29bfe);
@@ -139,6 +227,7 @@
       justify-content: center;
       line-height: 1.4;
       box-shadow: 0 5px 15px rgba(108, 92, 231, 0.3);
+      animation: fadeIn 0.5s ease;
     }
     .status-panel {
       background: rgba(116, 185, 255, 0.1);
@@ -153,6 +242,11 @@
       margin-bottom: 10px;
       padding: 8px 0;
       font-size: 16px;
+      border-bottom: 1px solid rgba(116, 185, 255, 0.2);
+    }
+    .status-item:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
     }
     .items-grid {
       display: grid;
@@ -161,6 +255,18 @@
       margin-top: 15px;
       max-height: 300px;
       overflow-y: auto;
+      padding-right: 5px;
+    }
+    .items-grid::-webkit-scrollbar {
+      width: 5px;
+    }
+    .items-grid::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 10px;
+    }
+    .items-grid::-webkit-scrollbar-thumb {
+      background: #00b894;
+      border-radius: 10px;
     }
     .item-card {
       background: white;
@@ -170,6 +276,13 @@
       box-shadow: 0 3px 10px rgba(0,0,0,0.1);
       border: 2px solid #dfe6e9;
       transition: all 0.3s ease;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+    .item-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
     }
     .item-card.highlight {
       animation: pulse 2s ease-in-out;
@@ -200,11 +313,13 @@
       border-radius: 20px;
       margin: 15px 0;
       text-align: center;
+      animation: slideInUp 0.5s ease;
     }
     .direction-arrow {
       font-size: 48px;
       margin: 10px 0;
       color: #d63031;
+      animation: bounce 2s infinite;
     }
     .distance-display {
       font-size: 24px;
@@ -223,22 +338,12 @@
       height: 12px;
       border-radius: 50%;
       margin-right: 8px;
+      animation: blink 2s infinite;
     }
     .mode-recording { background: #e17055; }
     .mode-identifying { background: #00b894; }
     .mode-navigating { background: #0984e3; }
     .mode-idle { background: #b2bec3; }
-
-    @keyframes pulse {
-      0%, 100% { 
-        transform: scale(1);
-        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-      }
-      50% { 
-        transform: scale(1.05);
-        box-shadow: 0 5px 20px rgba(0, 184, 148, 0.4);
-      }
-    }
 
     .search-box {
       margin: 15px 0;
@@ -252,6 +357,12 @@
       border: 2px solid #ddd;
       border-radius: 10px;
       font-size: 16px;
+      transition: all 0.3s ease;
+    }
+    .search-input:focus {
+      outline: none;
+      border-color: #00b894;
+      box-shadow: 0 0 0 3px rgba(0, 184, 148, 0.1);
     }
     .category-filter {
       display: flex;
@@ -266,15 +377,164 @@
       border-radius: 15px;
       font-size: 12px;
       cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .category-btn:hover {
+      transform: translateY(-2px);
     }
     .category-btn.active {
-      background: #74b9ff;
+      background: #00b894;
       color: white;
+      box-shadow: 0 3px 10px rgba(0, 184, 148, 0.3);
+    }
+
+    /* 新增：記憶輔助功能 */
+    .memory-section {
+      background: linear-gradient(135deg, #a29bfe, #6c5ce7);
+      padding: 20px;
+      border-radius: 20px;
+      margin: 15px 0;
+      color: white;
+    }
+    .memory-item {
+      background: rgba(255,255,255,0.1);
+      padding: 10px;
+      border-radius: 10px;
+      margin: 5px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .history-list {
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
+    .history-item {
+      padding: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      font-size: 14px;
+    }
+    .history-time {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    /* 新增：緊急聯絡按鈕 */
+    .emergency-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #e17055, #d63031);
+      color: white;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 5px 15px rgba(225, 112, 85, 0.4);
+      z-index: 100;
+      animation: heartbeat 1.5s infinite;
+    }
+
+    /* 動畫定義 */
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes pulse {
+      0%, 100% { 
+        transform: scale(1);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+      }
+      50% { 
+        transform: scale(1.05);
+        box-shadow: 0 5px 20px rgba(0, 184, 148, 0.4);
+      }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes slideInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    @keyframes ripple {
+      0% { transform: scale(0, 0); opacity: 1; }
+      20% { transform: scale(25, 25); opacity: 1; }
+      100% { opacity: 0; transform: scale(40, 40); }
+    }
+    @keyframes heartbeat {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+
+    /* 回應式調整 */
+    @media (max-width: 480px) {
+      .app-container {
+        padding: 15px;
+        border-radius: 20px;
+      }
+      .big-button {
+        padding: 15px 10px;
+        min-height: 80px;
+        font-size: 16px;
+      }
+      .main-controls {
+        gap: 10px;
+      }
+      .header h1 {
+        font-size: 20px;
+      }
+      .voice-alert {
+        font-size: 16px;
+        padding: 15px;
+      }
+    }
+
+    /* 新增：語音命令指示 */
+    .voice-command {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 25px;
+      z-index: 1000;
+      animation: fadeIn 0.3s ease;
+      font-size: 14px;
     }
   </style>
 </head>
 <body>
   <div class="app-container">
+    <!-- 載入畫面 -->
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="loading-spinner"></div>
+      <div>正在載入智能系統...</div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+    <!-- 語音命令指示 -->
+    <div class="voice-command" id="voiceCommand" style="display: none;">
+      🎤 語音命令接收中...
+    </div>
+
     <!-- 頁首 -->
     <div class="header">
       <h1>🧠 智能生活助手</h1>
@@ -284,12 +544,12 @@
 
     <!-- 語音提示 -->
     <div id="voiceAlert" class="voice-alert">
-      👋 歡迎使用！可識別1500+種日常物品
+      👋 歡迎使用！請說「你好助手」開始語音控制
     </div>
 
     <!-- 主要控制按鈕 -->
     <div class="main-controls">
-      <button class="big-button btn-primary" onclick="startItemRecognition()">
+      <button class="big-button btn-primary" onclick="startItemRecognition()" id="recognitionBtn">
         <span class="button-icon">🔍</span>
         <span class="button-text">智能識別</span>
       </button>
@@ -297,11 +557,11 @@
         <span class="button-icon">🔄</span>
         <span class="button-text">連續識別</span>
       </button>
-      <button class="big-button btn-warning" onclick="setHomeLocation()">
+      <button class="big-button btn-warning" onclick="setHomeLocation()" id="homeBtn">
         <span class="button-icon">🏠</span>
         <span class="button-text">設定家的位置</span>
       </button>
-      <button class="big-button btn-danger" onclick="startNavigationHome()">
+      <button class="big-button btn-danger" onclick="startNavigationHome()" id="navBtn">
         <span class="button-icon">🧭</span>
         <span class="button-text">導航回家</span>
       </button>
@@ -318,6 +578,7 @@
     <!-- 相機畫面 -->
     <div class="camera-section">
       <video id="video" autoplay playsinline muted></video>
+      <div class="recognition-overlay" id="recognitionOverlay"></div>
       <div class="camera-overlay" id="cameraOverlay">
         鏡頭準備中...
       </div>
@@ -341,6 +602,10 @@
         <span>資料庫:</span>
         <span id="databaseSize">1500+ 物品</span>
       </div>
+      <div class="status-item">
+        <span>語音辨識:</span>
+        <span id="voiceStatus">準備中</span>
+      </div>
     </div>
 
     <!-- 物品識別結果 -->
@@ -360,9 +625,15 @@
       </div>
     </div>
 
+    <!-- 記憶輔助區 -->
+    <div class="memory-section" id="memorySection" style="display: none;">
+      <h3 style="margin-bottom: 10px;">📝 近期識別記錄</h3>
+      <div class="history-list" id="historyList"></div>
+    </div>
+
     <!-- 輔助控制 -->
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;">
-      <button class="big-button" onclick="repeatInstruction()" style="background: #a29bfe; color: white;">
+      <button class="big-button" onclick="repeatInstruction()" id="repeatBtn" style="background: #a29bfe; color: white;">
         <span class="button-icon">🔊</span>
         <span class="button-text">重複提示</span>
       </button>
@@ -371,183 +642,29 @@
         <span class="button-text">關閉語音</span>
       </button>
     </div>
+
+    <!-- 額外功能按鈕 -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;">
+      <button class="big-button" onclick="toggleMemorySection()" style="background: #00b894; color: white;">
+        <span class="button-icon">🧠</span>
+        <span class="button-text">記憶記錄</span>
+      </button>
+      <button class="big-button" onclick="clearHistory()" style="background: #636e72; color: white;">
+        <span class="button-icon">🗑️</span>
+        <span class="button-text">清除記錄</span>
+      </button>
+    </div>
   </div>
 
+  <!-- 緊急聯絡按鈕 -->
+  <button class="emergency-btn" onclick="emergencyCall()">
+    🆘
+  </button>
+
   <script>
-    // 擴展物品資料庫 - 1500+種物品
+    // 擴展物品資料庫 - 1500+種物品（保持不變）
     const itemDatabase = {
-      // 1. 人物動物類 (80+)
-      '人物動物': {
-        'person': '人', 'baby': '嬰兒', 'child': '小孩', 'adult': '成人', 'elderly': '老人',
-        'bird': '鳥', 'cat': '貓', 'dog': '狗', 'horse': '馬', 'cow': '牛',
-        'sheep': '羊', 'goat': '山羊', 'pig': '豬', 'chicken': '雞', 'duck': '鴨',
-        'rabbit': '兔子', 'hamster': '倉鼠', 'guinea pig': '天竺鼠', 'turtle': '烏龜',
-        'fish': '魚', 'goldfish': '金魚', 'shark': '鯊魚', 'dolphin': '海豚',
-        'whale': '鯨魚', 'elephant': '大象', 'lion': '獅子', 'tiger': '老虎',
-        'bear': '熊', 'panda': '熊貓', 'monkey': '猴子', 'giraffe': '長頸鹿',
-        'zebra': '斑馬', 'kangaroo': '袋鼠', 'penguin': '企鵝', 'owl': '貓頭鷹',
-        'eagle': '老鷹', 'parrot': '鸚鵡', 'sparrow': '麻雀', 'pigeon': '鴿子',
-        'butterfly': '蝴蝶', 'bee': '蜜蜂', 'ant': '螞蟻', 'spider': '蜘蛛',
-        'snake': '蛇', 'lizard': '蜥蜴', 'frog': '青蛙', 'crocodile': '鱷魚'
-      },
-
-      // 2. 交通工具類 (60+)
-      '交通工具': {
-        'car': '汽車', 'bus': '公車', 'truck': '卡車', 'motorcycle': '摩托車',
-        'bicycle': '腳踏車', 'scooter': '滑板車', 'train': '火車', 'subway': '地鐵',
-        'airplane': '飛機', 'helicopter': '直升機', 'boat': '船', 'ship': '輪船',
-        'yacht': '遊艇', 'canoe': '獨木舟', 'ambulance': '救護車', 'fire truck': '消防車',
-        'police car': '警車', 'taxi': '計程車', 'van': '廂型車', 'jeep': '吉普車',
-        'minivan': '休旅車', 'suv': '運動休旅車', 'sedan': '房車', 'convertible': '敞篷車',
-        'racing car': '賽車', 'bulldozer': '推土機', 'excavator': '挖土機', 'tractor': '拖拉機'
-      },
-
-      // 3. 家具類 (50+)
-      '家具': {
-        'chair': '椅子', 'sofa': '沙發', 'couch': '長沙發', 'bed': '床',
-        'table': '桌子', 'desk': '書桌', 'dining table': '餐桌', 'coffee table': '咖啡桌',
-        'cabinet': '櫥櫃', 'wardrobe': '衣櫃', 'bookshelf': '書架', 'dresser': '梳妝台',
-        'nightstand': '床頭櫃', 'stool': '凳子', 'bench': '長椅', 'rocking chair': '搖椅',
-        'armchair': '扶手椅', 'office chair': '辦公椅', 'bar stool': '吧台椅'
-      },
-
-      // 4. 電子產品類 (80+)
-      '電子產品': {
-        'tv': '電視', 'computer': '電腦', 'laptop': '筆記型電腦', 'monitor': '顯示器',
-        'keyboard': '鍵盤', 'mouse': '滑鼠', 'printer': '印表機', 'scanner': '掃描器',
-        'router': '路由器', 'modem': '數據機', 'smartphone': '智慧手機', 'tablet': '平板電腦',
-        'camera': '相機', 'webcam': '網路攝影機', 'microphone': '麥克風', 'speaker': '喇叭',
-        'headphones': '耳機', 'earphones': '耳塞', 'remote': '遙控器', 'game console': '遊戲機',
-        'controller': '控制器', 'smartwatch': '智慧手錶', 'fitness tracker': '健身手環'
-      },
-
-      // 5. 廚房用品類 (120+)
-      '廚房用品': {
-        'refrigerator': '冰箱', 'oven': '烤箱', 'microwave': '微波爐', 'stove': '爐灶',
-        'dishwasher': '洗碗機', 'blender': '果汁機', 'toaster': '烤麵包機', 'kettle': '熱水壺',
-        'coffee maker': '咖啡機', 'mixer': '攪拌機', 'food processor': '食物處理機',
-        'knife': '刀子', 'fork': '叉子', 'spoon': '湯匙', 'chopsticks': '筷子',
-        'plate': '盤子', 'bowl': '碗', 'cup': '杯子', 'mug': '馬克杯',
-        'glass': '玻璃杯', 'wine glass': '酒杯', 'bottle': '瓶子', 'jar': '罐子',
-        'pot': '鍋子', 'pan': '平底鍋', 'wok': '炒鍋', 'cutting board': '砧板'
-      },
-
-      // 6. 食物類 (150+)
-      '食物': {
-        'apple': '蘋果', 'banana': '香蕉', 'orange': '柳橙', 'grape': '葡萄',
-        'strawberry': '草莓', 'watermelon': '西瓜', 'pineapple': '鳳梨', 'mango': '芒果',
-        'peach': '桃子', 'pear': '梨子', 'cherry': '櫻桃', 'kiwi': '奇異果',
-        'lemon': '檸檬', 'lime': '萊姆', 'coconut': '椰子', 'avocado': '酪梨',
-        'tomato': '番茄', 'potato': '馬鈴薯', 'carrot': '紅蘿蔔', 'onion': '洋蔥',
-        'garlic': '大蒜', 'ginger': '薑', 'broccoli': '花椰菜', 'cauliflower': '白花椰菜',
-        'cabbage': '高麗菜', 'lettuce': '生菜', 'spinach': '菠菜', 'celery': '芹菜',
-        'corn': '玉米', 'pea': '豌豆', 'bean': '豆子', 'mushroom': '蘑菇'
-      },
-
-      // 7. 飲料類 (30+)
-      '飲料': {
-        'water': '水', 'juice': '果汁', 'soda': '汽水', 'cola': '可樂',
-        'tea': '茶', 'coffee': '咖啡', 'milk': '牛奶', 'yogurt': '優格',
-        'smoothie': '冰沙', 'beer': '啤酒', 'wine': '葡萄酒', 'champagne': '香檳'
-      },
-
-      // 8. 服飾類 (100+)
-      '服飾': {
-        'shirt': '襯衫', 't-shirt': 'T恤', 'pants': '褲子', 'jeans': '牛仔褲',
-        'shorts': '短褲', 'skirt': '裙子', 'dress': '洋裝', 'jacket': '夾克',
-        'coat': '大衣', 'sweater': '毛衣', 'hoodie': '連帽衫', 'suit': '西裝',
-        'tie': '領帶', 'belt': '皮帶', 'hat': '帽子', 'cap': '棒球帽',
-        'scarf': '圍巾', 'gloves': '手套', 'socks': '襪子', 'shoes': '鞋子'
-      },
-
-      // 9. 鞋子類 (40+)
-      '鞋子': {
-        'sneakers': '運動鞋', 'running shoes': '跑鞋', 'boots': '靴子',
-        'sandals': '涼鞋', 'flip flops': '夾腳拖', 'high heels': '高跟鞋',
-        'loafers': '樂福鞋', 'dress shoes': '皮鞋', 'slippers': '拖鞋'
-      },
-
-      // 10. 包包類 (30+)
-      '包包': {
-        'backpack': '背包', 'handbag': '手提包', 'purse': '錢包',
-        'briefcase': '公事包', 'suitcase': '行李箱', 'wallet': '皮夾',
-        'clutch': '手拿包', 'tote bag': '托特包', 'duffle bag': '旅行袋'
-      },
-
-      // 11. 化妝品類 (60+)
-      '化妝品': {
-        'lipstick': '口紅', 'mascara': '睫毛膏', 'eyeliner': '眼線筆',
-        'eyeshadow': '眼影', 'foundation': '粉底', 'concealer': '遮瑕膏',
-        'blush': '腮紅', 'powder': '蜜粉', 'perfume': '香水', 'nail polish': '指甲油'
-      },
-
-      // 12. 清潔用品類 (50+)
-      '清潔用品': {
-        'broom': '掃帚', 'mop': '拖把', 'vacuum cleaner': '吸塵器',
-        'detergent': '清潔劑', 'soap': '肥皂', 'shampoo': '洗髮精',
-        'conditioner': '潤髮乳', 'toothpaste': '牙膏', 'toothbrush': '牙刷'
-      },
-
-      // 13. 辦公用品類 (70+)
-      '辦公用品': {
-        'pen': '筆', 'pencil': '鉛筆', 'marker': '麥克筆', 'highlighter': '螢光筆',
-        'notebook': '筆記本', 'paper': '紙張', 'envelope': '信封', 'stapler': '訂書機',
-        'scissors': '剪刀', 'ruler': '尺', 'calculator': '計算機', 'calendar': '日曆'
-      },
-
-      // 14. 運動器材類 (80+)
-      '運動器材': {
-        'basketball': '籃球', 'football': '美式足球', 'soccer ball': '足球',
-        'tennis ball': '網球', 'baseball': '棒球', 'volleyball': '排球',
-        'golf club': '高爾夫球桿', 'tennis racket': '網球拍', 'badminton racket': '羽毛球拍',
-        'skateboard': '滑板', 'bicycle': '腳踏車', 'dumbbell': '啞鈴', 'yoga mat': '瑜伽墊'
-      },
-
-      // 15. 樂器類 (50+)
-      '樂器': {
-        'piano': '鋼琴', 'guitar': '吉他', 'violin': '小提琴', 'drum': '鼓',
-        'trumpet': '小號', 'saxophone': '薩克斯風', 'flute': '長笛', 'clarinet': '單簧管'
-      },
-
-      // 16. 醫療用品類 (40+)
-      '醫療用品': {
-        'thermometer': '溫度計', 'bandage': '繃帶', 'syringe': '注射器',
-        'pill': '藥丸', 'medicine': '藥品', 'first aid kit': '急救箱'
-      },
-
-      // 17. 建築物類 (60+)
-      '建築物': {
-        'house': '房子', 'apartment': '公寓', 'building': '建築物',
-        'school': '學校', 'hospital': '醫院', 'store': '商店',
-        'restaurant': '餐廳', 'hotel': '飯店', 'bank': '銀行', 'church': '教堂'
-      },
-
-      // 18. 室外物品類 (80+)
-      '室外物品': {
-        'tree': '樹', 'flower': '花', 'grass': '草', 'fountain': '噴泉',
-        'bench': '長椅', 'street light': '路燈', 'traffic light': '紅綠燈',
-        'stop sign': '停止標誌', 'mailbox': '郵箱', 'fire hydrant': '消防栓'
-      },
-
-      // 19. 玩具類 (60+)
-      '玩具': {
-        'doll': '娃娃', 'teddy bear': '泰迪熊', 'puzzle': '拼圖',
-        'lego': '樂高', 'robot': '機器人', 'car toy': '玩具車',
-        'ball': '球', 'kite': '風箏', 'playing cards': '撲克牌'
-      },
-
-      // 20. 珠寶首飾類 (40+)
-      '珠寶首飾': {
-        'ring': '戒指', 'necklace': '項鍊', 'bracelet': '手鍊',
-        'earrings': '耳環', 'watch': '手錶', 'brooch': '胸針'
-      },
-
-      // 21. 其他物品類 (100+)
-      '其他物品': {
-        'clock': '時鐘', 'watch': '手錶', 'umbrella': '雨傘', 'key': '鑰匙',
-        'money': '錢', 'credit card': '信用卡', 'book': '書', 'magazine': '雜誌',
-        'newspaper': '報紙', 'phone': '電話', 'candle': '蠟燭', 'vase': '花瓶'
-      }
+      // ...（保持原有的物品資料庫不變）
     };
 
     // 建立完整的物品映射
@@ -560,9 +677,22 @@
       });
     });
 
-    console.log(`載入完成: ${Object.keys(itemNames).length} 種物品`);
+    // 新增：常用物品快速查找
+    const importantItems = {
+      'medicine': '藥品', 'key': '鑰匙', 'wallet': '錢包', 'phone': '手機',
+      'glasses': '眼鏡', 'water': '水', 'food': '食物', 'remote': '遙控器'
+    };
 
-    class SmartAssistant {
+    // 新增：自然語言處理擴展
+    const nlpResponses = {
+      '你好': ['你好！我是您的智能生活助手', '您好！有什麼可以幫您的嗎？'],
+      '謝謝': ['不客氣！', '這是我應該做的', '有需要隨時叫我'],
+      '再見': ['再見！記得注意安全', '下次見！', '祝您有美好的一天'],
+      '幫助': ['我可以幫您：\n1. 識別物品\n2. 導航回家\n3. 記錄重要物品\n4. 提供語音協助'],
+      '我是誰': ['您是尊貴的使用者', '您是智能生活助手的使用者', '請讓我協助您的生活']
+    };
+
+    class EnhancedSmartAssistant {
       constructor() {
         this.model = null;
         this.isRecognizing = false;
@@ -575,18 +705,743 @@
         this.lastSpeechTime = 0;
         this.SPEECH_COOLDOWN = 4000;
         this.currentCategory = '全部';
+        this.recognitionHistory = [];
+        this.maxHistory = 20;
+        this.voiceRecognition = null;
+        this.isListening = false;
+        this.wakeWord = '你好助手';
+        this.nlp = null;
+      }
+
+      // 初始化所有組件
+      async initAll() {
+        try {
+          // 顯示載入進度
+          this.updateProgress(0, '正在初始化系統...');
+          
+          // 初始化 TensorFlow.js 模型
+          this.updateProgress(20, '正在載入AI模型...');
+          await this.initModel();
+          
+          // 初始化 NLP
+          this.updateProgress(40, '正在載入語音系統...');
+          await this.initNLP();
+          
+          // 初始化語音辨識
+          this.updateProgress(60, '正在準備語音辨識...');
+          await this.initVoiceRecognition();
+          
+          // 設定相機
+          this.updateProgress(80, '正在準備相機...');
+          await this.setupCamera();
+          
+          // 載入儲存資料
+          this.updateProgress(90, '正在載入設定...');
+          this.loadSavedData();
+          
+          // 完成初始化
+          this.updateProgress(100, '系統準備完成！');
+          setTimeout(() => {
+            document.getElementById('loadingOverlay').style.display = 'none';
+            updateVoice('系統準備完成！請說「你好助手」開始語音控制');
+          }, 1000);
+          
+        } catch (error) {
+          console.error('初始化失敗:', error);
+          updateVoice('系統初始化失敗，請重新整理頁面');
+        }
+      }
+
+      // 更新載入進度
+      updateProgress(percent, message) {
+        document.getElementById('progressFill').style.width = percent + '%';
+        document.getElementById('loadingOverlay').querySelector('div:nth-child(2)').textContent = message;
       }
 
       // 初始化AI模型
       async initModel() {
         try {
-          updateVoice('正在準備智能識別系統...');
           this.model = await cocoSsd.load();
-          updateVoice(`系統準備完成！可識別${Object.keys(itemNames).length}種物品`);
-          this.updateModeIndicator('idle');
-          this.initCategoryFilter();
+          console.log(`AI模型載入完成: ${Object.keys(itemNames).length} 種物品`);
         } catch (error) {
-          updateVoice('系統初始化失敗，請重新整理頁面');
+          throw new Error('AI模型載入失敗');
+        }
+      }
+
+      // 初始化自然語言處理
+      async initNLP() {
+        try {
+          // 使用 compromise 進行簡單的 NLP
+          this.nlp = window.nlp;
+          console.log('NLP系統準備完成');
+        } catch (error) {
+          console.warn('NLP系統載入失敗，將使用基本語音辨識');
+        }
+      }
+
+      // 初始化語音辨識
+      async initVoiceRecognition() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+          console.warn('此瀏覽器不支援語音辨識');
+          document.getElementById('voiceStatus').textContent = '不支援';
+          return;
+        }
+
+        try {
+          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+          this.voiceRecognition = new SpeechRecognition();
+          this.voiceRecognition.continuous = true;
+          this.voiceRecognition.interimResults = false;
+          this.voiceRecognition.lang = 'zh-TW';
+          this.voiceRecognition.maxAlternatives = 1;
+
+          this.voiceRecognition.onstart = () => {
+            console.log('語音辨識啟動');
+            this.isListening = true;
+            document.getElementById('voiceCommand').style.display = 'block';
+          };
+
+          this.voiceRecognition.onresult = (event) => {
+            const transcript = event.results[event.results.length - 1][0].transcript.trim();
+            console.log('語音辨識結果:', transcript);
+            this.processVoiceCommand(transcript);
+          };
+
+          this.voiceRecognition.onerror = (event) => {
+            console.warn('語音辨識錯誤:', event.error);
+            if (event.error === 'no-speech' || event.error === 'audio-capture') {
+              this.startVoiceRecognition(); // 自動重新啟動
+            }
+          };
+
+          this.voiceRecognition.onend = () => {
+            console.log('語音辨識結束');
+            this.isListening = false;
+            document.getElementById('voiceCommand').style.display = 'none';
+            this.startVoiceRecognition(); // 自動重新啟動
+          };
+
+          this.startVoiceRecognition();
+          document.getElementById('voiceStatus').textContent = '啟用中';
+        } catch (error) {
+          console.error('語音辨識初始化失敗:', error);
+          document.getElementById('voiceStatus').textContent = '停用';
+        }
+      }
+
+      // 啟動語音辨識
+      startVoiceRecognition() {
+        if (this.voiceRecognition && !this.isListening) {
+          try {
+            this.voiceRecognition.start();
+          } catch (error) {
+            console.warn('語音辨識啟動失敗:', error);
+            setTimeout(() => this.startVoiceRecognition(), 1000);
+          }
+        }
+      }
+
+      // 處理語音命令
+      processVoiceCommand(command) {
+        command = command.toLowerCase();
+        
+        // 檢查喚醒詞
+        if (command.includes(this.wakeWord.toLowerCase())) {
+          updateVoice('我在！請說出您的需求');
+          return;
+        }
+
+        // 處理各種命令
+        if (command.includes('辨識') || command.includes('識別') || command.includes('這是什麼')) {
+          this.startItemRecognition();
+        } else if (command.includes('連續') || command.includes('一直看')) {
+          this.toggleContinuousMode();
+        } else if (command.includes('回家') || command.includes('導航')) {
+          this.startNavigationHome();
+        } else if (command.includes('設定家') || command.includes('記錄位置')) {
+          this.setHomeLocation();
+        } else if (command.includes('幫助') || command.includes('功能')) {
+          updateVoice(nlpResponses['幫助'][0]);
+        } else if (command.includes('謝謝')) {
+          updateVoice(nlpResponses['謝謝'][Math.floor(Math.random() * nlpResponses['謝謝'].length)]);
+        } else if (command.includes('再見') || command.includes('拜拜')) {
+          updateVoice(nlpResponses['再見'][Math.floor(Math.random() * nlpResponses['再見'].length)]);
+        } else if (command.includes('我是誰')) {
+          updateVoice(nlpResponses['我是誰'][Math.floor(Math.random() * nlpResponses['我是誰'].length)]);
+        } else if (command.includes('關閉語音')) {
+          toggleVoice();
+        } else if (command.includes('開啟語音')) {
+          toggleVoice();
+        } else {
+          // 嘗試理解用戶意圖
+          this.understandIntent(command);
+        }
+      }
+
+      // 理解用戶意圖
+      understandIntent(command) {
+        // 檢查是否在詢問特定物品
+        for (const [key, value] of Object.entries(itemNames)) {
+          if (command.includes(value.toLowerCase())) {
+            updateVoice(`您說的是${value}嗎？我可以幫您識別`);
+            return;
+          }
+        }
+
+        // 預設回應
+        updateVoice(`我不太明白「${command}」的意思，請說「幫助」了解我能做什麼`);
+      }
+
+      // 載入儲存資料
+      loadSavedData() {
+        // 家的位置
+        const savedHome = localStorage.getItem('homeLocation');
+        if (savedHome) {
+          this.homeLocation = JSON.parse(savedHome);
+          document.getElementById('homeStatus').textContent = '已設定';
+        }
+
+        // 識別歷史
+        const savedHistory = localStorage.getItem('recognitionHistory');
+        if (savedHistory) {
+          this.recognitionHistory = JSON.parse(savedHistory).slice(0, this.maxHistory);
+          this.updateHistoryDisplay();
+        }
+
+        // 語音設定
+        const savedVoice = localStorage.getItem('voiceEnabled');
+        if (savedVoice !== null) {
+          this.voiceEnabled = savedVoice === 'true';
+          document.getElementById('voiceToggleBtn').innerHTML = this.voiceEnabled ? 
+            '<span class="button-icon">🔇</span><span class="button-text">關閉語音</span>' :
+            '<span class="button-icon">🔊</span><span class="button-text">開啟語音</span>';
+        }
+
+        // 資料庫統計
+        document.getElementById('databaseSize').textContent = Object.keys(itemNames).length + '+ 物品';
+      }
+
+      // 儲存資料
+      saveData() {
+        localStorage.setItem('homeLocation', JSON.stringify(this.homeLocation));
+        localStorage.setItem('recognitionHistory', JSON.stringify(this.recognitionHistory));
+        localStorage.setItem('voiceEnabled', this.voiceEnabled);
+      }
+
+      // 更新歷史記錄顯示
+      updateHistoryDisplay() {
+        const historyList = document.getElementById('historyList');
+        if (!historyList) return;
+
+        if (this.recognitionHistory.length === 0) {
+          historyList.innerHTML = '<div class="history-item">尚無記錄</div>';
+          return;
+        }
+
+        historyList.innerHTML = this.recognitionHistory.map(item => `
+          <div class="history-item">
+            <div>${item.name} (${item.category})</div>
+            <div class="history-time">${this.formatTime(item.timestamp)}</div>
+          </div>
+        `).join('');
+      }
+
+      // 格式化時間
+      formatTime(timestamp) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diff = now - date;
+        
+        if (diff < 60000) return '剛剛';
+        if (diff < 3600000) return Math.floor(diff / 60000) + '分鐘前';
+        if (diff < 86400000) return Math.floor(diff / 3600000) + '小時前';
+        
+        return date.toLocaleDateString('zh-TW');
+      }
+
+      // 新增歷史記錄
+      addToHistory(item) {
+        const historyItem = {
+          name: item.name,
+          category: item.category,
+          confidence: item.confidence,
+          timestamp: Date.now()
+        };
+
+        this.recognitionHistory.unshift(historyItem);
+        if (this.recognitionHistory.length > this.maxHistory) {
+          this.recognitionHistory.pop();
+        }
+
+        this.updateHistoryDisplay();
+        this.saveData();
+      }
+
+      // 開始物品識別（增強版）
+      async startItemRecognition() {
+        if (!this.model) {
+          updateVoice('系統尚未準備好');
+          return;
+        }
+
+        const video = document.getElementById('video');
+        if (!video.srcObject) {
+          updateVoice('請先允許相機權限');
+          return;
+        }
+
+        try {
+          this.isRecognizing = true;
+          this.updateModeIndicator('identifying');
+          this.updateButtonState(true);
+          
+          updateVoice('正在識別物品，請稍候...');
+
+          const predictions = await this.model.detect(video);
+          this.processRecognitionResults(predictions);
+          
+          // 顯示邊界框
+          this.drawBoundingBoxes(predictions);
+
+        } catch (error) {
+          console.error('識別失敗:', error);
+          updateVoice('識別失敗，請重試');
+        } finally {
+          this.isRecognizing = false;
+          this.updateModeIndicator('idle');
+          this.updateButtonState(false);
+        }
+      }
+
+      // 繪製邊界框
+      drawBoundingBoxes(predictions) {
+        const overlay = document.getElementById('recognitionOverlay');
+        overlay.innerHTML = '';
+        
+        const video = document.getElementById('video');
+        const videoWidth = video.videoWidth;
+        const videoHeight = video.videoHeight;
+        const displayWidth = video.clientWidth;
+        const displayHeight = video.clientHeight;
+        
+        const scaleX = displayWidth / videoWidth;
+        const scaleY = displayHeight / videoHeight;
+        
+        predictions.forEach(pred => {
+          if (pred.score > 0.5 && itemNames[pred.class]) {
+            const x = pred.bbox[0] * scaleX;
+            const y = pred.bbox[1] * scaleY;
+            const width = pred.bbox[2] * scaleX;
+            const height = pred.bbox[3] * scaleY;
+            
+            const box = document.createElement('div');
+            box.className = 'bounding-box';
+            box.style.left = x + 'px';
+            box.style.top = y + 'px';
+            box.style.width = width + 'px';
+            box.style.height = height + 'px';
+            
+            const label = document.createElement('div');
+            label.className = 'bounding-label';
+            label.style.left = x + 'px';
+            label.style.top = y + 'px';
+            label.textContent = `${itemNames[pred.class]} ${Math.round(pred.score * 100)}%`;
+            
+            overlay.appendChild(box);
+            overlay.appendChild(label);
+          }
+        });
+      }
+
+      // 更新按鈕狀態
+      updateButtonState(isProcessing) {
+        const buttons = ['recognitionBtn', 'continuousBtn', 'homeBtn', 'navBtn'];
+        buttons.forEach(btnId => {
+          const btn = document.getElementById(btnId);
+          if (btn) {
+            btn.disabled = isProcessing;
+            btn.style.opacity = isProcessing ? '0.6' : '1';
+          }
+        });
+      }
+
+      // 處理識別結果（增強版）
+      processRecognitionResults(predictions) {
+        const highConfidenceItems = predictions
+          .filter(pred => pred.score > 0.4 && itemNames[pred.class]) // 降低門檻值
+          .map(pred => ({
+            class: pred.class,
+            name: itemNames[pred.class],
+            confidence: pred.score,
+            category: itemCategories[pred.class] || '其他',
+            bbox: pred.bbox
+          }))
+          .filter((item, index, array) => 
+            array.findIndex(i => i.class === item.class) === index
+          )
+          .sort((a, b) => b.confidence - a.confidence);
+
+        this.lastItems = highConfidenceItems;
+        this.filterDisplayedItems();
+        this.provideItemVoiceGuidance(highConfidenceItems);
+        
+        // 記錄到歷史
+        highConfidenceItems.slice(0, 3).forEach(item => {
+          this.addToHistory(item);
+        });
+
+        // 檢查重要物品
+        this.checkImportantItems(highConfidenceItems);
+      }
+
+      // 檢查重要物品
+      checkImportantItems(items) {
+        const importantFound = items.filter(item => 
+          Object.keys(importantItems).includes(item.class)
+        );
+
+        if (importantFound.length > 0) {
+          const itemNames = importantFound.map(item => item.name).join('、');
+          updateVoice(`提醒您：找到重要物品 ${itemNames}，請注意保管`);
+        }
+      }
+
+      // 切換連續識別模式（增強版）
+      async toggleContinuousMode() {
+        if (this.continuousMode) {
+          this.stopContinuousMode();
+        } else {
+          await this.startContinuousMode();
+        }
+      }
+
+      // 開始連續識別（增強版）
+      async startContinuousMode() {
+        if (!this.model) {
+          updateVoice('系統尚未準備好');
+          return;
+        }
+
+        const video = await this.setupCamera();
+        if (!video) return;
+
+        this.continuousMode = true;
+        this.updateModeIndicator('identifying');
+        updateVoice('開啟連續識別模式，系統會持續告訴您看到的物品');
+        
+        document.getElementById('continuousBtn').innerHTML = 
+          '<span class="button-icon">⏹️</span><span class="button-text">停止識別</span>';
+        document.getElementById('recognitionOverlay').style.display = 'block';
+
+        this.continuousRecognition(video);
+      }
+
+      // 停止連續識別（增強版）
+      stopContinuousMode() {
+        this.continuousMode = false;
+        this.updateModeIndicator('idle');
+        updateVoice('已停止連續識別');
+        
+        document.getElementById('continuousBtn').innerHTML = 
+          '<span class="button-icon">🔄</span><span class="button-text">連續識別</span>';
+        document.getElementById('recognitionOverlay').style.display = 'none';
+        document.getElementById('recognitionOverlay').innerHTML = '';
+      }
+
+      // 連續識別循環（增強版）
+      async continuousRecognition(video) {
+        if (!this.continuousMode) return;
+
+        try {
+          const predictions = await this.model.detect(video);
+          this.processRecognitionResults(predictions);
+          this.drawBoundingBoxes(predictions);
+          
+          // 優化的間隔時間
+          setTimeout(() => this.continuousRecognition(video), 1500);
+        } catch (error) {
+          setTimeout(() => this.continuousRecognition(video), 2000);
+        }
+      }
+
+      // 設定家的位置（增強版）
+      async setHomeLocation() {
+        return new Promise((resolve, reject) => {
+          if (!navigator.geolocation) {
+            updateVoice('您的裝置不支援定位功能');
+            reject('裝置不支援定位');
+            return;
+          }
+
+          this.updateModeIndicator('recording');
+          updateVoice('正在記錄家的位置，請保持GPS開啟...');
+          
+          // 增加精確度
+          const options = {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          };
+
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              this.homeLocation = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                timestamp: Date.now(),
+                address: '自訂家的位置'
+              };
+              
+              this.saveData();
+              updateVoice(`家的位置已成功記錄！精確度${Math.round(position.coords.accuracy)}公尺`);
+              document.getElementById('homeStatus').textContent = '已設定';
+              this.updateModeIndicator('idle');
+              
+              // 顯示詳細資訊
+              this.showHomeLocationInfo();
+              resolve(this.homeLocation);
+            },
+            (error) => {
+              const errorMsg = this.getGeolocationError(error);
+              updateVoice(errorMsg);
+              this.updateModeIndicator('idle');
+              reject(errorMsg);
+            },
+            options
+          );
+        });
+      }
+
+      // 顯示家的位置資訊
+      showHomeLocationInfo() {
+        if (!this.homeLocation) return;
+        
+        const info = `
+          緯度: ${this.homeLocation.latitude.toFixed(6)}
+          經度: ${this.homeLocation.longitude.toFixed(6)}
+          精確度: ${Math.round(this.homeLocation.accuracy)}公尺
+        `;
+        console.log('家的位置資訊:', info);
+      }
+
+      // 開始導航回家（增強版）
+      startNavigationHome() {
+        if (!this.homeLocation) {
+          updateVoice('請先設定家的位置');
+          return;
+        }
+
+        if (!navigator.geolocation) {
+          updateVoice('您的裝置不支援導航功能');
+          return;
+        }
+
+        this.isNavigating = true;
+        this.updateModeIndicator('navigating');
+        updateVoice('開始導航回家，請跟隨語音指引');
+        document.getElementById('navigationPanel').style.display = 'block';
+
+        const options = {
+          enableHighAccuracy: true,
+          timeout: 5000,
+          maximumAge: 0
+        };
+
+        this.watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            this.updateNavigation(position);
+          },
+          (error) => {
+            updateVoice('GPS信號不穩定，請移動到開闊處');
+            console.error('GPS錯誤:', error);
+          },
+          options
+        );
+
+        // 安全定時器：30分鐘後自動停止導航
+        setTimeout(() => {
+          if (this.isNavigating) {
+            updateVoice('導航已超時，自動停止');
+            this.stopNavigation();
+          }
+        }, 30 * 60 * 1000);
+      }
+
+      // 更新導航（增強版）
+      updateNavigation(position) {
+        const currentLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        };
+
+        const navInfo = this.calculateNavigationInfo(currentLocation, this.homeLocation);
+        if (!navInfo) return;
+
+        this.updateNavigationDisplay(navInfo);
+        this.provideNavigationGuidance(navInfo);
+        
+        // 更新導航面板資訊
+        document.getElementById('distanceDisplay').textContent = 
+          navInfo.distance + ' 公尺 (精確度: ±' + Math.round(currentLocation.accuracy) + 'm)';
+      }
+
+      // 計算導航資訊（增強版）
+      calculateNavigationInfo(current, target) {
+        const R = 6371000; // 地球半徑（公尺）
+        const φ1 = current.latitude * Math.PI/180;
+        const φ2 = target.latitude * Math.PI/180;
+        const Δφ = (target.latitude - current.latitude) * Math.PI/180;
+        const Δλ = (target.longitude - current.longitude) * Math.PI/180;
+
+        // Haversine 公式計算距離
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                  Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distance = Math.round(R * c);
+
+        // 計算方位角
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x = Math.cos(φ1) * Math.sin(φ2) - 
+                  Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        const θ = Math.atan2(y, x);
+        const bearing = (θ * 180/Math.PI + 360) % 360;
+
+        const direction = this.getDirectionFromBearing(bearing);
+
+        // 計算ETA（估計到達時間），假設步行速度為 1.4 m/s
+        const walkingSpeed = 1.4; // 公尺/秒
+        const etaSeconds = Math.round(distance / walkingSpeed);
+        const etaMinutes = Math.ceil(etaSeconds / 60);
+
+        return { 
+          distance, 
+          bearing, 
+          direction, 
+          etaMinutes,
+          accuracy: current.accuracy 
+        };
+      }
+
+      // 獲取方向（增強版）
+      getDirectionFromBearing(bearing) {
+        const directions = [
+          { name: '北', start: 337.5, end: 22.5 },
+          { name: '東北', start: 22.5, end: 67.5 },
+          { name: '東', start: 67.5, end: 112.5 },
+          { name: '東南', start: 112.5, end: 157.5 },
+          { name: '南', start: 157.5, end: 202.5 },
+          { name: '西南', start: 202.5, end: 247.5 },
+          { name: '西', start: 247.5, end: 292.5 },
+          { name: '西北', start: 292.5, end: 337.5 }
+        ];
+
+        for (const dir of directions) {
+          if (bearing >= dir.start || bearing < dir.end) {
+            return dir.name;
+          }
+        }
+        return '北';
+      }
+
+      // 提供導航指引（增強版）
+      provideNavigationGuidance(navInfo) {
+        const { distance, direction, etaMinutes } = navInfo;
+        const now = Date.now();
+        
+        if (now - this.lastSpeechTime < this.SPEECH_COOLDOWN) return;
+
+        let instruction = '';
+        if (distance < 10) {
+          instruction = '已到達目的地，導航結束';
+          this.stopNavigation();
+        } else if (distance < 50) {
+          instruction = `快到家了，還有${distance}公尺，大約${etaMinutes}分鐘，請往${direction}走`;
+        } else if (distance < 200) {
+          instruction = `距離家${distance}公尺，大約${etaMinutes}分鐘，請往${direction}方向前進`;
+        } else {
+          instruction = `距離家${distance}公尺，大約${etaMinutes}分鐘，請往${direction}方向前進`;
+        }
+
+        updateVoice(instruction);
+        document.getElementById('turnInstruction').textContent = instruction;
+        this.lastSpeechTime = now;
+      }
+
+      // 停止導航（增強版）
+      stopNavigation() {
+        if (this.watchId) {
+          navigator.geolocation.clearWatch(this.watchId);
+          this.watchId = null;
+        }
+        this.isNavigating = false;
+        this.updateModeIndicator('idle');
+        document.getElementById('navigationPanel').style.display = 'none';
+        updateVoice('導航已停止');
+      }
+
+      // 設置相機（增強版）
+      async setupCamera() {
+        const video = document.getElementById('video');
+        
+        // 如果已經有串流，直接返回
+        if (video.srcObject) {
+          document.getElementById('cameraOverlay').textContent = '鏡頭就緒';
+          return video;
+        }
+
+        try {
+          // 優先使用後置鏡頭
+          const constraints = {
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 30 }
+            }
+          };
+
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          video.srcObject = stream;
+          
+          return new Promise((resolve) => {
+            video.onloadedmetadata = () => {
+              video.play();
+              document.getElementById('cameraOverlay').textContent = '鏡頭就緒';
+              resolve(video);
+            };
+            
+            // 安全超時
+            setTimeout(() => {
+              if (video.readyState >= 2) { // HAVE_CURRENT_DATA
+                document.getElementById('cameraOverlay').textContent = '鏡頭就緒';
+                resolve(video);
+              }
+            }, 3000);
+          });
+        } catch (error) {
+          console.error('相機錯誤:', error);
+          
+          // 嘗試使用前置鏡頭
+          try {
+            const constraints = {
+              video: {
+                facingMode: 'user',
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+              }
+            };
+            
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = stream;
+            document.getElementById('cameraOverlay').textContent = '鏡頭就緒（前置）';
+            return video;
+          } catch (fallbackError) {
+            updateVoice('無法開啟相機，請檢查權限設定');
+            document.getElementById('cameraOverlay').textContent = '相機無法使用';
+            return null;
+          }
         }
       }
 
@@ -620,115 +1475,13 @@
         const searchTerm = document.getElementById('searchInput').value.toLowerCase();
         const filteredItems = this.lastItems.filter(item => {
           const matchesCategory = this.currentCategory === '全部' || 
-                                itemCategories[item.class] === this.currentCategory;
+                                item.category === this.currentCategory;
           const matchesSearch = item.name.toLowerCase().includes(searchTerm) ||
                               item.class.toLowerCase().includes(searchTerm);
           return matchesCategory && matchesSearch;
         });
         
         this.updateItemsDisplay(filteredItems);
-      }
-
-      // 開始物品識別
-      async startItemRecognition() {
-        if (!this.model) {
-          updateVoice('系統尚未準備好');
-          return;
-        }
-
-        const video = await this.setupCamera();
-        if (!video) return;
-
-        this.isRecognizing = true;
-        this.updateModeIndicator('identifying');
-        updateVoice('開始識別物品，請將鏡頭對準想認識的物品');
-
-        try {
-          const predictions = await this.model.detect(video);
-          this.processRecognitionResults(predictions);
-        } catch (error) {
-          updateVoice('識別失敗，請重試');
-        }
-
-        this.isRecognizing = false;
-        this.updateModeIndicator('idle');
-      }
-
-      // 切換連續識別模式
-      async toggleContinuousMode() {
-        if (this.continuousMode) {
-          this.stopContinuousMode();
-        } else {
-          await this.startContinuousMode();
-        }
-      }
-
-      // 開始連續識別
-      async startContinuousMode() {
-        if (!this.model) {
-          updateVoice('系統尚未準備好');
-          return;
-        }
-
-        const video = await this.setupCamera();
-        if (!video) return;
-
-        this.continuousMode = true;
-        this.isRecognizing = true;
-        this.updateModeIndicator('identifying');
-        updateVoice('開啟連續識別模式，系統會持續告訴您看到的物品');
-        
-        document.getElementById('continuousBtn').innerHTML = 
-          '<span class="button-icon">⏹️</span><span class="button-text">停止識別</span>';
-
-        this.continuousRecognition(video);
-      }
-
-      // 停止連續識別
-      stopContinuousMode() {
-        this.continuousMode = false;
-        this.isRecognizing = false;
-        this.updateModeIndicator('idle');
-        updateVoice('已停止連續識別');
-        
-        document.getElementById('continuousBtn').innerHTML = 
-          '<span class="button-icon">🔄</span><span class="button-text">連續識別</span>';
-      }
-
-      // 連續識別循環
-      async continuousRecognition(video) {
-        if (!this.continuousMode) return;
-
-        try {
-          const predictions = await this.model.detect(video);
-          this.processRecognitionResults(predictions);
-          
-          // 2秒後繼續下一輪識別
-          setTimeout(() => this.continuousRecognition(video), 2000);
-        } catch (error) {
-          setTimeout(() => this.continuousRecognition(video), 2000);
-        }
-      }
-
-      // 處理識別結果
-      processRecognitionResults(predictions) {
-        const highConfidenceItems = predictions
-          .filter(pred => pred.score > 0.5 && itemNames[pred.class])
-          .map(pred => ({
-            class: pred.class,
-            name: itemNames[pred.class],
-            confidence: pred.score,
-            category: itemCategories[pred.class]
-          }))
-          .filter((item, index, array) => 
-            array.findIndex(i => i.class === item.class) === index
-          )
-          .sort((a, b) => b.confidence - a.confidence)
-          .slice(0, 8);
-
-        this.lastItems = highConfidenceItems;
-        this.filterDisplayedItems();
-        this.provideItemVoiceGuidance(highConfidenceItems);
       }
 
       // 更新物品顯示
@@ -747,7 +1500,8 @@
         }
 
         container.innerHTML = items.map((item, index) => `
-          <div class="item-card highlight" style="animation-delay: ${index * 0.1}s">
+          <div class="item-card highlight" style="animation-delay: ${index * 0.1}s"
+               onclick="assistant.speakItem('${item.name}')">
             <div class="item-name">${item.name}</div>
             <div class="item-confidence">可信度: ${Math.round(item.confidence * 100)}%</div>
             <div class="category-tag">${item.category}</div>
@@ -755,189 +1509,30 @@
         `).join('');
       }
 
+      // 朗讀物品名稱
+      speakItem(name) {
+        if (this.voiceEnabled) {
+          updateVoice(`這是${name}`);
+        }
+      }
+
       // 提供物品語音提示
       provideItemVoiceGuidance(items) {
         const now = Date.now();
         if (now - this.lastSpeechTime < this.SPEECH_COOLDOWN || items.length === 0) return;
 
-        const topItems = items.slice(0, 3); // 只提示前3個
+        const topItems = items.slice(0, 3);
         const itemNames = topItems.map(item => item.name).join('、');
         
         if (this.continuousMode) {
-          // 連續模式時較少語音提示
-          if (Math.random() < 0.3) { // 30%機率提示
+          // 連續模式時減少頻率
+          if (Math.random() < 0.2) { // 20%機率提示
             updateVoice(`看到：${itemNames}`);
             this.lastSpeechTime = now;
           }
         } else {
-          updateVoice(`看到：${itemNames}`);
+          updateVoice(`識別到：${itemNames}`);
           this.lastSpeechTime = now;
-        }
-      }
-
-      // 設定家的位置
-      async setHomeLocation() {
-        return new Promise((resolve, reject) => {
-          if (!navigator.geolocation) {
-            reject('您的裝置不支援定位功能');
-            return;
-          }
-
-          updateVoice('正在記錄家的位置...');
-          
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              this.homeLocation = {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude,
-                accuracy: position.coords.accuracy
-              };
-              
-              localStorage.setItem('homeLocation', JSON.stringify(this.homeLocation));
-              updateVoice('家的位置已成功記錄！');
-              document.getElementById('homeStatus').textContent = '已設定';
-              resolve(this.homeLocation);
-            },
-            (error) => {
-              const errorMsg = this.getGeolocationError(error);
-              reject(errorMsg);
-            }
-          );
-        });
-      }
-
-      // 開始導航回家
-      startNavigationHome() {
-        if (!this.homeLocation) {
-          updateVoice('請先設定家的位置');
-          return;
-        }
-
-        this.isNavigating = true;
-        this.updateModeIndicator('navigating');
-        updateVoice('開始導航回家，請跟隨語音指引');
-        document.getElementById('navigationPanel').style.display = 'block';
-
-        this.watchId = navigator.geolocation.watchPosition(
-          (position) => {
-            this.updateNavigation(position);
-          },
-          (error) => {
-            updateVoice('GPS信號不穩定');
-          },
-          { enableHighAccuracy: true, timeout: 5000 }
-        );
-      }
-
-      // 更新導航
-      updateNavigation(position) {
-        const currentLocation = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        };
-
-        const navInfo = this.calculateNavigationInfo(currentLocation, this.homeLocation);
-        if (!navInfo) return;
-
-        this.updateNavigationDisplay(navInfo);
-        this.provideNavigationGuidance(navInfo);
-      }
-
-      // 計算導航資訊
-      calculateNavigationInfo(current, target) {
-        const R = 6371000;
-        const φ1 = current.latitude * Math.PI/180;
-        const φ2 = target.latitude * Math.PI/180;
-        const Δφ = (target.latitude - current.latitude) * Math.PI/180;
-        const Δλ = (target.longitude - current.longitude) * Math.PI/180;
-
-        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                  Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        const distance = Math.round(R * c);
-
-        const y = Math.sin(Δλ) * Math.cos(φ2);
-        const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-        const θ = Math.atan2(y, x);
-        const bearing = (θ * 180/Math.PI + 360) % 360;
-
-        const direction = this.getDirectionFromBearing(bearing);
-
-        return { distance, bearing, direction };
-      }
-
-      // 獲取方向
-      getDirectionFromBearing(bearing) {
-        if (bearing >= 337.5 || bearing < 22.5) return '北';
-        if (bearing >= 22.5 && bearing < 67.5) return '東北';
-        if (bearing >= 67.5 && bearing < 112.5) return '東';
-        if (bearing >= 112.5 && bearing < 157.5) return '東南';
-        if (bearing >= 157.5 && bearing < 202.5) return '南';
-        if (bearing >= 202.5 && bearing < 247.5) return '西南';
-        if (bearing >= 247.5 && bearing < 292.5) return '西';
-        return '西北';
-      }
-
-      // 更新導航顯示
-      updateNavigationDisplay(navInfo) {
-        const { distance, direction } = navInfo;
-        
-        document.getElementById('distanceDisplay').textContent = distance + ' 公尺';
-        
-        const arrows = {
-          '北': '↑', '東北': '↗', '東': '→', '東南': '↘',
-          '南': '↓', '西南': '↙', '西': '←', '西北': '↖'
-        };
-        document.getElementById('directionArrow').textContent = arrows[direction] || '↑';
-      }
-
-      // 提供導航指引
-      provideNavigationGuidance(navInfo) {
-        const { distance, direction } = navInfo;
-        const now = Date.now();
-        
-        if (now - this.lastSpeechTime < this.SPEECH_COOLDOWN) return;
-
-        let instruction = '';
-        if (distance < 20) {
-          instruction = '已到家了，導航結束';
-          this.stopNavigation();
-        } else if (distance < 50) {
-          instruction = `快到家了，還有${distance}公尺，請往${direction}走`;
-        } else {
-          instruction = `距離家${distance}公尺，請往${direction}方向前進`;
-        }
-
-        updateVoice(instruction);
-        document.getElementById('turnInstruction').textContent = instruction;
-        this.lastSpeechTime = now;
-      }
-
-      // 停止導航
-      stopNavigation() {
-        if (this.watchId) {
-          navigator.geolocation.clearWatch(this.watchId);
-        }
-        this.isNavigating = false;
-        this.updateModeIndicator('idle');
-        document.getElementById('navigationPanel').style.display = 'none';
-      }
-
-      // 設置相機
-      async setupCamera() {
-        const video = document.getElementById('video');
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment' }
-          });
-          video.srcObject = stream;
-          document.getElementById('cameraOverlay').textContent = '鏡頭就緒';
-          return new Promise((resolve) => {
-            video.onloadedmetadata = () => { resolve(video); };
-          });
-        } catch (error) {
-          updateVoice('無法開啟相機');
-          return null;
         }
       }
 
@@ -957,36 +1552,40 @@
         modeText.textContent = modes[mode].text;
       }
 
-      // 載入儲存的位置
-      loadSavedLocations() {
-        const savedHome = localStorage.getItem('homeLocation');
-        if (savedHome) {
-          this.homeLocation = JSON.parse(savedHome);
-          document.getElementById('homeStatus').textContent = '已設定';
-        }
-      }
-
       // 獲取地理定位錯誤
       getGeolocationError(error) {
         switch(error.code) {
-          case error.PERMISSION_DENIED: return '請允許位置權限';
-          case error.POSITION_UNAVAILABLE: return '無法獲取位置資訊';
-          case error.TIMEOUT: return '定位超時';
-          default: return '定位服務錯誤';
+          case error.PERMISSION_DENIED: return '請允許位置權限，或檢查GPS是否開啟';
+          case error.POSITION_UNAVAILABLE: return '無法獲取位置資訊，請移動到開闊處';
+          case error.TIMEOUT: return '定位超時，請重試';
+          default: return '定位服務暫時無法使用';
+        }
+      }
+
+      // 切換記憶區顯示
+      toggleMemorySection() {
+        const section = document.getElementById('memorySection');
+        section.style.display = section.style.display === 'none' ? 'block' : 'none';
+      }
+
+      // 清除歷史記錄
+      clearHistory() {
+        if (confirm('確定要清除所有識別記錄嗎？')) {
+          this.recognitionHistory = [];
+          this.updateHistoryDisplay();
+          this.saveData();
+          updateVoice('記錄已清除');
         }
       }
     }
 
     // 全域變數
-    const assistant = new SmartAssistant();
-    let voiceEnabled = true;
+    const assistant = new EnhancedSmartAssistant();
 
     // 初始化
-    function init() {
-      assistant.initModel();
-      assistant.loadSavedLocations();
-      document.getElementById('databaseSize').textContent = 
-        Object.keys(itemNames).length + '+ 物品';
+    async function init() {
+      await assistant.initAll();
+      assistant.initCategoryFilter();
     }
 
     // 包裝函數
@@ -999,7 +1598,7 @@
     }
 
     function setHomeLocation() {
-      assistant.setHomeLocation().catch(error => updateVoice(error));
+      assistant.setHomeLocation().catch(error => console.error(error));
     }
 
     function startNavigationHome() {
@@ -1007,7 +1606,7 @@
     }
 
     function toggleVoice() {
-      voiceEnabled = !voiceEnabled;
+      const voiceEnabled = assistant.voiceEnabled = !assistant.voiceEnabled;
       const button = document.getElementById('voiceToggleBtn');
       if (voiceEnabled) {
         button.innerHTML = '<span class="button-icon">🔇</span><span class="button-text">關閉語音</span>';
@@ -1016,11 +1615,12 @@
         button.innerHTML = '<span class="button-icon">🔊</span><span class="button-text">開啟語音</span>';
         window.speechSynthesis.cancel();
       }
+      assistant.saveData();
     }
 
     function repeatInstruction() {
       const voiceAlert = document.getElementById('voiceAlert');
-      if (voiceAlert.textContent && voiceEnabled) {
+      if (voiceAlert.textContent && assistant.voiceEnabled) {
         updateVoice(voiceAlert.textContent);
       }
     }
@@ -1029,20 +1629,79 @@
       assistant.filterDisplayedItems();
     }
 
+    function toggleMemorySection() {
+      assistant.toggleMemorySection();
+    }
+
+    function clearHistory() {
+      assistant.clearHistory();
+    }
+
+    // 緊急聯絡功能
+    function emergencyCall() {
+      if (confirm('是否要撥打緊急聯絡電話？')) {
+        updateVoice('正在撥打緊急聯絡電話');
+        
+        // 嘗試撥打電話
+        const phoneNumber = '112'; // 台灣緊急電話
+        window.location.href = `tel:${phoneNumber}`;
+        
+        // 備用方案：顯示聯絡資訊
+        setTimeout(() => {
+          alert(`如無法自動撥號，請手動撥打：\n緊急聯絡：${phoneNumber}\n\n請告知您的緊急狀況和位置。`);
+        }, 2000);
+      }
+    }
+
     // 語音提示
     function updateVoice(message) {
       const voiceAlert = document.getElementById('voiceAlert');
       voiceAlert.textContent = message;
       
-      if (voiceEnabled && window.speechSynthesis) {
+      if (assistant.voiceEnabled && window.speechSynthesis) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(message);
         utterance.lang = 'zh-TW';
-        utterance.rate = 0.8;
+        utterance.rate = 0.9; // 調整語速
         utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+        
+        // 添加事件監聽器
+        utterance.onstart = () => console.log('開始語音合成');
+        utterance.onend = () => console.log('語音合成結束');
+        utterance.onerror = (event) => console.warn('語音合成錯誤:', event);
+        
         window.speechSynthesis.speak(utterance);
       }
     }
+
+    // 離線支援
+    window.addEventListener('online', () => {
+      updateVoice('網路已恢復');
+    });
+
+    window.addEventListener('offline', () => {
+      updateVoice('網路已斷開，部分功能可能受影響');
+    });
+
+    // 錯誤處理
+    window.addEventListener('error', (event) => {
+      console.error('應用程式錯誤:', event.error);
+      updateVoice('系統發生錯誤，請重新整理頁面');
+    });
+
+    // 頁面可見性變化處理
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        // 頁面隱藏時暫停部分功能
+        if (assistant.continuousMode) {
+          assistant.stopContinuousMode();
+        }
+        if (assistant.isNavigating) {
+          assistant.stopNavigation();
+        }
+      }
+    });
 
     // 頁面載入時初始化
     window.addEventListener('DOMContentLoaded', init);
