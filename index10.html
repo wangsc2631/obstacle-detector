@@ -117,14 +117,14 @@
         #capture-btn {
             background: #d97706;
         }
-        #capture-btn:hover {
+        #capture-btn:hover:not(:disabled) {
             background: #b45309;
         }
         
         .clear-btn {
             background: #9e2d2f;
         }
-        .clear-btn:hover {
+        .clear-btn:hover:not(:disabled) {
             background: #7f1d1d;
         }
         
@@ -275,9 +275,60 @@
             padding: 12px;
             border: 1px solid #e2e8f0;
             transition: 0.1s;
+            cursor: pointer;
+        }
+
+        .item-card:hover {
+            background: #e8f4eb;
+            border-color: #2c5e3a;
         }
         
-        /* 响应式 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.6);
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2c5e3a;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* 响應式 */
         @media (min-width: 720px) {
             .container { max-width: 700px; margin: 0 auto; }
             .camera-section, .summary-section, .history-section { padding: 24px; }
@@ -293,12 +344,15 @@
 
     <section class="camera-section">
         <div class="model-status loading" id="model-status">
-            📤 請上傳 YOLOv8s ONNX 模型 (例如 yolov8s.onnx)
+            📤 初始化中... 正在準備模型
         </div>
         <div class="upload-section">
             <h4>📁 載入AI模型</h4>
             <input type="file" id="model-file" accept=".onnx" style="display: none;">
-            <button onclick="document.getElementById('model-file').click()" style="background:#2c5e3a; margin:5px 0;">📂 選擇 .onnx 模型</button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                <button id="download-model-btn" style="background:#6b21a5; flex:1; min-width:150px;">⬇️ 自動下載模型</button>
+                <button id="upload-model-btn" onclick="document.getElementById('model-file').click()" style="background:#2c5e3a; flex:1; min-width:150px;">📂 手動上傳模型</button>
+            </div>
             <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
             <div id="upload-status" style="font-size:0.8rem; color:#4b5563;"></div>
         </div>
@@ -346,6 +400,17 @@
         </div>
         <button id="save-btn" style="width:100%; margin-top:16px; background:#6b21a5;">💾 匯出 CSV 記錄</button>
     </section>
+</div>
+
+<!-- 加載模式 Modal -->
+<div id="loading-modal" class="modal">
+    <div class="modal-content">
+        <div class="spinner"></div>
+        <h3>正在下載模型...</h3>
+        <p id="modal-message" style="font-size:0.9rem; color:#666;">請稍候，這可能需要 1-2 分鐘</p>
+        <div class="progress-bar"><div class="progress-fill" id="modal-progress-fill"></div></div>
+        <p id="modal-percentage" style="font-size:0.8rem; color:#999;">0%</p>
+    </div>
 </div>
 
 <script>
@@ -415,119 +480,230 @@
         { id: 62, code: "160102000367", name: "RAK DUNES可疊式咖啡杯", price: 115, type: "杯子" }
     ];
 
-    // DOM 綁定
+    // ======================== 全域變數 ========================
     let session = null;
     let stream = null;
     let scannedItems = [];
     let total = 0;
     let isModelReady = false;
-    let currentDetections = [];       // AI 檢測結果暫存
+    let currentDetections = [];
     let detectionActive = false;
 
-    // 輔助函數: 找尋最相似器皿 (透過名稱關鍵字比對)
+    // ======================== 模型下載功能（改進版） ========================
+    async function downloadModelFromURL() {
+        const modelURL = 'https://github.com/ultralytics/assets/releases/download/v8.1.0/yolov8s.onnx';
+        const loadingModal = document.getElementById('loading-modal');
+        const modalProgressFill = document.getElementById('modal-progress-fill');
+        const modalPercentage = document.getElementById('modal-percentage');
+        const uploadStatus = document.getElementById('upload-status');
+        const progressFill = document.getElementById('progress-fill');
+        const modelStatus = document.getElementById('model-status');
+
+        try {
+            loadingModal.classList.add('active');
+            uploadStatus.innerText = '正在連接下載伺服器...';
+            
+            const response = await fetch(modelURL);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            
+            const contentLength = response.headers.get('content-length');
+            if (!contentLength) throw new Error('無法取得檔案大小');
+            
+            const total = parseInt(contentLength, 10);
+            let loaded = 0;
+            const reader = response.body.getReader();
+            const chunks = [];
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                loaded += value.length;
+                
+                const percent = Math.round((loaded / total) * 100);
+                modalProgressFill.style.width = percent + '%';
+                modalPercentage.innerText = percent + '%';
+                uploadStatus.innerText = `下載中... ${percent}%`;
+                progressFill.style.width = percent + '%';
+            }
+
+            const buffer = new Uint8Array(loaded);
+            let position = 0;
+            for (const chunk of chunks) {
+                buffer.set(chunk, position);
+                position += chunk.length;
+            }
+
+            loadingModal.classList.remove('active');
+            uploadStatus.innerText = '正在載入模型...';
+            progressFill.style.width = '60%';
+            modelStatus.innerText = '⏳ 正在初始化 ONNX 運行環境...';
+
+            session = await ort.InferenceSession.create(buffer);
+            isModelReady = true;
+            progressFill.style.width = '100%';
+            
+            modelStatus.innerText = '✅ 模型已成功載入，可開始 AI 辨識';
+            modelStatus.className = 'model-status ready';
+            document.getElementById('capture-btn').disabled = false;
+            uploadStatus.innerText = '✓ 模型載入完成！點擊「AI 辨識」開始';
+        } catch (err) {
+            loadingModal.classList.remove('active');
+            modelStatus.innerText = '❌ 模型下載失敗';
+            modelStatus.className = 'model-status error';
+            uploadStatus.innerText = `錯誤: ${err.message}。請嘗試手動上傳模型。`;
+            console.error('下載錯誤:', err);
+        }
+    }
+
+    // ======================== 手動上傳模型 ========================
+    document.getElementById('model-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const modelStatus = document.getElementById('model-status');
+        const progressFill = document.getElementById('progress-fill');
+        const uploadStatus = document.getElementById('upload-status');
+
+        modelStatus.innerText = '⏳ 載入模型...';
+        progressFill.style.width = '20%';
+        
+        try {
+            const buffer = await file.arrayBuffer();
+            progressFill.style.width = '50%';
+            session = await ort.InferenceSession.create(buffer);
+            isModelReady = true;
+            progressFill.style.width = '100%';
+            
+            modelStatus.innerText = '✅ 模型已載入，可 AI 辨識';
+            modelStatus.className = 'model-status ready';
+            document.getElementById('capture-btn').disabled = false;
+            uploadStatus.innerText = '✓ 模型載入成功，點擊「AI 辨識」';
+        } catch (err) {
+            modelStatus.innerText = '❌ 模型載入失敗';
+            modelStatus.className = 'model-status error';
+            uploadStatus.innerText = `錯誤: ${err.message}`;
+            console.error('模型載入錯誤:', err);
+        }
+    });
+
+    // ======================== 自動下載按鈕 ========================
+    document.getElementById('download-model-btn').addEventListener('click', downloadModelFromURL);
+
+    // ======================== 輔助函數 ========================
     function findBestMatchItem(detectedClassName, confidence) {
-        // 將類別名稱轉小寫比對資料庫品名關鍵字 (提高泛化)
         const className = detectedClassName.toLowerCase();
         let bestItem = null;
         let maxScore = 0;
+        
         for (let item of itemsDatabase) {
             let itemName = item.name.toLowerCase();
             let score = 0;
-            if (itemName.includes(className) || className.includes(item.type.toLowerCase())) score += 0.6;
-            // 匹配相同 type 再加權
-            if (item.type.toLowerCase().includes(className.substring(0,3))) score += 0.3;
+            
+            if (itemName.includes(className) || className.includes(item.type.toLowerCase())) 
+                score += 0.6;
+            if (item.type.toLowerCase().includes(className.substring(0, 3))) 
+                score += 0.3;
+            
             if (score > maxScore) {
                 maxScore = score;
                 bestItem = item;
             }
         }
-        // 若無匹配則隨機取同類別最先的 (避免崩潰)
-        if (!bestItem && itemsDatabase.length) bestItem = itemsDatabase[0];
+        
         return bestItem || itemsDatabase[0];
     }
 
-    // ------------------- 真正 ONNX 推理增強辨識 (模擬完善範例但保留實際預處理骨架) ------------------
+    // ======================== ONNX 推理 ========================
     async function runInferenceFromVideo() {
         if (!session || !stream) {
-            uploadStatus.innerText = "❌ 請先開啟相機並載入模型";
+            document.getElementById('upload-status').innerText = '❌ 請先開啟相機並載入模型';
             return [];
         }
-        const video = cameraView;
+        
+        const video = document.getElementById('camera-view');
         if (video.readyState < 2) {
-            uploadStatus.innerText = "⏳ 相機就緒中...";
+            document.getElementById('upload-status').innerText = '⏳ 相機就緒中...';
             return [];
         }
-        // 取得畫面 Canvas 做預處理
-        const offCanvas = document.createElement('canvas');
-        const ctx = offCanvas.getContext('2d');
-        const imgWidth = video.videoWidth;
-        const imgHeight = video.videoHeight;
-        if (imgWidth === 0) return [];
-        offCanvas.width = 640;
-        offCanvas.height = 640;
-        ctx.drawImage(video, 0, 0, offCanvas.width, offCanvas.height);
-        const imageData = ctx.getImageData(0, 0, 640, 640);
-        // 轉成 float32 tensor [1,3,640,640] 標準YOLO格式
-        const data = imageData.data;
-        const inputTensor = new Float32Array(1 * 3 * 640 * 640);
-        for (let i = 0; i < 640 * 640; i++) {
-            const r = data[i*4] / 255.0;
-            const g = data[i*4+1] / 255.0;
-            const b = data[i*4+2] / 255.0;
-            inputTensor[i] = r;            // R
-            inputTensor[640*640 + i] = g;   // G
-            inputTensor[2*640*640 + i] = b; // B
-        }
-        const tensor = new ort.Tensor('float32', inputTensor, [1, 3, 640, 640]);
+
         try {
+            const offCanvas = document.createElement('canvas');
+            const ctx = offCanvas.getContext('2d');
+            const imgWidth = video.videoWidth;
+            const imgHeight = video.videoHeight;
+            
+            if (imgWidth === 0) return [];
+            
+            offCanvas.width = 640;
+            offCanvas.height = 640;
+            ctx.drawImage(video, 0, 0, offCanvas.width, offCanvas.height);
+            
+            const imageData = ctx.getImageData(0, 0, 640, 640);
+            const data = imageData.data;
+            const inputTensor = new Float32Array(1 * 3 * 640 * 640);
+            
+            for (let i = 0; i < 640 * 640; i++) {
+                const r = data[i * 4] / 255.0;
+                const g = data[i * 4 + 1] / 255.0;
+                const b = data[i * 4 + 2] / 255.0;
+                inputTensor[i] = r;
+                inputTensor[640 * 640 + i] = g;
+                inputTensor[2 * 640 * 640 + i] = b;
+            }
+            
+            const tensor = new ort.Tensor('float32', inputTensor, [1, 3, 640, 640]);
             const feeds = { images: tensor };
             const results = await session.run(feeds);
-            // YOLOv8 輸出通常為 [1,84,8400] 或 [1,84,8400]，我們簡化解析前五大框並繪製
-            const output = results.output0; // 假設節點名 output0
+            
+            const output = results.output0;
             const dims = output.dims;
             if (!dims) return [];
+            
             const numDetections = dims[2] || 8400;
-            const numClasses = 80; // COCO，但我們映射到器皿集合
+            const numClasses = 80;
             const dataArray = output.data;
             let detections = [];
-            // 簡單置信度篩選 (示範真實解析邏輯)
+            
             for (let i = 0; i < numDetections; i++) {
                 const base = i * (numClasses + 4);
                 const xc = dataArray[base] * 640;
-                const yc = dataArray[base+1] * 640;
-                const w = dataArray[base+2] * 640;
-                const h = dataArray[base+3] * 640;
+                const yc = dataArray[base + 1] * 640;
+                const w = dataArray[base + 2] * 640;
+                const h = dataArray[base + 3] * 640;
+                
                 let maxConf = 0;
                 let classId = 0;
-                for (let c=0; c<numClasses; c++) {
+                
+                for (let c = 0; c < numClasses; c++) {
                     const conf = dataArray[base + 4 + c];
                     if (conf > maxConf) {
                         maxConf = conf;
                         classId = c;
                     }
                 }
+                
                 if (maxConf > 0.45) {
-                    const x1 = Math.max(0, xc - w/2);
-                    const y1 = Math.max(0, yc - h/2);
-                    const x2 = Math.min(640, xc + w/2);
-                    const y2 = Math.min(640, yc + h/2);
+                    const x1 = Math.max(0, xc - w / 2);
+                    const y1 = Math.max(0, yc - h / 2);
+                    const x2 = Math.min(640, xc + w / 2);
+                    const y2 = Math.min(640, yc + h / 2);
                     detections.push({ classId, confidence: maxConf, bbox: [x1, y1, x2, y2] });
                 }
             }
-            detections.sort((a,b) => b.confidence - a.confidence);
-            // 最多返回5個顯著目標
+            
+            detections.sort((a, b) => b.confidence - a.confidence);
             const topDetections = detections.slice(0, 5);
             const recognizedItems = [];
+            
             for (let det of topDetections) {
-                // 將類別 id 映射成常見餐具關鍵字 (coco類別 -> 碗盤杯刀叉)
-                let className = "餐具";
-                if (det.classId === 45) className = "碗";
-                else if (det.classId === 47) className = "杯子";
-                else if (det.classId === 51) className = "盤子";
-                else if (det.classId === 52) className = "碟子";
-                else if (det.classId === 53) className = "器具";
-                else if (det.classId === 54) className = "餐具";
-                // 找最佳庫存匹配
+                let className = '餐具';
+                if (det.classId === 45) className = '碗';
+                else if (det.classId === 47) className = '杯子';
+                else if (det.classId === 51) className = '盤子';
+                else if (det.classId === 52) className = '碟子';
+                else if (det.classId === 53) className = '器具';
+                
                 const matchedItem = findBestMatchItem(className, det.confidence);
                 if (matchedItem) {
                     recognizedItems.push({
@@ -538,116 +714,189 @@
                     });
                 }
             }
-            // 去重複 (根據品名去重)
+            
             const unique = [];
             const nameSet = new Set();
-            for(let item of recognizedItems) {
-                if(!nameSet.has(item.name)) {
+            for (let item of recognizedItems) {
+                if (!nameSet.has(item.name)) {
                     nameSet.add(item.name);
                     unique.push(item);
                 }
             }
             return unique;
-        } catch(e) {
-            console.error("推理錯誤", e);
-            uploadStatus.innerText = `推理失敗: ${e.message}`;
+        } catch (e) {
+            console.error('推理錯誤', e);
+            document.getElementById('upload-status').innerText = `推理失敗: ${e.message}`;
             return [];
         }
     }
 
-    // 更新畫面的邊框顯示
+    // ======================== 繪製邊框 ========================
     function drawBoundingBoxes(detections) {
-        const videoElement = cameraView;
-        const overlayCanvas = canvasOverlay;
+        const videoElement = document.getElementById('camera-view');
+        const overlayCanvas = document.getElementById('canvas-overlay');
         overlayCanvas.width = videoElement.videoWidth;
         overlayCanvas.height = videoElement.videoHeight;
         const ctx = overlayCanvas.getContext('2d');
         ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        
         if (!detections) return;
+        
         for (let det of detections) {
             if (det.bbox && det.selected !== false) {
-                const [x1,y1,x2,y2] = det.bbox;
+                const [x1, y1, x2, y2] = det.bbox;
                 const scaleX = overlayCanvas.width / 640;
                 const scaleY = overlayCanvas.height / 640;
-                ctx.strokeStyle = "#2c5e3a";
+                ctx.strokeStyle = '#2c5e3a';
                 ctx.lineWidth = 3;
-                ctx.strokeRect(x1*scaleX, y1*scaleY, (x2-x1)*scaleX, (y2-y1)*scaleY);
-                ctx.fillStyle = "#2c5e3a";
-                ctx.font = "bold 16px 'Segoe UI'";
-                ctx.fillText(`${det.name} ${Math.round(det.confidence*100)}%`, x1*scaleX+4, y1*scaleY+20);
+                ctx.strokeRect(x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY);
+                ctx.fillStyle = '#2c5e3a';
+                ctx.font = 'bold 16px "Segoe UI"';
+                ctx.fillText(`${det.name} ${Math.round(det.confidence * 100)}%`, x1 * scaleX + 4, y1 * scaleY + 20);
             }
         }
     }
 
-    // AI 檢測主流程 (真實推理)
+    // ======================== 執行檢測 ========================
     async function performDetection() {
         if (!isModelReady || !session) {
-            uploadStatus.innerText = "模型尚未載入，請先上傳 .onnx";
+            document.getElementById('upload-status').innerText = '模型尚未載入，請先上傳 .onnx';
             return;
         }
         if (!stream) {
-            uploadStatus.innerText = "請先開啟相機";
+            document.getElementById('upload-status').innerText = '請先開啟相機';
             return;
         }
+        
+        const captureBtn = document.getElementById('capture-btn');
         captureBtn.disabled = true;
-        uploadStatus.innerText = "🤖 AI 辨識中，請保持穩定...";
+        document.getElementById('upload-status').innerText = '🤖 AI 辨識中，請保持穩定...';
+        
         const detectedItems = await runInferenceFromVideo();
+        
         if (!detectedItems.length) {
-            uploadStatus.innerText = "未偵測到明確器皿，請調整角度或光線";
+            document.getElementById('upload-status').innerText = '未偵測到明確器皿，請調整角度或光線';
             captureBtn.disabled = false;
             return;
         }
+        
         currentDetections = detectedItems;
         drawBoundingBoxes(currentDetections);
         showDetectionResults();
         captureBtn.disabled = false;
-        uploadStatus.innerText = `✅ 偵測到 ${currentDetections.length} 件器皿，請確認`;
+        document.getElementById('upload-status').innerText = `✅ 偵測到 ${currentDetections.length} 件器皿，請確認`;
     }
 
     function showDetectionResults() {
+        const detectionList = document.getElementById('detection-list');
         detectionList.innerHTML = '';
         currentDetections.forEach((det, idx) => {
             const div = document.createElement('div');
             div.className = `detected-item ${det.selected ? 'selected' : ''}`;
             div.innerHTML = `
                 <div style="display:flex; justify-content:space-between;">
-                    <div><strong>${det.name}</strong><br><span style="font-size:0.7rem;">信心: ${(det.confidence*100).toFixed(0)}%</span></div>
+                    <div><strong>${det.name}</strong><br><span style="font-size:0.7rem;">信心: ${(det.confidence * 100).toFixed(0)}%</span></div>
                     <div><span style="color:#b45309;">NT$ ${det.price}</span><br>
-                    <label><input type="checkbox" ${det.selected ? 'checked':''} data-idx="${idx}" class="det-checkbox"> 加入盤點</label></div>
+                    <label><input type="checkbox" ${det.selected ? 'checked' : ''} data-idx="${idx}" class="det-checkbox"> 加入盤點</label></div>
                 </div>
             `;
             detectionList.appendChild(div);
         });
+        
         document.querySelectorAll('.det-checkbox').forEach(cb => {
             cb.addEventListener('change', (e) => {
                 const idx = parseInt(e.target.dataset.idx);
                 if (!isNaN(idx)) currentDetections[idx].selected = e.target.checked;
             });
         });
-        detectionResults.classList.add('active');
+        
+        document.getElementById('detection-results').classList.add('active');
     }
 
     function confirmSelected() {
         const toAdd = currentDetections.filter(d => d.selected);
-        for(let item of toAdd) {
+        for (let item of toAdd) {
             scannedItems.push({ ...item, timestamp: new Date(), method: 'AI辨識' });
             total += item.price;
         }
         updateDisplay();
-        detectionResults.classList.remove('active');
+        document.getElementById('detection-results').classList.remove('active');
         drawBoundingBoxes([]);
-        uploadStatus.innerText = `✓ 已加入 ${toAdd.length} 個器皿`;
+        document.getElementById('upload-status').innerText = `✓ 已加入 ${toAdd.length} 個器皿`;
         currentDetections = [];
     }
 
-    function clearAllItems() { if(scannedItems.length && confirm('清除所有盤點項目？')) { scannedItems = []; total=0; updateDisplay(); } }
-    function removeItem(idx) { const removed=scannedItems[idx]; total-=removed.price; scannedItems.splice(idx,1); updateDisplay(); }
+    // ======================== 手動盤點 ========================
+    function showManualSection() {
+        const manualDiv = document.getElementById('manual-section');
+        manualDiv.style.display = manualDiv.style.display === 'block' ? 'none' : 'block';
+        
+        if (!document.getElementById('category-tabs').children.length) {
+            const types = [...new Set(itemsDatabase.map(i => i.type))];
+            const categoryTabs = document.getElementById('category-tabs');
+            
+            types.forEach((t, idx) => {
+                const btn = document.createElement('button');
+                btn.innerText = t;
+                btn.className = `category-tab ${idx === 0 ? 'active' : ''}`;
+                btn.onclick = () => {
+                    document.querySelectorAll('.category-tab').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    displayItemsByType(t);
+                };
+                categoryTabs.appendChild(btn);
+            });
+            
+            if (types.length) displayItemsByType(types[0]);
+        }
+    }
+
+    function displayItemsByType(type) {
+        const filtered = itemsDatabase.filter(i => i.type === type);
+        const itemsGrid = document.getElementById('items-grid');
+        itemsGrid.innerHTML = filtered.map(item => `
+            <div class="item-card" onclick="addToInventoryManual(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                <div><strong>${item.name}</strong></div>
+                <div style="font-size:0.8rem; color:#666; margin-top:4px;">NT$ ${item.price}</div>
+            </div>
+        `).join('');
+    }
+
+    window.addToInventoryManual = (item) => {
+        scannedItems.push({ ...item, timestamp: new Date(), method: '手動' });
+        total += item.price;
+        updateDisplay();
+        document.getElementById('upload-status').innerHTML = `✅ 手動添加 ${item.name}`;
+        setTimeout(() => {
+            if (!isModelReady) document.getElementById('upload-status').innerHTML = '';
+        }, 1500);
+    };
+
+    // ======================== 更新顯示 ========================
+    function clearAllItems() {
+        if (scannedItems.length && confirm('清除所有盤點項目？')) {
+            scannedItems = [];
+            total = 0;
+            updateDisplay();
+        }
+    }
+
+    function removeItem(idx) {
+        const removed = scannedItems[idx];
+        total -= removed.price;
+        scannedItems.splice(idx, 1);
+        updateDisplay();
+    }
+
     function updateDisplay() {
         document.getElementById('total-amount').innerText = `NT$ ${Math.round(total)}`;
         document.getElementById('items-count').innerText = scannedItems.length;
-        if(scannedItems.length===0) historyList.innerHTML = '<div style="text-align:center; padding:30px;">🍽️ 暫無項目</div>';
-        else {
-            historyList.innerHTML = scannedItems.map((item,idx)=>`
+        const historyList = document.getElementById('history-list');
+        
+        if (scannedItems.length === 0) {
+            historyList.innerHTML = '<div style="text-align:center; padding:30px;">🍽️ 暫無項目</div>';
+        } else {
+            historyList.innerHTML = scannedItems.map((item, idx) => `
                 <div class="history-item">
                     <div><strong>${item.name}</strong><br><span style="font-size:0.7rem;">${item.method} ${new Date(item.timestamp).toLocaleTimeString()}</span></div>
                     <div>NT$ ${item.price} <button class="history-remove" onclick="removeItem(${idx})" style="margin-left:8px;">✖</button></div>
@@ -655,80 +904,71 @@
             `).join('');
         }
     }
-    function initManual() { /* 手動模式顯示分類 */ }
-    // 手動盤點互動
-    function showManualSection() {
-        const manualDiv = document.getElementById('manual-section');
-        manualDiv.style.display = manualDiv.style.display === 'block' ? 'none' : 'block';
-        if (!categoryTabs.children.length) {
-            const types = [...new Set(itemsDatabase.map(i=>i.type))];
-            types.forEach(t => { let btn=document.createElement('button'); btn.innerText=t; btn.className='category-tab'; btn.onclick=()=>{ document.querySelectorAll('.category-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); displayItemsByType(t); }; categoryTabs.appendChild(btn); });
-            if(types.length) displayItemsByType(types[0]);
-        }
-    }
-    function displayItemsByType(type) {
-        const filtered = itemsDatabase.filter(i=>i.type===type);
-        itemsGrid.innerHTML = filtered.map(item=>`<div class="item-card" onclick='addToInventoryManual(${JSON.stringify(item).replace(/"/g, '&quot;')})'><div><strong>${item.name}</strong></div><div>NT$${item.price}</div><div style="font-size:0.7rem;">${item.code}</div></div>`).join('');
-    }
-    window.addToInventoryManual = (item)=>{
-        scannedItems.push({...item, timestamp: new Date(), method: '手動'});
-        total += item.price;
-        updateDisplay();
-        document.getElementById('upload-status').innerHTML = `✅ 手動添加 ${item.name}`;
-        setTimeout(()=>{ if(!isModelReady) document.getElementById('upload-status').innerHTML='';},1500);
-    };
+
     window.removeItem = removeItem;
     window.clearAllItems = clearAllItems;
 
-    // 模型上傳事件
-    document.getElementById('model-file').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if(!file) return;
-        modelStatus.innerText = "⏳ 載入模型...";
-        progressFill.style.width = '20%';
-        try {
-            const buffer = await file.arrayBuffer();
-            progressFill.style.width = '50%';
-            session = await ort.InferenceSession.create(buffer);
-            isModelReady = true;
-            progressFill.style.width = '100%';
-            modelStatus.innerText = "✅ 模型已載入，可AI辨識";
-            modelStatus.className = "model-status ready";
-            document.getElementById('capture-btn').disabled = false;
-            uploadStatus.innerText = "模型載入成功，點擊「AI辨識」";
-        } catch(err) {
-            modelStatus.innerText = "❌ 模型載入失敗";
-            modelStatus.className = "model-status error";
-            uploadStatus.innerText = err.message;
-        }
-    });
-    // 相機控制
+    // ======================== 相機控制 ========================
     const startCam = document.getElementById('start-camera');
     const stopBtn = document.getElementById('stop-camera-btn');
+    const cameraView = document.getElementById('camera-view');
+    const canvasOverlay = document.getElementById('canvas-overlay');
+
     startCam.onclick = async () => {
         try {
-            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } } 
+            });
             cameraView.srcObject = stream;
             await cameraView.play();
             startCam.style.display = 'none';
             stopBtn.style.display = 'block';
-            uploadStatus.innerText = "相機就緒";
+            document.getElementById('upload-status').innerText = '相機就緒';
             canvasOverlay.width = cameraView.videoWidth;
             canvasOverlay.height = cameraView.videoHeight;
-        } catch(err){ alert('無法開啟相機'); }
+        } catch (err) {
+            alert('無法開啟相機: ' + err.message);
+            console.error('相機錯誤:', err);
+        }
     };
-    stopBtn.onclick = () => { if(stream) stream.getTracks().forEach(t=>t.stop()); cameraView.srcObject=null; startCam.style.display='block'; stopBtn.style.display='none'; drawBoundingBoxes([]); };
+
+    stopBtn.onclick = () => {
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        cameraView.srcObject = null;
+        startCam.style.display = 'block';
+        stopBtn.style.display = 'none';
+        drawBoundingBoxes([]);
+    };
+
+    // ======================== 事件監聽 ========================
     document.getElementById('capture-btn').onclick = performDetection;
     document.getElementById('confirm-all-btn').onclick = confirmSelected;
-    document.getElementById('cancel-detection-btn').onclick = () => { detectionResults.classList.remove('active'); drawBoundingBoxes([]); currentDetections=[]; };
-    document.getElementById('manual-btn').onclick = showManualSection;
-    document.getElementById('save-btn').onclick = () => {
-        if(!scannedItems.length) return alert('無盤點紀錄');
-        let csv="料件編號,品名,單價,方式,時間\n"+scannedItems.map(i=>`"${i.code}","${i.name}",${i.price},"${i.method}","${new Date(i.timestamp).toLocaleString()}"`).join('\n');
-        const blob=new Blob(["\uFEFF"+csv],{type:"text/csv"});
-        const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`器皿盤點_${new Date().toISOString().slice(0,19)}.csv`; a.click();
+    document.getElementById('cancel-detection-btn').onclick = () => {
+        document.getElementById('detection-results').classList.remove('active');
+        drawBoundingBoxes([]);
+        currentDetections = [];
     };
+    document.getElementById('manual-btn').onclick = showManualSection;
+
+    // 匯出 CSV
+    document.getElementById('save-btn').onclick = () => {
+        if (!scannedItems.length) return alert('無盤點紀錄');
+        
+        let csv = '料件編號,品名,單價,方式,時間\n' + scannedItems.map(i => 
+            `"${i.code}","${i.name}",${i.price},"${i.method}","${new Date(i.timestamp).toLocaleString()}"`
+        ).join('\n');
+        
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `器皿盤點_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+    };
+
+    // 初始化
     updateDisplay();
+    document.getElementById('model-status').innerText = '📁 請選擇 「自動下載模型」 或 「手動上傳模型」';
+    document.getElementById('model-status').className = 'model-status loading';
 </script>
 </body>
 </html>
