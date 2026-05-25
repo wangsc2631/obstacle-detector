@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<title>守護眼 v4</title>
+<script>
+// 動態載入 TF.js — 若 jsdelivr 失敗自動換 unpkg
+window._tfLoaded = false;
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.2.0/dist/tf.min.js"
+  onerror="loadTFfallback()"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"
+  onerror="loadCOCOfallback()"></script>
+<script>
+function loadTFfallback() {
+  console.warn('jsdelivr TF.js 失敗，改用 unpkg');
+  const s = document.createElement('script');
+  s.src = 'https://unpkg.com/@tensorflow/tfjs@4.2.0/dist/tf.min.js';
+  document.head.appendChild(s);
+}
+function loadCOCOfallback() {
+  console.warn('jsdelivr COCO 失敗，改用 unpkg');
+  const s = document.createElement('script');
+  s.src = 'https://unpkg.com/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js';
+  document.head.appendChild(s);
+}
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+:root{
+  --bg:#0a0f1e;--sf:#121929;--sf2:#1a2540;
+  --ac:#00e5ff;--ac3:#a8ff3e;--dg:#ff4757;
+  --tx:#e8f0fe;--dim:#7a8ba8;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;}
+
+/* ── 載入 ── */
+#LS{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;z-index:999;padding:20px;}
+.l-ico{font-size:62px;margin-bottom:10px;}
+.l-ttl{font-size:25px;font-weight:900;color:var(--ac);margin-bottom:4px;}
+.l-msg{color:var(--dim);font-size:13px;margin-bottom:22px;text-align:center;line-height:1.5;}
+.l-bar{width:210px;height:5px;background:var(--sf2);border-radius:3px;overflow:hidden;}
+.l-fill{height:100%;background:linear-gradient(90deg,var(--ac),var(--ac3));width:0;transition:width .4s;}
+.l-err{color:var(--dg);font-size:12px;margin-top:12px;display:none;text-align:center;line-height:1.6;}
+
+/* ── 模式選擇 ── */
+#MS{display:none;flex-direction:column;align-items:center;justify-content:center;
+  min-height:100vh;padding:24px 18px;
+  background:radial-gradient(ellipse at top,#1a2540 0%,#0a0f1e 70%);}
+.ms-ico{font-size:52px;margin-bottom:8px;}
+.ms-h1{font-size:28px;font-weight:900;color:var(--ac);margin-bottom:4px;}
+.ms-p{color:var(--dim);font-size:13px;margin-bottom:28px;text-align:center;}
+.mmode{width:100%;max-width:340px;padding:20px 18px;border:none;border-radius:18px;
+  font-size:19px;font-weight:700;cursor:pointer;display:flex;align-items:center;
+  gap:13px;margin-bottom:13px;color:white;transition:transform .12s;text-align:left;}
+.mmode:active{transform:scale(.96);}
+.mmode small{display:block;font-size:11px;font-weight:400;opacity:.82;margin-top:3px;}
+.mm-b{background:linear-gradient(135deg,#0066ff,#003cbb);box-shadow:0 6px 24px rgba(0,102,255,.35);}
+.mm-d{background:linear-gradient(135deg,#e040fb,#9c27b0);box-shadow:0 6px 24px rgba(224,64,251,.35);}
+/* Gemini key box */
+.gem-wrap{width:100%;max-width:340px;background:var(--sf);border-radius:16px;
+  padding:14px;border:1px solid rgba(0,229,255,.18);margin-top:8px;}
+.gem-wrap h4{font-size:12px;color:var(--dim);margin-bottom:9px;line-height:1.5;}
+.gem-row{display:flex;gap:8px;}
+.gem-inp{flex:1;background:var(--sf2);border:1px solid rgba(255,255,255,.1);border-radius:10px;
+  padding:9px 12px;color:var(--tx);font-size:13px;font-family:inherit;}
+.gem-inp:focus{outline:none;border-color:var(--ac);}
+.gem-btn{background:var(--ac);border:none;border-radius:10px;padding:9px 14px;
+  color:#000;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
+.gem-note{font-size:10px;color:var(--dim);margin-top:7px;line-height:1.6;}
+.gem-note a{color:var(--ac);text-decoration:none;}
+
+/* ── 主介面 ── */
+#MA{display:none;flex-direction:column;height:100vh;overflow:hidden;}
+
+/* 相機區 */
+.cam-wrap{position:relative;width:100%;flex-shrink:0;background:#000;overflow:hidden;}
+#video{width:100%;height:56vw;max-height:295px;object-fit:cover;display:block;}
+
+/* 深度圖 canvas（黑=障礙 白=通行） */
+#depC{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;opacity:.52;}
+/* 辨識框 canvas */
+#boxC{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+
+/* 安全方向大箭頭 */
+#bigArrow{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
+  font-size:40px;pointer-events:none;opacity:0;transition:opacity .4s;
+  filter:drop-shadow(0 2px 8px rgba(168,255,62,.9));}
+
+/* 狀態列 */
+.sbar{position:absolute;bottom:0;left:0;right:0;
+  background:linear-gradient(transparent,rgba(0,0,0,.82));
+  padding:5px 10px;display:flex;justify-content:space-between;align-items:center;font-size:11px;}
+.rdot{width:7px;height:7px;border-radius:50%;background:#444;display:inline-block;margin-right:4px;}
+.rdot.on{background:var(--dg);animation:blink 1s infinite;}
+.chip{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;}
+.cb{background:rgba(0,102,255,.6);color:#aad4ff;}
+.cd{background:rgba(224,64,251,.6);color:#f0aaff;}
+.obs-info{font-size:10px;color:var(--ac3);}
+
+/* 語音框 */
+.vbox{margin:8px 10px 5px;background:var(--sf);border-radius:13px;
+  padding:10px 13px;display:flex;align-items:center;gap:9px;
+  border:1px solid rgba(0,229,255,.2);flex-shrink:0;}
+.vi{font-size:22px;flex-shrink:0;}
+.vi.sp{animation:pulse .6s infinite;}
+.vt{font-size:14px;line-height:1.4;flex:1;}
+
+/* 對話歷史 */
+.chat-hist{margin:0 10px 5px;background:var(--sf);border-radius:13px;
+  padding:8px 10px;flex-shrink:0;display:none;max-height:110px;overflow-y:auto;}
+.ch-msg{font-size:12px;line-height:1.5;padding:4px 8px;border-radius:8px;margin-bottom:3px;}
+.ch-msg.u{background:rgba(0,102,255,.2);text-align:right;}
+.ch-msg.a{background:rgba(0,229,255,.07);}
+
+/* 可滾動區 */
+.ca{flex:1;overflow-y:auto;padding:0 10px 8px;-webkit-overflow-scrolling:touch;}
+
+/* ── 盲人 UI ── */
+/* 深度面板 */
+.dp{background:var(--sf);border-radius:14px;margin-bottom:8px;overflow:hidden;
+  border:1px solid rgba(168,255,62,.15);}
+.dp-hd{background:rgba(168,255,62,.07);padding:9px 13px;display:flex;align-items:center;
+  justify-content:space-between;border-bottom:1px solid rgba(168,255,62,.1);}
+.dp-hd h3{font-size:13px;font-weight:700;color:var(--ac3);}
+.tog-btn{background:rgba(168,255,62,.15);border:none;color:var(--ac3);padding:3px 10px;
+  border-radius:8px;font-size:11px;cursor:pointer;}
+.dp-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:10px 10px 6px;}
+.dc{background:var(--sf2);border-radius:11px;padding:9px 5px;text-align:center;}
+.dc.mid{border:1px solid rgba(0,229,255,.2);}
+.dc-dir{font-size:10px;color:var(--dim);margin-bottom:4px;}
+/* 障礙進度條 */
+.dc-prog{height:5px;border-radius:3px;margin-bottom:5px;transition:all .35s;}
+.dc-lbl{font-size:12px;font-weight:700;}
+.dc-itm{font-size:10px;color:var(--dim);margin-top:3px;min-height:13px;}
+/* 安全通道行 */
+.path-row{padding:9px 13px;display:flex;align-items:center;gap:10px;border-top:1px solid rgba(255,255,255,.06);}
+.pr-arr{font-size:26px;}
+.pr-tx{flex:1;}
+.pr-lbl{font-size:10px;color:var(--dim);}
+.pr-val{font-size:14px;font-weight:700;color:var(--ac3);}
+
+/* 警告條 */
+.wbar{background:rgba(255,71,87,.14);border:1px solid rgba(255,71,87,.5);border-radius:12px;
+  padding:9px 13px;margin-bottom:8px;display:none;align-items:center;gap:8px;}
+.wbar.on{display:flex;}
+.wtx{font-size:13px;font-weight:700;color:var(--dg);}
+
+/* 資訊列 */
+.ir{background:var(--sf);border-radius:12px;padding:9px 13px;margin-bottom:7px;
+  display:flex;align-items:center;gap:10px;}
+.ir-ico{font-size:18px;flex-shrink:0;}
+.ir-lbl{font-size:10px;color:var(--dim);}
+.ir-v{font-size:13px;font-weight:700;}
+.g{color:var(--ac3);}.y{color:#ffd700;}.c{color:var(--ac);}
+
+/* 按鈕格 */
+.bg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+.ab{padding:14px 8px;border:none;border-radius:13px;font-size:14px;font-weight:700;
+  color:white;cursor:pointer;display:flex;flex-direction:column;align-items:center;
+  gap:4px;min-height:76px;transition:transform .12s;}
+.ab:active{transform:scale(.94);}
+.ab .bi{font-size:23px;}
+.bgo{background:linear-gradient(135deg,#00c853,#00a040);box-shadow:0 4px 14px rgba(0,200,83,.35);}
+.bst{background:linear-gradient(135deg,#ff4757,#c0392b);}
+.bnv{background:linear-gradient(135deg,#0066ff,#003cbb);box-shadow:0 4px 14px rgba(0,102,255,.35);}
+.bsk{background:linear-gradient(135deg,#9c27b0,#e040fb);box-shadow:0 4px 14px rgba(156,39,176,.35);}
+.brp{background:linear-gradient(135deg,#5c6bc0,#3949ab);}
+.bss{background:linear-gradient(135deg,#ff6b35,#e64a19);}
+
+/* ── 失智 UI ── */
+.fsect{background:var(--sf);border-radius:14px;margin-bottom:8px;overflow:hidden;
+  border:1px solid rgba(224,64,251,.2);}
+.fhd{background:rgba(224,64,251,.1);padding:11px 13px;display:flex;align-items:center;
+  justify-content:space-between;}
+.fhd h3{font-size:14px;font-weight:700;}
+.fadd{background:rgba(224,64,251,.25);border:none;color:white;padding:5px 11px;
+  border-radius:9px;font-size:12px;cursor:pointer;}
+.fgrid{padding:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.fc{background:var(--sf2);border-radius:11px;padding:9px 6px;text-align:center;
+  border:2px solid transparent;cursor:pointer;}
+.fp{width:54px;height:54px;border-radius:50%;margin:0 auto 5px;overflow:hidden;
+  background:var(--sf);display:flex;align-items:center;justify-content:center;
+  font-size:24px;border:2px solid rgba(255,255,255,.1);}
+.fp img{width:100%;height:100%;object-fit:cover;}
+.fn2{font-size:12px;font-weight:700;}
+.fr2{font-size:10px;color:var(--dim);margin-top:1px;}
+.ac2{border:2px dashed rgba(255,255,255,.12);}
+.rsect{background:var(--sf);border-radius:13px;margin-bottom:8px;padding:11px 13px;}
+.rsect h3{font-size:11px;color:var(--dim);margin-bottom:7px;}
+.irow{display:flex;align-items:center;gap:8px;background:var(--sf2);border-radius:9px;
+  padding:8px 11px;margin-bottom:5px;cursor:pointer;}
+.irow:last-child{margin-bottom:0;}
+.ie{font-size:17px;flex-shrink:0;}
+.in{flex:1;font-size:14px;font-weight:700;}
+.ip{font-size:10px;padding:2px 6px;border-radius:7px;font-weight:700;}
+.pl{background:rgba(0,102,255,.25);color:#88bbff;}
+.pc{background:rgba(0,229,255,.2);color:var(--ac);}
+.pr2{background:rgba(255,107,53,.25);color:#ffaa88;}
+.ipct{font-size:10px;color:var(--dim);}
+
+/* 底部列 */
+.bbar{display:flex;gap:6px;padding:8px 10px 18px;
+  background:rgba(10,15,30,.97);border-top:1px solid rgba(255,255,255,.06);flex-shrink:0;}
+.bb{flex:1;padding:10px 3px;border:none;border-radius:12px;color:white;
+  font-size:11px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;gap:2px;transition:transform .12s;}
+.bb:active{transform:scale(.93);}
+.bb .bico{font-size:18px;}
+.bb-mic{background:linear-gradient(135deg,#5c6bc0,#3949ab);}
+.bb-mic.on{background:linear-gradient(135deg,#00c853,#00a040);}
+.bb-ask{background:linear-gradient(135deg,#9c27b0,#e040fb);}
+.bb-loc{background:linear-gradient(135deg,#0066ff,#003cbb);}
+.bb-mute{background:linear-gradient(135deg,#ff6b35,#e64a19);}
+.bb-bk{background:var(--sf2);}
+
+/* Modal */
+#FM{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.85);
+  align-items:flex-end;justify-content:center;}
+#FM.open{display:flex;}
+.mbox{background:var(--sf);border-radius:22px 22px 0 0;width:100%;
+  max-width:480px;padding:22px 18px 40px;}
+.mbox h2{font-size:18px;font-weight:900;margin-bottom:4px;}
+.mbox p{color:var(--dim);font-size:12px;margin-bottom:14px;}
+.pp{width:86px;height:86px;border-radius:50%;background:var(--sf2);
+  border:2px dashed rgba(255,255,255,.2);display:flex;align-items:center;
+  justify-content:center;margin:0 auto 13px;cursor:pointer;overflow:hidden;font-size:30px;}
+.pp img{width:100%;height:100%;object-fit:cover;}
+.minp{width:100%;background:var(--sf2);border:1px solid rgba(255,255,255,.1);
+  border-radius:10px;padding:10px 12px;color:var(--tx);font-size:15px;
+  font-family:inherit;margin-bottom:11px;}
+.minp:focus{outline:none;border-color:#e040fb;}
+.mbtns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:6px;}
+.mc{background:var(--sf2);border:none;border-radius:11px;padding:12px;
+  color:var(--tx);font-size:15px;font-weight:700;cursor:pointer;}
+.ms2{background:linear-gradient(135deg,#e040fb,#9c27b0);border:none;border-radius:11px;
+  padding:12px;color:white;font-size:15px;font-weight:700;cursor:pointer;}
+#fi{display:none;}
+.sp80{height:80px;flex-shrink:0;}
+
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+@keyframes si{from{transform:translateY(6px);opacity:0}to{transform:translateY(0);opacity:1}}
+</style>
+</head>
+<body>
+
+<!-- 載入畫面 -->
+<div id="LS">
+  <div class="l-ico">👁️</div>
+  <div class="l-ttl">守護眼 v4</div>
+  <div class="l-msg" id="lMsg">正在初始化 AI 模型...</div>
+  <div class="l-bar"><div class="l-fill" id="lFill"></div></div>
+  <div class="l-err" id="lErr"></div>
+</div>
+
+<!-- 模式選擇 -->
+<div id="MS">
+  <div class="ms-ico">👁️</div>
+  <h1 class="ms-h1">守護眼</h1>
+  <p class="ms-p">智能視覺輔助 · 完全免費</p>
+
+  <button class="mmode mm-b" onclick="pick('blind')">
+    <span style="font-size:32px;">🦯</span>
+    <div>盲人輔助模式
+      <small>深度障礙圖 · 安全路徑箭頭 · 語音對話問AI</small>
+    </div>
+  </button>
+  <button class="mmode mm-d" onclick="pick('dementia')">
+    <span style="font-size:32px;">🌸</span>
+    <div>失智照護模式
+      <small>自動辨識播報 · 家人識別 · 連續監控</small>
+    </div>
+  </button>
+
+  <div class="gem-wrap">
+    <h4>🤖 Google Gemini API Key（免費，啟用AI對話辨識）</h4>
+    <div class="gem-row">
+      <input class="gem-inp" type="password" id="gkInp" placeholder="AIza...">
+      <button class="gem-btn" onclick="saveGK()">儲存</button>
+    </div>
+    <div class="gem-note">
+      免費申請：<a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a><br>
+      免費額度：每分鐘15次、每日1500次，完全免費無需信用卡
+    </div>
+  </div>
+</div>
+
+<!-- 主介面 -->
+<div id="MA">
+  <div class="cam-wrap">
+    <video id="video" autoplay playsinline muted webkit-playsinline></video>
+    <!-- 深度障礙圖（黑=障礙 白=可通行） -->
+    <canvas id="depC"></canvas>
+    <!-- 辨識框 -->
+    <canvas id="boxC"></canvas>
+    <!-- 安全方向箭頭 -->
+    <div id="bigArrow">⬆️</div>
+    <div class="sbar">
+      <div><span class="rdot" id="rdot"></span><span id="rTxt" style="font-size:11px;">待機</span></div>
+      <div class="chip" id="mChip">─</div>
+      <div class="obs-info" id="obsInfo">─</div>
+    </div>
+  </div>
+
+  <!-- 語音/訊息框 -->
+  <div class="vbox">
+    <div class="vi" id="vIco">🔊</div>
+    <div class="vt" id="vTxt">系統就緒</div>
+  </div>
+
+  <!-- 對話記錄 -->
+  <div class="chat-hist" id="chatHist"></div>
+
+  <!-- 可滾動區 -->
+  <div class="ca">
+
+    <!-- ★ 盲人 UI ★ -->
+    <div id="blindUI" style="display:none;">
+
+      <!-- 深度障礙分析面板 -->
+      <div class="dp">
+        <div class="dp-hd">
+          <h3>📡 深度障礙圖（黑=障礙 白=通行）</h3>
+          <button class="tog-btn" id="depTogBtn" onclick="togDepth()">疊加：開</button>
+        </div>
+        <div class="dp-grid">
+          <div class="dc">
+            <div class="dc-dir">◀ 左側</div>
+            <div class="dc-prog" id="barL"></div>
+            <div class="dc-lbl" id="lblL">—</div>
+            <div class="dc-itm" id="itmL"></div>
+          </div>
+          <div class="dc mid">
+            <div class="dc-dir">▲ 前方</div>
+            <div class="dc-prog" id="barC"></div>
+            <div class="dc-lbl" id="lblC">—</div>
+            <div class="dc-itm" id="itmC"></div>
+          </div>
+          <div class="dc">
+            <div class="dc-dir">右側 ▶</div>
+            <div class="dc-prog" id="barR"></div>
+            <div class="dc-lbl" id="lblR">—</div>
+            <div class="dc-itm" id="itmR"></div>
+          </div>
+        </div>
+        <div class="path-row">
+          <div class="pr-arr" id="pArr">⬆️</div>
+          <div class="pr-tx">
+            <div class="pr-lbl">建議安全方向</div>
+            <div class="pr-val" id="pVal">分析中...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 緊急警告 -->
+      <div class="wbar" id="wbar">
+        <span style="font-size:20px;animation:blink .5s infinite;">⚠️</span>
+        <span class="wtx" id="wTxt">前方有障礙！</span>
+      </div>
+
+      <!-- 導盲磚 -->
+      <div class="ir">
+        <span class="ir-ico">🟡</span>
+        <div><div class="ir-lbl">導盲磚偵測</div><div class="ir-v y" id="tact">偵測中...</div></div>
+      </div>
+
+      <!-- 人物追蹤 -->
+      <div class="ir">
+        <span class="ir-ico">🚶</span>
+        <div><div class="ir-lbl">前方人物跟隨</div><div class="ir-v g" id="pTrk">未偵測到人物</div></div>
+      </div>
+
+      <!-- AI描述列 -->
+      <div class="ir" id="aiRow" style="display:none;">
+        <span class="ir-ico">🤖</span>
+        <div><div class="ir-lbl">Gemini AI 場景描述</div><div class="ir-v c" id="aiDesc" style="font-size:12px;line-height:1.5;"></div></div>
+      </div>
+
+      <!-- 按鈕 -->
+      <div class="bg">
+        <button class="ab bgo" id="runBtn" onclick="togRun()">
+          <span class="bi" id="runIco">▶️</span><span id="runLbl">開始辨識</span>
+        </button>
+        <button class="ab bnv" id="navBtn" onclick="togNav()">
+          <span class="bi">🏠</span><span id="navLbl">導航回家</span>
+        </button>
+        <button class="ab brp" onclick="rep()">
+          <span class="bi">🔁</span><span>重複提示</span>
+        </button>
+        <button class="ab bss" onclick="sos()">
+          <span class="bi">🆘</span><span>緊急呼救</span>
+        </button>
+      </div>
+      <div class="sp80"></div>
+    </div><!-- /blindUI -->
+
+    <!-- ★ 失智 UI ★ -->
+    <div id="dementiaUI" style="display:none;">
+      <div class="fsect">
+        <div class="fhd">
+          <h3>👨‍👩‍👧 家人識別</h3>
+          <button class="fadd" onclick="openMod()">＋ 新增</button>
+        </div>
+        <div class="fgrid" id="famGrid"></div>
+      </div>
+      <div class="rsect">
+        <h3>🔍 辨識結果</h3>
+        <div id="itemList"><div class="irow"><span class="ie">⏳</span><span class="in">等待辨識...</span></div></div>
+      </div>
+      <div class="rsect" id="aiSect" style="display:none;">
+        <h3>🤖 AI 自動描述</h3>
+        <div id="aiDetail" style="font-size:13px;line-height:1.6;color:var(--ac3);"></div>
+      </div>
+      <div class="sp80"></div>
+    </div>
+
+  </div><!-- /ca -->
+
+  <!-- 底部列 -->
+  <div class="bbar">
+    <button class="bb bb-mic" id="micBtn" onclick="togVoice()">
+      <span class="bico">🎤</span>語音
+    </button>
+    <button class="bb bb-ask" id="askBtn" onclick="askAI()">
+      <span class="bico">💬</span>問AI
+    </button>
+    <button class="bb bb-loc" onclick="setHome()">
+      <span class="bico">📍</span>設定家
+    </button>
+    <button class="bb bb-mute" onclick="togMute()">
+      <span class="bico" id="muteIco">🔊</span>
+      <span id="muteLbl">語音</span>
+    </button>
+    <button class="bb bb-bk" onclick="goBack()">
+      <span class="bico">↩️</span>換模式
+    </button>
+  </div>
+</div>
+
+<!-- 家人 Modal -->
+<div id="FM">
+  <div class="mbox">
+    <h2>新增家人</h2>
+    <p>拍照讓系統學習識別這位家人</p>
+    <div class="pp" id="pp" onclick="document.getElementById('fi').click()">📷</div>
+    <input type="file" id="fi" accept="image/*" capture="environment" onchange="onPhoto(event)">
+    <input class="minp" type="text" id="fn" placeholder="稱呼（例：媽媽）">
+    <input class="minp" type="text" id="fr" placeholder="關係（例：女兒、看護）">
+    <div class="mbtns">
+      <button class="mc" onclick="closeMod()">取消</button>
+      <button class="ms2" onclick="saveFam()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   全域狀態
+============================================================ */
+const S = {
+  mode:null, model:null, stream:null,
+  running:false, muted:false, voiceOn:false, voiceRec:null,
+  homePos:null, navigating:false, watchId:null,
+  lastSpeak:0, cooldown:3000,
+  gemKey:'', family:[], tmpPhoto:null,
+  lastAI:0, aiGap:12000, gemBusy:false,      // Gemini 呼叫間隔
+  depShow:true,               // 深度圖疊加開關
+  personSeen:false,
+};
+
+/* ============================================================
+   初始化
+============================================================ */
+window.addEventListener('DOMContentLoaded', async () => {
+  S.gemKey  = localStorage.getItem('gemKey')  || '';
+  S.homePos = JSON.parse(localStorage.getItem('homePos') || 'null');
+  S.family  = JSON.parse(localStorage.getItem('family')  || '[]');
+  const ki = document.getElementById('gkInp');
+  if (ki) ki.value = S.gemKey;
+
+  prog(10, '等待 TensorFlow.js 載入...');
+  // 進度動畫（讓使用者知道不是卡住）
+  let fakeP = 10;
+  const fakeIv = setInterval(() => {
+    if (fakeP < 65) { fakeP += 2; prog(fakeP, fakeP < 35 ? '載入 TensorFlow.js...' : '載入 COCO 模型（請耐心等待）...'); }
+  }, 800);
+  try {
+    // 等待 tf + cocoSsd 全域變數就緒（最多 20 秒）
+    await waitFor(() => typeof tf !== 'undefined' && typeof cocoSsd !== 'undefined', 20000);
+    prog(35, '載入 COCO-SSD 模型（首次約 10~30 秒）...');
+    // 加 60 秒逾時保護
+    clearInterval(fakeIv);
+    S.model = await Promise.race([
+      cocoSsd.load(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('模型載入逾時，請確認網路後重新整理')), 60000))
+    ]);
+    prog(72, '啟動相機（請點允許）...');
+    const ok = await startCam();
+    if (!ok) {
+      showErr('相機啟動失敗\n請確認：\n① 使用 HTTPS 或 localhost\n② 已允許相機權限\n③ 重新整理後點「允許」');
+      return;
+    }
+    prog(100, '就緒！');
+    setTimeout(() => {
+      document.getElementById('LS').style.display = 'none';
+      document.getElementById('MS').style.display = 'flex';
+    }, 400);
+  } catch(e) {
+    clearInterval(fakeIv);
+    showErr('初始化失敗：' + e.message + '\n\n請確認網路連線後，點下方按鈕重試');
+    // 顯示重試按鈕
+    const btn = document.createElement('button');
+    btn.textContent = '🔄 重新載入';
+    btn.style.cssText = 'margin-top:16px;padding:12px 24px;background:#00e5ff;border:none;border-radius:12px;font-size:15px;font-weight:700;color:#000;cursor:pointer;';
+    btn.onclick = () => location.reload();
+    document.getElementById('LS').appendChild(btn);
+    console.error(e);
+  }
+});
+
+function prog(p, m) {
+  document.getElementById('lFill').style.width = p + '%';
+  document.getElementById('lMsg').textContent = m;
+}
+function showErr(m) {
+  const e = document.getElementById('lErr');
+  e.style.whiteSpace = 'pre-line';
+  e.textContent = m;
+  e.style.display = 'block';
+}
+// 等待條件函式（輪詢，最多 timeoutMs 毫秒）
+function waitFor(condFn, timeoutMs = 20000) {
+  return new Promise((res, rej) => {
+    if (condFn()) { res(); return; }
+    const start = Date.now();
+    const iv = setInterval(() => {
+      if (condFn()) { clearInterval(iv); res(); return; }
+      if (Date.now() - start > timeoutMs) {
+        clearInterval(iv);
+        rej(new Error('函式庫載入逾時，請確認網路後重新整理'));
+      }
+    }, 250);
+  });
+}
+
+/* ============================================================
+   相機（手機四層嘗試）
+============================================================ */
+async function startCam() {
+  const video = document.getElementById('video');
+  if (video.srcObject) return true;
+
+  // 手機需 HTTPS 或 localhost
+  const isSecure = location.protocol === 'https:' ||
+    location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (!isSecure) {
+    showErr('需要 HTTPS 才能使用相機\n請上傳至 GitHub Pages 或使用 localhost');
+    return false;
+  }
+
+  const tries = [
+    { video:{ facingMode:{exact:'environment'}, width:{ideal:1280}, height:{ideal:720} } },
+    { video:{ facingMode:{ideal:'environment'} } },
+    { video:{ facingMode:'environment' } },
+    { video: true },
+  ];
+  for (const c of tries) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(c);
+      video.srcObject = stream; S.stream = stream;
+      await new Promise(res => {
+        video.onloadedmetadata = () => video.play().then(res).catch(res);
+        setTimeout(res, 4000);
+      });
+      const lbl = stream.getVideoTracks()[0]?.label || '相機';
+      document.getElementById('obsInfo').textContent = lbl.slice(0,18);
+      return true;
+    } catch(e) { console.warn('cam try failed:', e.name, c); }
+  }
+  return false;
+}
+
+/* ============================================================
+   Gemini Key
+============================================================ */
+function saveGK() {
+  S.gemKey = document.getElementById('gkInp').value.trim();
+  localStorage.setItem('gemKey', S.gemKey);
+  alert(S.gemKey ? '✅ Gemini Key 已儲存！AI 對話功能已啟用。' : 'Key 已清除');
+}
+
+/* ============================================================
+   模式選擇
+============================================================ */
+function pick(mode) {
+  S.mode = mode;
+  document.getElementById('MS').style.display = 'none';
+  document.getElementById('MA').style.display = 'flex';
+  const chip = document.getElementById('mChip');
+
+  if (mode === 'blind') {
+    chip.textContent = '🦯 盲人'; chip.className = 'chip cb';
+    document.getElementById('blindUI').style.display = 'block';
+    document.getElementById('dementiaUI').style.display = 'none';
+    say('盲人模式啟動。系統以深度障礙圖分析路面，告知左中右障礙與安全通道。若有設定 Gemini Key 可按「問AI」語音詢問任何問題。', true);
+    setTimeout(() => startRun(), 1600);
+  } else {
+    chip.textContent = '🌸 失智'; chip.className = 'chip cd';
+    document.getElementById('blindUI').style.display = 'none';
+    document.getElementById('dementiaUI').style.display = 'block';
+    renderFam();
+    say('失智照護模式啟動，系統自動持續辨識，不需要任何操作。', true);
+    setTimeout(() => startRun(), 1600);
+  }
+}
+
+function goBack() {
+  stopRun(); stopNav(); stopVRec();
+  if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; document.getElementById('video').srcObject = null; }
+  document.getElementById('MA').style.display = 'none';
+  document.getElementById('MS').style.display = 'flex';
+  S.mode = null;
+}
+
+/* ============================================================
+   語音輸出
+============================================================ */
+function say(msg, force = false) {
+  document.getElementById('vTxt').textContent = msg;
+  if (S.muted) return;
+  const now = Date.now();
+  if (!force && now - S.lastSpeak < S.cooldown) return;
+  S.lastSpeak = now;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(msg);
+  u.lang = 'zh-TW'; u.rate = 0.93; u.pitch = 1; u.volume = 1;
+  const ico = document.getElementById('vIco');
+  u.onstart = () => ico.className = 'vi sp';
+  u.onend   = () => ico.className = 'vi';
+  window.speechSynthesis.speak(u);
+}
+function rep() { const t = document.getElementById('vTxt').textContent; window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.lang = 'zh-TW'; u.rate = 0.88; window.speechSynthesis.speak(u); }
+function togMute() { S.muted = !S.muted; document.getElementById('muteIco').textContent = S.muted ? '🔇' : '🔊'; document.getElementById('muteLbl').textContent = S.muted ? '靜音' : '語音'; if (S.muted) window.speechSynthesis.cancel(); }
+
+/* ============================================================
+   物品映射（完整 80 類）
+============================================================ */
+const COCO = {
+  'person':'人','bicycle':'腳踏車','car':'汽車','motorcycle':'摩托車','airplane':'飛機',
+  'bus':'公車','train':'火車','truck':'卡車','boat':'船','traffic light':'紅綠燈',
+  'fire hydrant':'消防栓','stop sign':'停止標誌','parking meter':'停車計費器',
+  'bench':'長椅','bird':'鳥','cat':'貓','dog':'狗','horse':'馬','sheep':'羊',
+  'cow':'牛','elephant':'大象','bear':'熊','zebra':'斑馬','giraffe':'長頸鹿',
+  'backpack':'背包','umbrella':'雨傘','handbag':'手提包','tie':'領帶','suitcase':'行李箱',
+  'frisbee':'飛盤','skis':'滑雪板','snowboard':'單板滑雪','sports ball':'球',
+  'kite':'風箏','baseball bat':'棒球棒','baseball glove':'棒球手套','skateboard':'滑板',
+  'surfboard':'衝浪板','tennis racket':'網球拍','bottle':'瓶子','wine glass':'酒杯',
+  'cup':'杯子','fork':'叉子','knife':'刀子','spoon':'湯匙','bowl':'碗',
+  'banana':'香蕉','apple':'蘋果','sandwich':'三明治','orange':'柳橙','broccoli':'花椰菜',
+  'carrot':'紅蘿蔔','hot dog':'熱狗','pizza':'披薩','donut':'甜甜圈','cake':'蛋糕',
+  'chair':'椅子','couch':'沙發','potted plant':'盆栽','bed':'床','dining table':'餐桌',
+  'toilet':'馬桶','tv':'電視','laptop':'筆電','mouse':'滑鼠','remote':'遙控器',
+  'keyboard':'鍵盤','cell phone':'手機','microwave':'微波爐','oven':'烤箱',
+  'toaster':'烤麵包機','sink':'洗手台','refrigerator':'冰箱','book':'書',
+  'clock':'時鐘','vase':'花瓶','scissors':'剪刀','teddy bear':'泰迪熊',
+  'hair drier':'吹風機','toothbrush':'牙刷',
+};
+const ICONS = {
+  'person':'👤','car':'🚗','bus':'🚌','truck':'🚛','bicycle':'🚲','motorcycle':'🏍️',
+  'dog':'🐕','cat':'🐈','chair':'🪑','couch':'🛋️','bed':'🛏️','tv':'📺',
+  'laptop':'💻','cell phone':'📱','bottle':'🍾','cup':'☕','bowl':'🥣',
+  'apple':'🍎','banana':'🍌','dining table':'🍽️','traffic light':'🚦',
+  'bench':'🪑','book':'📚','clock':'🕐','umbrella':'☂️','backpack':'🎒',
+  'suitcase':'🧳','refrigerator':'🧊','sink':'🚰','toilet':'🚽',
+};
+const N = c => COCO[c] || c;
+const IC = c => ICONS[c] || '📦';
+const POS = (b, vw) => { const r = (b[0]+b[2]/2)/vw; return r<0.33?'left':r>0.66?'right':'center'; };
+const DRATIO = (b, vh) => b[3]/vh;
+
+/* ============================================================
+   辨識主循環
+============================================================ */
+let loopT = null;
+function startRun() {
+  if (S.running) return; S.running = true;
+  document.getElementById('rdot').className = 'rdot on';
+  document.getElementById('rTxt').textContent = '辨識中';
+  if (document.getElementById('runIco')) {
+    document.getElementById('runIco').textContent = '⏹️';
+    document.getElementById('runLbl').textContent = '停止辨識';
+    document.getElementById('runBtn').className = 'ab bst';
+  }
+  mainLoop();
+}
+function stopRun() {
+  S.running = false; if (loopT) { clearTimeout(loopT); loopT = null; }
+  document.getElementById('rdot').className = 'rdot';
+  document.getElementById('rTxt').textContent = '待機';
+  if (document.getElementById('runIco')) {
+    document.getElementById('runIco').textContent = '▶️';
+    document.getElementById('runLbl').textContent = '開始辨識';
+    document.getElementById('runBtn').className = 'ab bgo';
+  }
+}
+function togRun() { S.running ? stopRun() : startRun(); }
+
+async function mainLoop() {
+  if (!S.running) return;
+  const video = document.getElementById('video');
+  if (video.readyState >= 2 && S.model) {
+    try {
+      const preds = await S.model.detect(video);
+      const vw = video.videoWidth || 640;
+      const vh = video.videoHeight || 480;
+      const items = preds
+        .filter(p => p.score > 0.40 && COCO[p.class])
+        .map(p => ({
+          name: N(p.class), cls: p.class, score: p.score, bbox: p.bbox,
+          pos: POS(p.bbox, vw), dr: DRATIO(p.bbox, vh),
+        }))
+        .sort((a,b) => b.score - a.score);
+
+      // ① 深度障礙圖
+      const dep = computeDepth(video);
+      renderDepth(video, dep);
+      drawBoxes(preds, vw, vh);
+
+      // ② 模式處理
+      if (S.mode === 'blind') processBlind(items, dep);
+      else processDementia(items);
+
+      // ③ Gemini 定期場景描述
+      if (S.gemKey && Date.now() - S.lastAI > S.aiGap) callGemini(video);
+
+    } catch(e) { console.warn('loop err', e); }
+  }
+  loopT = setTimeout(() => mainLoop(), S.mode === 'blind' ? 480 : 950);
+}
+
+/* ============================================================
+   ★ 深度障礙圖核心：Sobel 邊緣 × 亮度 × 垂直梯度
+   原理：
+   ┌─────────────────────────────────────────┐
+   │ 邊緣多 = 物體輪廓 = 可能是牆/家具    │
+   │ 亮度低 + 邊緣多 = 暗色障礙物         │
+   │ 下方（近腳）權重高 = 近距障礙更危險  │
+   │ 輸出 0-255：255=最危險 0=最安全      │
+   │ 深度圖：黑紅=障礙  白綠=可通行      │
+   └─────────────────────────────────────────┘
+============================================================ */
+function computeDepth(video) {
+  const W = 160, H = 90;
+  const tmp = document.createElement('canvas');
+  tmp.width = W; tmp.height = H;
+  const ctx = tmp.getContext('2d');
+  ctx.drawImage(video, 0, 0, W, H);
+  let px;
+  try { px = ctx.getImageData(0, 0, W, H).data; } catch(e) { return {L:0,C:0,R:0,safe:'center',map:null,W,H}; }
+
+  // 灰階
+  const gray = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) {
+    const o = i * 4;
+    gray[i] = 0.299*px[o] + 0.587*px[o+1] + 0.114*px[o+2];
+  }
+
+  // Sobel 邊緣強度
+  const edge = new Float32Array(W * H);
+  let mx = 1;
+  for (let y = 1; y < H-1; y++) {
+    for (let x = 1; x < W-1; x++) {
+      const gx = -gray[(y-1)*W+(x-1)] + gray[(y-1)*W+(x+1)]
+                 -2*gray[y*W+(x-1)]   + 2*gray[y*W+(x+1)]
+                 -gray[(y+1)*W+(x-1)] + gray[(y+1)*W+(x+1)];
+      const gy = -gray[(y-1)*W+(x-1)] - 2*gray[(y-1)*W+x] - gray[(y-1)*W+(x+1)]
+                 +gray[(y+1)*W+(x-1)] + 2*gray[(y+1)*W+x] + gray[(y+1)*W+(x+1)];
+      const v = Math.sqrt(gx*gx + gy*gy);
+      edge[y*W+x] = v;
+      if (v > mx) mx = v;
+    }
+  }
+
+  // 障礙圖：邊緣強 × 近距權重
+  const obst = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y*W+x;
+      const e = edge[i] / mx;          // 0~1 邊緣歸一化
+      const bright = gray[i] / 255;    // 0~1 亮度
+      // 低亮度 + 高邊緣 = 障礙物（暗色實體）
+      const darkFactor = 1 - bright * 0.4;
+      // 靠近畫面底部（距相機近）→ 危險權重更高
+      const depthW = 0.35 + 0.65 * (y / H);
+      obst[i] = Math.min(255, Math.round(e * darkFactor * depthW * 255));
+    }
+  }
+
+  // 三區平均（分析下方 55% 畫面，即腳前地面）
+  const yStart = Math.floor(H * 0.45);
+  let sL=0,sC=0,sR=0, nL=0,nC=0,nR=0;
+  for (let y = yStart; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const v = obst[y*W+x];
+      if (x < W/3) { sL+=v; nL++; }
+      else if (x < 2*W/3) { sC+=v; nC++; }
+      else { sR+=v; nR++; }
+    }
+  }
+  const L = Math.round(sL/nL), C = Math.round(sC/nC), R = Math.round(sR/nR);
+  // 最安全方向 = 障礙值最低
+  const safe = (L<=C && L<=R) ? 'left' : (R<=C && R<=L) ? 'right' : 'center';
+  return { L, C, R, safe, obst, W, H };
+}
+
+/* ============================================================
+   渲染深度圖（黑紅=障礙 白綠=安全）疊加在相機上
+============================================================ */
+function renderDepth(video, dep) {
+  const dc = document.getElementById('depC');
+  if (!S.depShow || !dep.obst) { dc.style.display = 'none'; return; }
+  dc.style.display = 'block';
+  const dw = video.clientWidth, dh = video.clientHeight;
+  dc.width = dw; dc.height = dh;
+  const ctx = dc.getContext('2d');
+  const { W, H, obst } = dep;
+  const img = ctx.createImageData(W, H);
+  for (let i = 0; i < W*H; i++) {
+    const v = obst[i];       // 0=安全 255=障礙
+    const o = i * 4;
+    if (v > 130) {
+      // 危險區 → 紅黑色
+      img.data[o]   = Math.round(v * 0.9);
+      img.data[o+1] = 10;
+      img.data[o+2] = 10;
+      img.data[o+3] = 170;
+    } else {
+      // 安全區 → 白綠色
+      const bright = 255 - v;
+      img.data[o]   = Math.round(bright * 0.6);
+      img.data[o+1] = bright;
+      img.data[o+2] = Math.round(bright * 0.6);
+      img.data[o+3] = 100;
+    }
+  }
+  const tmp = document.createElement('canvas');
+  tmp.width = W; tmp.height = H;
+  tmp.getContext('2d').putImageData(img, 0, 0);
+  ctx.drawImage(tmp, 0, 0, dw, dh);
+}
+
+function togDepth() {
+  S.depShow = !S.depShow;
+  document.getElementById('depTogBtn').textContent = '疊加：' + (S.depShow ? '開' : '關');
+  if (!S.depShow) document.getElementById('depC').style.display = 'none';
+}
+
+/* ============================================================
+   辨識框繪製
+============================================================ */
+function drawBoxes(preds, vw, vh) {
+  const video = document.getElementById('video');
+  const c = document.getElementById('boxC');
+  const ctx = c.getContext('2d');
+  const dw = video.clientWidth, dh = video.clientHeight;
+  c.width = dw; c.height = dh;
+  ctx.clearRect(0, 0, dw, dh);
+  const sx = dw/vw, sy = dh/vh;
+  preds.filter(p => p.score > 0.40 && COCO[p.class]).forEach(p => {
+    const [bx,by,bw,bh] = p.bbox;
+    const x=bx*sx, y=by*sy, w=bw*sx, h=bh*sy;
+    const pos = POS(p.bbox, vw);
+    const col = pos==='left' ? '#4488ff' : pos==='right' ? '#ff6b35' : '#00e5ff';
+    ctx.shadowBlur = 8; ctx.shadowColor = col;
+    ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+    ctx.strokeRect(x, y, w, h);
+    ctx.shadowBlur = 0;
+    const lbl = `${N(p.class)} ${Math.round(p.score*100)}%`;
+    ctx.font = 'bold 12px sans-serif';
+    const tw = ctx.measureText(lbl).width;
+    const ly = y > 20 ? y-20 : y;
+    ctx.fillStyle = 'rgba(0,0,0,.76)'; ctx.fillRect(x, ly, tw+8, 18);
+    ctx.fillStyle = col; ctx.fillText(lbl, x+4, ly+13);
+  });
+}
+
+/* ============================================================
+   盲人模式主處理
+============================================================ */
+function processBlind(items, dep) {
+  const { L, C, R, safe } = dep;
+  // 障礙百分比（0=安全 100=危險）
+  const pL = Math.round(L/255*100);
+  const pC = Math.round(C/255*100);
+  const pR = Math.round(R/255*100);
+
+  // 顏色輔助
+  const col = p => p>65 ? '#ff4757' : p>38 ? '#ffd700' : '#a8ff3e';
+  const lbl = p => p>70 ? '危險！' : p>45 ? '有障礙' : p>22 ? '略有物' : p>8 ? '較通暢' : '暢通';
+
+  // 各區 COCO 物品
+  const iL = items.filter(i => i.pos==='left');
+  const iC = items.filter(i => i.pos==='center');
+  const iR = items.filter(i => i.pos==='right');
+
+  // 更新三格 UI
+  const setZone = (barId, lblId, itmId, p, itms) => {
+    document.getElementById(barId).style.background = `linear-gradient(90deg,${col(p)},${col(p)}33)`;
+    document.getElementById(barId).style.height = '6px';
+    document.getElementById(lblId).textContent = lbl(p);
+    document.getElementById(lblId).style.color = col(p);
+    document.getElementById(itmId).textContent = itms.map(i=>i.name).join(' ');
+  };
+  setZone('barL','lblL','itmL', pL, iL);
+  setZone('barC','lblC','itmC', pC, iC);
+  setZone('barR','lblR','itmR', pR, iR);
+
+  // 安全路徑箭頭
+  const arrMap = { left:'⬅️ 往左走', center:'⬆️ 直走', right:'➡️ 往右走' };
+  const emoMap = { left:'⬅️', center:'⬆️', right:'➡️' };
+  document.getElementById('pArr').textContent = emoMap[safe];
+  document.getElementById('pVal').textContent = arrMap[safe];
+  document.getElementById('bigArrow').textContent = emoMap[safe];
+  document.getElementById('bigArrow').style.opacity = 1;
+
+  // obsInfo
+  document.getElementById('obsInfo').textContent = `障礙: 左${pL}% 前${pC}% 右${pR}%`;
+
+  // 緊急警告（前方高危 or 近距物體）
+  const nearCenter = iC.filter(i => i.dr > 0.5);
+  const wb = document.getElementById('wbar');
+  if (pC > 72 || nearCenter.length > 0) {
+    wb.className = 'wbar on';
+    const what = nearCenter.map(i=>i.name).join('、') || '障礙物';
+    document.getElementById('wTxt').textContent = `⚠ 前方危險：${what}`;
+    const dir = safe==='left' ? '請往左走' : safe==='right' ? '請往右走' : '請停步';
+    say(`注意！前方有${what}，${dir}`, true);
+    return;
+  } else { wb.className = 'wbar'; }
+
+  // 導盲磚（黃色像素偵測）
+  detectTactile(document.getElementById('video'));
+
+  // 人物追蹤
+  const people = items.filter(i => i.cls==='person');
+  if (people.length) {
+    const lead = people[0];
+    const ps = lead.pos==='center'?'正前方':lead.pos==='left'?'左前方':'右前方';
+    document.getElementById('pTrk').textContent = `${ps}有人，路徑安全可跟隨`;
+    if (!S.personSeen) { S.personSeen=true; say('偵測到前方有人，路徑安全，可跟隨'); }
+  } else {
+    if (S.personSeen) say('前方人物消失，請注意');
+    S.personSeen = false;
+    document.getElementById('pTrk').textContent = '未偵測到可跟隨人物';
+  }
+
+  // 語音空間播報
+  spatialVoice(iL, iC, iR, safe, pC);
+}
+
+function spatialVoice(L, C, R, safe, pC) {
+  const now = Date.now();
+  if (now - S.lastSpeak < S.cooldown) return;
+  const parts = [];
+  if (L.length) parts.push('左側有' + L.map(i=>i.name).join('和'));
+  if (C.length) parts.push('前方有' + C.map(i=>i.name).join('和'));
+  if (R.length) parts.push('右側有' + R.map(i=>i.name).join('和'));
+  const pathMsg = safe==='left' ? '，建議往左走' : safe==='right' ? '，建議往右走' : pC < 25 ? '，前方暢通' : '';
+  say(parts.length ? parts.join('，') + pathMsg : '前方暢通' + pathMsg);
+}
+
+/* ============================================================
+   導盲磚（黃色像素分析）
+============================================================ */
+function detectTactile(video) {
+  const W=160, H=90;
+  const tmp = document.createElement('canvas');
+  tmp.width=W; tmp.height=H;
+  const ctx = tmp.getContext('2d');
+  try { ctx.drawImage(video,0,0,W,H); } catch(e) { return; }
+  let px; try { px = ctx.getImageData(0,0,W,H).data; } catch(e) { return; }
+  let yL=0, yC=0, yR=0, tot=0;
+  const sr = Math.floor(H*0.5);
+  for (let y=sr; y<H; y++) {
+    for (let x=0; x<W; x++) {
+      tot++;
+      const i=(y*W+x)*4, r=px[i], g=px[i+1], b=px[i+2];
+      if (r>148 && g>118 && b<88 && r>b*1.6 && g>b*1.35) {
+        if (x<53) yL++; else if (x<107) yC++; else yR++;
+      }
+    }
+  }
+  const ratio = (yL+yC+yR) / tot;
+  let msg = '未偵測到導盲磚';
+  if (ratio > 0.05) {
+    if (yC > yL && yC > yR) msg = '導盲磚在正前方，直走';
+    else if (yL > yR*1.4)   msg = '導盲磚偏左，建議左轉';
+    else if (yR > yL*1.4)   msg = '導盲磚偏右，建議右轉';
+    else msg = '導盲磚前方，繼續前進';
+    const now = Date.now();
+    if (now - S.lastSpeak > S.cooldown * 1.2) { say(msg); S.lastSpeak = now; }
+  }
+  document.getElementById('tact').textContent = msg;
+}
+
+/* ============================================================
+   失智模式
+============================================================ */
+function processDementia(items) {
+  const list = document.getElementById('itemList');
+  if (!items.length) {
+    list.innerHTML = '<div class="irow"><span class="ie">🔍</span><span class="in">未辨識到物品</span></div>';
+    return;
+  }
+  list.innerHTML = items.slice(0, 8).map(it => {
+    const pc = it.pos==='left'?'pl':it.pos==='right'?'pr2':'pc';
+    const pt = it.pos==='left'?'◀左':it.pos==='right'?'右▶':'▲前';
+    return `<div class="irow" onclick="say('這是${it.name}',true)" style="animation:si .3s">
+      <span class="ie">${IC(it.cls)}</span>
+      <span class="in">${it.name}</span>
+      <span class="ip ${pc}">${pt}</span>
+      <span class="ipct">${Math.round(it.score*100)}%</span>
+    </div>`;
+  }).join('');
+  const top = items.slice(0,3).map(i=>i.name).join('、');
+  say('看到：' + top);
+}
+
+/* ============================================================
+   ★ Gemini AI（免費）— 場景描述 + 語音對話
+============================================================ */
+async function callGemini(video, question = null) {
+  if (!S.gemKey) return;
+  // 防止重複呼叫
+  if (S.gemBusy) return;
+  S.gemBusy = true;
+  S.lastAI = Date.now();
+
+  try {
+    // ① 擷取畫面 — 縮小至 320px 減少資料量（避免 fetch 超時）
+    const tmp = document.createElement('canvas');
+    const vw = video.videoWidth || 640;
+    const vh = video.videoHeight || 480;
+    const scale = 320 / vw;
+    tmp.width = 320; tmp.height = Math.round(vh * scale);
+    try { tmp.getContext('2d').drawImage(video, 0, 0, tmp.width, tmp.height); }
+    catch(e) { S.gemBusy = false; return; }
+    const b64 = tmp.toDataURL('image/jpeg', 0.60).split(',')[1];
+
+    // ② 提示詞
+    let prompt;
+    if (question) {
+      prompt = '使用者問：「' + question + '」\n請根據畫面用繁體中文回答（2句，直接說）：位置說左側/前方/右側，距離說近/中/遠，直接說「前方有...」不說「圖片」。';
+    } else if (S.mode === 'blind') {
+      prompt = '你是盲人的眼睛。繁體中文2~3句：①左側有什麼 ②前方有什麼障礙（牆/桌/椅/門/台階） ③右側有什麼 ④哪方向最安全。直接說，不說「圖片中」。';
+    } else {
+      prompt = '失智照護助手。溫柔繁體中文2句：描述畫面中的人和物品及位置（左/前/右）。語氣溫暖。';
+    }
+
+    // ③ fetch 加 20 秒逾時（用 AbortController）
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 20000);
+
+    const res = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + S.gemKey,
+      {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { inline_data: { mime_type: 'image/jpeg', data: b64 } },
+            { text: prompt }
+          ]}],
+          generationConfig: { maxOutputTokens: 180, temperature: 0.3 }
+        })
+      }
+    );
+    clearTimeout(tid);
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      console.warn('Gemini HTTP ' + res.status, errBody);
+      if (res.status === 400) say('Gemini Key 無效，請重新確認', true);
+      else if (res.status === 429) say('AI 呼叫太頻繁，請稍後', true);
+      else say('AI 服務暫時無法使用 (' + res.status + ')', true);
+      S.gemBusy = false; return;
+    }
+
+    const data = await res.json();
+    const txt = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+    if (!txt) { S.gemBusy = false; return; }
+
+    if (question) { addChat('u', question); addChat('a', txt); }
+    if (S.mode === 'blind') {
+      document.getElementById('aiRow').style.display = 'flex';
+      document.getElementById('aiDesc').textContent = txt;
+    } else {
+      document.getElementById('aiSect').style.display = 'block';
+      document.getElementById('aiDetail').textContent = txt;
+    }
+    say(txt, true);
+
+  } catch(e) {
+    if (e.name === 'AbortError') say('AI 回應逾時，請稍後再試', true);
+    else console.warn('Gemini error', e.name, e.message);
+  } finally {
+    S.gemBusy = false;
+  }
+}
+
+function addChat(role, msg) {
+  const area = document.getElementById('chatHist');
+  area.style.display = 'block';
+  const d = document.createElement('div');
+  d.className = 'ch-msg ' + role;
+  d.textContent = (role==='u' ? '你：' : 'AI：') + msg;
+  area.appendChild(d);
+  area.scrollTop = area.scrollHeight;
+  while (area.children.length > 8) area.removeChild(area.firstChild);
+}
+
+/* ============================================================
+   ★ 語音問AI（按「問AI」按鈕）
+============================================================ */
+function askAI() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { say('此裝置不支援語音輸入', true); return; }
+  if (!S.gemKey) { say('請先設定 Gemini Key，免費申請', true); return; }
+
+  const r = new SR();
+  r.lang = 'zh-TW'; r.continuous = false; r.interimResults = false;
+  r.onstart = () => {
+    say('請說出你的問題...', true);
+    document.getElementById('askBtn').style.background = 'linear-gradient(135deg,#00c853,#00a040)';
+  };
+  r.onresult = async e => {
+    const q = e.results[0][0].transcript;
+    say('收到：' + q, true);
+    await callGemini(document.getElementById('video'), q);
+  };
+  r.onend = () => document.getElementById('askBtn').style.background = '';
+  r.onerror = () => say('語音輸入失敗，請再試', true);
+  r.start();
+}
+
+/* ============================================================
+   語音指令（持續監聽）
+   ── 特別處理：含「嗎/什麼/哪/有沒有/幾」→ 自動問AI
+============================================================ */
+const CMD = {
+  '開始': () => startRun(),
+  '識別': () => startRun(),
+  '停止': () => stopRun(),
+  '回家':  () => startNav(),
+  '導航':  () => startNav(),
+  '停止導航': () => stopNav(),
+  '設定家': () => setHome(),
+  '記錄位置': () => setHome(),
+  '重複': () => rep(),
+  '再說': () => rep(),
+  '緊急': () => sos(),
+  '疊加': () => togDepth(),
+  '幫助': () => say('指令：開始、停止、回家、設定家、重複、緊急。說含「什麼」「有沒有」「嗎」的句子可自動問AI。', true),
+};
+const Q_WORDS = ['嗎','什麼','哪','有沒有','幾個','多遠','多近','幾','哪裡'];
+
+function togVoice() { S.voiceOn ? stopVRec() : startVRec(); }
+function startVRec() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { say('不支援語音指令', true); return; }
+  if (!S.voiceRec) {
+    S.voiceRec = new SR();
+    S.voiceRec.continuous = true; S.voiceRec.interimResults = false; S.voiceRec.lang = 'zh-TW';
+    S.voiceRec.onresult = e => {
+      const t = e.results[e.results.length-1][0].transcript;
+      console.log('語音:', t);
+      // 含問句關鍵字 → 問 Gemini
+      if (S.gemKey && Q_WORDS.some(w => t.includes(w))) {
+        callGemini(document.getElementById('video'), t);
+        return;
+      }
+      // 否則執行指令
+      for (const [k, fn] of Object.entries(CMD)) {
+        if (t.includes(k)) { fn(); return; }
+      }
+    };
+    S.voiceRec.onend = () => {
+      if (S.voiceOn) setTimeout(() => { try { S.voiceRec.start(); } catch(e){} }, 900);
+    };
+    S.voiceRec.onerror = ev => {
+      if (ev.error === 'not-allowed') {
+        say('請允許麥克風權限', true); S.voiceOn = false;
+        document.getElementById('micBtn').className = 'bb bb-mic';
+      }
+    };
+  }
+  try { S.voiceRec.start(); } catch(e) {}
+  S.voiceOn = true;
+  document.getElementById('micBtn').className = 'bb bb-mic on';
+  say('語音指令已開啟。直接說出問題，例如「前面有牆嗎」「桌子在哪」，AI 會回答。', true);
+}
+function stopVRec() {
+  if (S.voiceRec) try { S.voiceRec.stop(); } catch(e) {}
+  S.voiceOn = false;
+  document.getElementById('micBtn').className = 'bb bb-mic';
+}
+
+/* ============================================================
+   GPS 導航
+============================================================ */
+function setHome() {
+  if (!navigator.geolocation) { say('無 GPS', true); return; }
+  say('記錄家中位置，請稍候...', true);
+  navigator.geolocation.getCurrentPosition(
+    p => {
+      S.homePos = { lat: p.coords.latitude, lng: p.coords.longitude };
+      localStorage.setItem('homePos', JSON.stringify(S.homePos));
+      say(`家已記錄，精確度 ${Math.round(p.coords.accuracy)} 公尺`, true);
+    },
+    () => say('定位失敗，請開啟 GPS 後再試', true),
+    { enableHighAccuracy: true, timeout: 12000 }
+  );
+}
+function togNav() { S.navigating ? stopNav() : startNav(); }
+function startNav() {
+  if (!S.homePos) { say('請先點「設定家」', true); return; }
+  S.navigating = true;
+  if (document.getElementById('navBtn')) { document.getElementById('navBtn').className='ab bst'; document.getElementById('navLbl').textContent='停止導航'; }
+  say('開始導航回家', true);
+  S.watchId = navigator.geolocation.watchPosition(p => updateNav(p), null, { enableHighAccuracy: true });
+}
+function stopNav() {
+  if (S.watchId) { navigator.geolocation.clearWatch(S.watchId); S.watchId = null; }
+  S.navigating = false;
+  if (document.getElementById('navBtn')) { document.getElementById('navBtn').className='ab bnv'; document.getElementById('navLbl').textContent='導航回家'; }
+}
+function updateNav(p) {
+  const cur = { lat: p.coords.latitude, lng: p.coords.longitude }, h = S.homePos;
+  const R = 6371000;
+  const df = (h.lat-cur.lat)*Math.PI/180, dl = (h.lng-cur.lng)*Math.PI/180;
+  const a = Math.sin(df/2)**2 + Math.cos(cur.lat*Math.PI/180)*Math.cos(h.lat*Math.PI/180)*Math.sin(dl/2)**2;
+  const dist = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+  const y2 = Math.sin(dl)*Math.cos(h.lat*Math.PI/180);
+  const x2 = Math.cos(cur.lat*Math.PI/180)*Math.sin(h.lat*Math.PI/180) - Math.sin(cur.lat*Math.PI/180)*Math.cos(h.lat*Math.PI/180)*Math.cos(dl);
+  const bear = ((Math.atan2(y2,x2)*180/Math.PI)+360)%360;
+  const dirs = ['北','東北','東','東南','南','西南','西','西北'];
+  const dir = dirs[Math.round(bear/45)%8];
+  const now = Date.now(); if (now-S.lastSpeak<5000) return;
+  if (dist < 10) { say('已抵達！', true); stopNav(); }
+  else say(dist<60 ? `快到了！剩${dist}公尺，往${dir}走` : `距家${dist}公尺，往${dir}方向走`, true);
+}
+
+/* ============================================================
+   家人識別
+============================================================ */
+function renderFam() {
+  const g = document.getElementById('famGrid');
+  g.innerHTML = S.family.map(m => `
+    <div class="fc" onclick="say('這是${m.name}，${m.rel}',true)">
+      <div class="fp">${m.photo ? `<img src="${m.photo}">` : '👤'}</div>
+      <div class="fn2">${m.name}</div><div class="fr2">${m.rel}</div>
+    </div>`).join('') +
+    `<div class="fc ac2" onclick="openMod()"><div class="fp">＋</div><div class="fn2" style="color:var(--dim);font-size:11px;">新增</div></div>`;
+}
+function openMod() { S.tmpPhoto=null; document.getElementById('fn').value=''; document.getElementById('fr').value=''; document.getElementById('pp').innerHTML='📷'; document.getElementById('FM').className='open'; }
+function closeMod() { document.getElementById('FM').className=''; }
+function onPhoto(e) { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>{S.tmpPhoto=ev.target.result;document.getElementById('pp').innerHTML=`<img src="${ev.target.result}">`;}; r.readAsDataURL(f); }
+function saveFam() { const name=document.getElementById('fn').value.trim(); if(!name){alert('請輸入稱呼');return;} S.family.push({id:Date.now(),name,rel:document.getElementById('fr').value.trim()||'家人',photo:S.tmpPhoto}); localStorage.setItem('family',JSON.stringify(S.family)); renderFam(); closeMod(); say(name+'已加入家人',true); }
+
+function sos() { say('緊急呼叫中！',true); setTimeout(()=>{ window.location.href='tel:112'; },500); }
+</script>
+</body>
+</html>
